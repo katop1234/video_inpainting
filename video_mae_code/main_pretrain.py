@@ -207,7 +207,7 @@ def get_args_parser():
     parser.add_argument(
         "--pred_t_dim",
         type=int,
-        default=8,
+        default=16,
     )
     parser.add_argument("--cls_embed", action="store_true")
     parser.set_defaults(cls_embed=True)
@@ -271,7 +271,7 @@ def main(args):
             custom_indices = []
 
             while len(custom_indices) < len(self.dataset):
-                if random.random() < self.prob_image_batch: # Choose image
+                if random.random() < 0: # Choose image
                     # append batch_size number of images
                     random_image_indices = random.sample(self.image_indices, self.batch_size)
                     custom_indices.extend(random_image_indices)

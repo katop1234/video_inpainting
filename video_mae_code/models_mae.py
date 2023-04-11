@@ -30,7 +30,7 @@ class MaskedAutoencoderViT(nn.Module):
         depth=24,
         num_heads=16,
         decoder_embed_dim=512,
-        decoder_depth=8,
+        decoder_depth=4,
         decoder_num_heads=16,
         mlp_ratio=4.0,
         norm_layer=nn.LayerNorm,
@@ -52,7 +52,14 @@ class MaskedAutoencoderViT(nn.Module):
         self.cls_embed = cls_embed
         self.pred_t_dim = pred_t_dim
 
+        # t_patch_size is how many consecutive video frames are grouped together to form a single temporal patch
+        # pred_t_dim is how many consecutive temporal patches are predicted
+        # num_frames is the total number of video frames in input (16)
+        # t_pred_patch_size determines the size of the predicted temporal patches in the output video
+
         self.t_pred_patch_size = t_patch_size * pred_t_dim // num_frames
+
+        assert self.t_pred_patch_size > 0, "pred_t_dim must be a multiple of num_frames" + f"({t_patch_size}, {pred_t_dim}, {num_frames})"
 
         self.patch_embed = patch_embed(
             img_size,
@@ -208,7 +215,6 @@ class MaskedAutoencoderViT(nn.Module):
         u = self.t_pred_patch_size
 
         print("models_mae images shape: ", imgs.shape, H, W, p, T, u)
-        exit()
 
         assert H == W and H % p == 0 and T % u == 0
         h = w = H // p
@@ -470,6 +476,8 @@ class MaskedAutoencoderViT(nn.Module):
             x = x.view([N, T, H * W, C])
 
         # apply Transformer blocks
+        print("Before running transformer block x.shape", x.shape)
+
         for blk in self.decoder_blocks:
             x = blk(x)
         x = self.decoder_norm(x)

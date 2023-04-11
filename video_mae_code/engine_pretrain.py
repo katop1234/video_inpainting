@@ -62,7 +62,7 @@ def train_one_epoch(
     for data_iter_step, (samples, _) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):  
-        print("data_iter_step new code", data_iter_step)
+        print("samples acquired, data_iter_step", data_iter_step)
 
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
@@ -79,16 +79,13 @@ def train_one_epoch(
         print("samples shape", samples.shape)
         print("\n RUNNING FORWARD PASS ON THE MODEL new code \n")
 
-        with torch.cuda.amp.autocast(enabled=not fp32):
+        with torch.cuda.amp.autocast(enabled=True):
             loss, _, _ = model(
                 samples,
                 mask_ratio=args.mask_ratio,
             )
 
         loss_value = loss.item()
-
-        print("Got loss")
-        exit()
 
         if not math.isfinite(loss_value):
             for _ in range(args.num_checkpoint_del):
@@ -220,11 +217,17 @@ def train_one_epoch(
     def output_to_mp4(output):
         raise NotImplementedError
     
+    # Starting evaluation
+    model.eval()
     test_model_input = get_test_model_input()
-    test_model_output = model(test_model_input)
+
+    with torch.no_grad():
+        test_model_output = model(test_model_input)
     
     test_model_output_mp4 = output_to_mp4(test_model_output)
     torch.save(test_model_output_mp4, f"{folder_name}/output_{data_iter_step}.mp4")
+    model.train()
+    # End evaluation
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
