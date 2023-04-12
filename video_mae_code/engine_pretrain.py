@@ -11,6 +11,7 @@
 import math, cv2
 from typing import Iterable
 import itertools, random, os
+import numpy as np, shutil
 
 import util.lr_sched as lr_sched
 import util.misc as misc
@@ -77,7 +78,7 @@ def train_one_epoch(
             samples = samples.reshape(b * r, c, t, h, w) # flatten the repeated variations to batches
 
         print("samples shape", samples.shape)
-        print("\n RUNNING FORWARD PASS ON THE MODEL new code \n")
+        print("RUNNING FORWARD PASS ON THE MODEL new code \n")
 
         with torch.cuda.amp.autocast(enabled=True):
             loss, _, _ = model(
@@ -194,6 +195,7 @@ def train_one_epoch(
         video.release()
         
         # Convert the list of frames to a PyTorch tensor
+        resized_frames = np.array(resized_frames)
         video_tensor = torch.tensor(resized_frames, dtype=torch.float32)
         
         # Rearrange the tensor dimensions to (batch, channel, time, height, width)
@@ -207,26 +209,50 @@ def train_one_epoch(
         video_tensor = video_to_tensor(file_path)
         return video_tensor
 
-    def mask_testing_video(video_tensor):
-        raise NotImplementedError
-
-    def get_test_model_input(data_dir="test_cases/final_spatiotemporal_videos/"):
+    def get_test_model_input(data_dir="test_cases/final_temporal_videos/"):
+        # TODO also feed in "test_cases/final_temporal_videos/"
         tensor_video = get_test_model_input_nomasking(data_dir)
-        return mask_testing_video(tensor_video)
+        return tensor_video
     
-    def output_to_mp4(output):
+    def output_to_mp4(output, output_file_path, output_shape):
+        '''
+        Make sure that the output of the decoder makes sense and we can convert it to a video file.
+        Go through it line by line if needed. Make sure you sue the original unmasked patches,
+         and the reconstructions for the masked ones.
+        '''
         raise NotImplementedError
+        # # Rearrange patches to form a video tensor
+        # output_video_tensor = output.view(*output_shape)
+        # output_video_tensor = output_video_tensor.permute(0, 2, 3, 4, 1)  # Rearrange dimensions to (batch, time, height, width, channel)
+        # output_video_tensor = output_video_tensor.squeeze(0)  # Remove the batch dimension
+        
+        # # Convert the tensor back to the range [0, 255] and change its data type to uint8
+        # output_video_tensor = (output_video_tensor * 255).clamp(0, 255).byte().cpu().numpy()
+        
+        # # Write the frames to a video file
+        # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        # video_writer = cv2.VideoWriter(output_file_path, fourcc, 30, (224, 224))
+        
+        # for i in range(output_video_tensor.shape[0]):
+        #     frame = output_video_tensor[i]
+        #     bgr_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
+        #     video_writer.write(bgr_frame)
+        
+        # video_writer.release()
     
     # Starting evaluation
     model.eval()
     test_model_input = get_test_model_input()
 
     with torch.no_grad():
-        test_model_output = model(test_model_input)
-    
-    test_model_output_mp4 = output_to_mp4(test_model_output)
-    torch.save(test_model_output_mp4, f"{folder_name}/output_{data_iter_step}.mp4")
+        _, test_model_output, _ = model(test_model_input, test_temporal=True)
+
+    output_file_path = os.path.join(folder_name, f"output_{data_iter_step}.mp4")
+    output_shape = (1, 3, 16, 224, 224)
+
+    output_to_mp4(test_model_output, output_file_path, output_shape)
     model.train()
+
     # End evaluation
 
     # gather the stats from all processes

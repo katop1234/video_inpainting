@@ -247,6 +247,7 @@ class MaskedAutoencoderViT(nn.Module):
         x: [N, L, D], sequence
         """
         N, L, D = x.shape  # batch, length, dim
+
         len_keep = int(L * (1 - mask_ratio))
 
         noise = torch.rand(N, L, device=x.device)  # noise in [0, 1]
@@ -276,8 +277,50 @@ class MaskedAutoencoderViT(nn.Module):
         '''
 
         return x_masked, mask, ids_restore, ids_keep
+    
+    def mask_spatiotemporal(self, x):
+        raise NotImplementedError
 
-    def forward_encoder(self, x, mask_ratio):
+    def mask_temporal(self, x):
+        """
+        Perform fixed masking for frames 10-16.
+        x: [N, L, D], sequence
+        """
+        N, L, D = x.shape  # batch, length, dim
+        
+        len_keep = L * 9 // 16
+
+        # Keep the frames 1-9
+        x_masked = x[:, :len_keep, :]
+
+        # Create the binary mask: 0 is keep, 1 is remove
+        mask = torch.ones([N, L], device=x.device)
+        mask[:, :len_keep] = 0
+
+        # The indices that would restore the sorted noise tensor to its original order
+        ids_restore = torch.arange(L, device=x.device).repeat(N, 1).to("cuda")
+
+        # The indices of the first len_keep elements in the sorted noise tensor
+        ids_keep = torch.arange(len_keep).unsqueeze(0).repeat(N, 1).to("cuda")
+
+        '''
+        Returns:
+        x_masked: The masked input tensor with the shape (N, len_keep, D), containing the kept elements.
+        mask: The binary mask tensor with the shape (N, L), where 0s represent the kept elements and 1s represent the removed elements.
+        ids_restore: The indices that would restore the sorted noise tensor to its original order.
+        ids_keep: The indices of the first len_keep elements in the sorted noise tensor.
+        '''
+
+        return x_masked, mask, ids_restore, ids_keep
+
+    def forward_encoder(self, x, mask_ratio, test_spatiotemporal=False, test_temporal=False):
+
+        assert not (test_spatiotemporal and test_temporal)
+
+        pretraining_mode = True
+        if test_spatiotemporal or test_temporal:
+            pretraining_mode = False
+        
 
         # embed patches
         x = self.patch_embed(x)
@@ -286,7 +329,22 @@ class MaskedAutoencoderViT(nn.Module):
         x = x.reshape(N, T * L, C)
 
         # masking: length -> length * mask_ratio
-        x, mask, ids_restore, ids_keep = self.random_masking(x, mask_ratio) # TODO try diff mask ratio for image and video
+        if pretraining_mode:
+            # Do random masking
+            x, mask, ids_restore, ids_keep = self.random_masking(x, mask_ratio) # TODO try diff mask ratio for image and video
+
+        elif test_spatiotemporal:
+            # For videos, mask bottom half of frames 2-16 for spatiotemporal
+
+            # figuring out the index of the masking for this will be a pain
+            raise NotImplementedError
+
+        elif test_temporal:
+            # For videos, mask frames 9-16 for temporal 
+            x, mask, ids_restore, ids_keep = self.mask_temporal(x)
+            pass 
+        else:
+            assert 1==0, "Invalid mode."
 
         print("x.shape: ", x.shape, "mask shape", mask.shape, "mask ratio", mask_ratio)
 
@@ -296,7 +354,8 @@ class MaskedAutoencoderViT(nn.Module):
         elif x.shape[1:] == torch.Size([int(196*(1-mask_ratio)), 1024]) and mask.shape[1:] == torch.Size([196]):
             print("Output is for an image tensor.")
         else:
-            raise ValueError("The output tensor shapes do not match expected shapes for video or image tensors.")
+            if pretraining_mode:
+                raise ValueError("The output tensor shapes do not match expected shapes for video or image tensors.")
 
         x = x.view(N, -1, C)
 
@@ -338,8 +397,11 @@ class MaskedAutoencoderViT(nn.Module):
             elif ids_keep.shape[1] == 784:
                 # video
                 pass
+            elif ids_keep.shape[1] == 1764:
+                # video temporal inference
+                pass
             else:
-                print("kept support for 75% masking only, can change that all later")
+                print("kept support for 75% masking only, can change that all later. got", ids_keep.shape)
                 raise NotImplementedError
 
             pos_embed = torch.gather(
@@ -397,8 +459,10 @@ class MaskedAutoencoderViT(nn.Module):
             T = 1 
         elif x.shape[1] == 14 ** 2 * (0.25) * 16: # video
             T = 16
+        elif x.shape[1] == 3136 * 9 // 16: # video temporal inference
+            T = 16
         else:
-            print("WARNING ONLY 75% MASKING SUPPORTED")
+            print("WARNING ONLY 75% MASKING SUPPORTED. got", x.shape)
             raise NotImplementedError
         
         N = x.shape[0]
@@ -449,7 +513,7 @@ class MaskedAutoencoderViT(nn.Module):
             decoder_pos_embed = self.decoder_pos_embed[:, :, :]
 
         # add pos embed
-        if x.shape[1] == 197: # image
+        if x.shape[1] == 1 + 196: # image
             for batch_index in range(x.shape[0]):
                 cls = x[batch_index, :1, :] # store cls on the side because unaffected by frame offsets
                 data_x = x[batch_index, 1:, :]
@@ -464,10 +528,10 @@ class MaskedAutoencoderViT(nn.Module):
                 x[batch_index, 1:, :] = data_x + data_decoder_pos_embed
                 x[batch_index, :1, :] = cls + cls_decoder_pos_embed
 
-        elif x.shape[1] == 196*16 + 1: # video
+        elif x.shape[1] == 1 + 196*16: # video
             x = x + decoder_pos_embed
         else:
-            print("no support for masking ratio other than 75%")
+            print("no support for masking ratio other than 75%. got", x.shape)
             raise NotImplementedError 
     
         attn = self.decoder_blocks[0].attn
@@ -476,8 +540,6 @@ class MaskedAutoencoderViT(nn.Module):
             x = x.view([N, T, H * W, C])
 
         # apply Transformer blocks
-        print("Before running transformer block x.shape", x.shape)
-
         for blk in self.decoder_blocks:
             x = blk(x)
         x = self.decoder_norm(x)
@@ -532,8 +594,8 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
-    def forward(self, imgs, mask_ratio=0.75):
-        latent, mask, ids_restore, offsets = self.forward_encoder(imgs, mask_ratio)
+    def forward(self, imgs, mask_ratio=0.75, test_spatiotemporal=False, test_temporal=False):
+        latent, mask, ids_restore, offsets = self.forward_encoder(imgs, mask_ratio, test_spatiotemporal, test_temporal)
         pred = self.forward_decoder(latent, ids_restore, offsets)  # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask

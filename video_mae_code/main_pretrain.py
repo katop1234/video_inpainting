@@ -49,7 +49,7 @@ def get_args_parser():
         "--accum_iter",
         default=1,
         type=int,
-        help="Accumulate gradient iterations (for increasing the effective batch size under memory constraints)",
+        help="*We calculate this automatically to match effective batch size*. Accumulate gradient iterations (for increasing the effective batch size under memory constraints).",
     )
 
     # Model parameters
@@ -207,7 +207,7 @@ def get_args_parser():
     parser.add_argument(
         "--pred_t_dim",
         type=int,
-        default=8,
+        default=16,
     )
     parser.add_argument("--cls_embed", action="store_true")
     parser.set_defaults(cls_embed=True)
@@ -270,8 +270,12 @@ def main(args):
 
             custom_indices = []
 
-            while len(custom_indices) < len(self.dataset):
-                if random.random() < 0: # Choose image
+            size_of_dataset = 8 #len(self.dataset)
+            prob_choose_image = 0 #self.prob_image_batch
+
+
+            while len(custom_indices) < size_of_dataset:
+                if random.random() < prob_choose_image: # Choose image
                     # append batch_size number of images
                     random_image_indices = random.sample(self.image_indices, self.batch_size)
                     custom_indices.extend(random_image_indices)
@@ -325,8 +329,6 @@ def main(args):
     
     accum_iter_determined_from_batch_size = 8192 // args.batch_size
     args.accum_iter = accum_iter_determined_from_batch_size
-
-    # TODO why do you need high batch size for this to work on GPU (shouldn't it be lower)?
 
     print("Batch size is", args.batch_size)
     print("Accumulate iterations is", args.accum_iter)
