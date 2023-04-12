@@ -1,11 +1,24 @@
 
 import cv2
-import numpy as np
+import numpy as np, shutil
 import random
+import os
 import torch
 import torchvision.transforms as transforms
 from PIL import Image
 from torchvision.models.segmentation import deeplabv3_resnet101
+
+def clear_pretraining_progress():
+    # Delete the pretraining_progress folder
+    folder_name = "pretraining_progress"
+
+    # Check if the folder exists and delete it if it does
+    if os.path.exists(folder_name):
+        shutil.rmtree(folder_name)
+
+    # Recreate the folder
+    os.makedirs(folder_name)
+    return
 
 def convert_mp4_to_tensor(mp4_file_path, height=224, width=224):
     '''

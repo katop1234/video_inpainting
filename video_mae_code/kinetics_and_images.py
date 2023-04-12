@@ -366,7 +366,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
                     rigid_decode_all_video=self.mode in ["pretrain"],
                 )
 
-                assert frames is not None, 'deocder does not work!'
+                assert frames is not None, 'decoder does not work!'
 
                 # If decoding failed (wrong format, video is too short, and etc),
                 # select another video.
