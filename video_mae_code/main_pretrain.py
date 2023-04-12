@@ -39,12 +39,12 @@ def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
     parser.add_argument(
         "--batch_size",
-        default=8,
+        default=2,
         type=int,
         help="Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus",
     )
 
-    parser.add_argument("--epochs", default=1000, type=int)
+    parser.add_argument("--epochs", default=100, type=int)
     parser.add_argument(
         "--accum_iter",
         default=1,
@@ -93,7 +93,7 @@ def get_args_parser():
     parser.add_argument(
         "--blr",
         type=float,
-        default=1e-3,
+        default=1.6e-3,
         metavar="LR",
         help="base learning rate: absolute_lr = base_lr * total_batch_size / 256",
     )
@@ -106,7 +106,7 @@ def get_args_parser():
     )
 
     parser.add_argument(
-        "--warmup_epochs", type=int, default=40, metavar="N", help="epochs to warmup LR"
+        "--warmup_epochs", type=int, default=5, metavar="N", help="epochs to warmup LR"
     )
 
     parser.add_argument(
@@ -134,7 +134,7 @@ def get_args_parser():
     parser.add_argument(
         "--start_epoch", default=0, type=int, metavar="N", help="start epoch"
     )
-    parser.add_argument("--num_workers", default=10, type=int)
+    parser.add_argument("--num_workers", default=14, type=int)
     parser.add_argument(
         "--pin_mem",
         action="store_true",
@@ -159,18 +159,18 @@ def get_args_parser():
     )
 
     parser.add_argument("--decoder_embed_dim", default=512, type=int)
-    parser.add_argument("--decoder_depth", default=8, type=int)
+    parser.add_argument("--decoder_depth", default=4, type=int)
     parser.add_argument("--decoder_num_heads", default=16, type=int)
     parser.add_argument("--t_patch_size", default=1, type=int)
     parser.add_argument("--num_frames", default=16, type=int)
     parser.add_argument("--checkpoint_period", default=1, type=int)
     parser.add_argument("--sampling_rate", default=4, type=int)
     parser.add_argument("--distributed", action="store_true")
-    parser.add_argument("--repeat_aug", default=1, type=int) 
+    parser.add_argument("--repeat_aug", default=4, type=int) 
     parser.add_argument(
         "--clip_grad",
         type=float,
-        default=None,
+        default=0.02,
     )
     parser.add_argument("--no_qkv_bias", action="store_true")
     parser.add_argument("--bias_wd", action="store_true")
@@ -207,7 +207,7 @@ def get_args_parser():
     parser.add_argument(
         "--pred_t_dim",
         type=int,
-        default=16,
+        default=8,
     )
     parser.add_argument("--cls_embed", action="store_true")
     parser.set_defaults(cls_embed=True)
