@@ -6,12 +6,13 @@ Todo:
 so the model is constantly forced to extract information optimally)
 2. Figure out how to get the mp4s to be saved properly. Make sure the decoder works as expected
 (i.e. keep the unmasked patches as is, and make sure decoded pixels go to where they should be)
+3. Go through the function and get rid of useless stuff like the logger, and add your own
+method of deserializing the model
 
 Finishing touches:
 **try Rotary Positional Embedding (like in LLAMA)**
 consider using rotary positional embedding for the video
 
 Can also try the alibi stuff
-
 
 **Idea here**
