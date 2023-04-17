@@ -8,7 +8,9 @@
 # DeiT: https://github.com/facebookresearch/deit
 # BEiT: https://github.com/microsoft/unilm/tree/master/beit
 # --------------------------------------------------------
+
 import math, cv2
+from PIL import Image
 from typing import Iterable
 import itertools, random, os
 import numpy as np, shutil
@@ -20,6 +22,17 @@ from datetime import datetime
 import torch
 from iopath.common.file_io import g_pathmgr as pathmgr
 from kinetics_and_images import KineticsAndCVF
+
+# Create the folder name with the current date and time
+current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+folder_name = f"pretraining_progress/progress_{current_datetime}"
+
+# Create the folder if it doesn't already exist
+if not os.path.exists(folder_name):
+    try:
+        os.makedirs(folder_name)
+    except FileExistsError: # Multiple GPUs might be doing this simulatenously
+       pass
 
 def train_one_epoch(
     model: torch.nn.Module,
@@ -58,12 +71,9 @@ def train_one_epoch(
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
 
-    print("ENTERING THE FOR LOOP NEW CODE")
-
     for data_iter_step, (samples, _) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):  
-        print("samples acquired, data_iter_step", data_iter_step)
 
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
@@ -77,13 +87,12 @@ def train_one_epoch(
 
             samples = samples.reshape(b * r, c, t, h, w) # flatten the repeated variations to batches
 
-        print("samples shape", samples.shape)
-        print("RUNNING FORWARD PASS ON THE MODEL new code \n")
-
         with torch.cuda.amp.autocast(enabled=True):
             loss, _, _ = model(
                 samples,
-                mask_ratio=args.mask_ratio,
+                mask_ratio_image=args.mask_ratio, # default .75
+                mask_ratio_video=0.9 # TODO hyperparameter
+
             )
 
         loss_value = loss.item()
@@ -106,7 +115,8 @@ def train_one_epoch(
             update_grad=(data_iter_step + 1) % accum_iter == 0, # updates grad every accum_iter
             clip_grad=args.clip_grad,
         )
-        
+
+
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad() # zeroes out grad every accum iter
 
@@ -131,131 +141,108 @@ def train_one_epoch(
             )
             log_writer.add_scalar("train_loss", loss_value_reduce, epoch_1000x)
             log_writer.add_scalar("lr", lr, epoch_1000x)
+        
+        if data_iter_step % 1000 == 0:
+            print("Epoch: {}, Iter: {}, Loss: {}".format(epoch, data_iter_step, loss_value_reduce))
     
-    # Test data once the epoch is over
-    
-    current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-
-    # Create the folder name with the current date and time
-    folder_name = f"pretraining_progress/progress_{current_datetime}"
-
-    # Create the folder if it doesn't already exist
-    if not os.path.exists(folder_name):
-        os.makedirs(folder_name)
-    
-    def get_random_file(data_dir):
-        # List all files in the data directory
-        files = [f for f in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, f))]
-        
-        # Choose a random file
-        random_file = random.choice(files)
-        
-        # Return the random file's path
-        return os.path.join(data_dir, random_file)
-    
-    def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
-        # Read the video
-        video = cv2.VideoCapture(video_path)
-        
-        # Get the total number of frames
-        total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
-        
-        # Calculate the sampling rate to get the target number of frames
-        sampling_rate = total_frames // num_frames
-        
-        # Initialize an empty list to store the resized frames
-        resized_frames = []
-        
-        frame_count = 0
-        sampled_count = 0
-        
-        # Loop through the video frames
-        while True:
-            ret, frame = video.read()
-            if not ret:
-                break
-            
-            if frame_count % sampling_rate == 0:
-                # Resize the frame
-                resized_frame = cv2.resize(frame, target_size)
-                
-                # Convert the frame from BGR to RGB
-                rgb_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
-                
-                # Append the resized frame to the list
-                resized_frames.append(rgb_frame)
-                sampled_count += 1
-                
-                if sampled_count >= num_frames:
-                    break
-            
-            frame_count += 1
-        
-        # Release the video capture object
-        video.release()
-        
-        # Convert the list of frames to a PyTorch tensor
-        resized_frames = np.array(resized_frames)
-        video_tensor = torch.tensor(resized_frames, dtype=torch.float32)
-        
-        # Rearrange the tensor dimensions to (batch, channel, time, height, width)
-        video_tensor = video_tensor.permute(3, 0, 1, 2).unsqueeze(0)
-        
-        return video_tensor
-
-    def get_test_model_input_nomasking(data_dir):
-        # keep the top half of the video, and the bottom half of the first frame. mask everything else.
-        file_path = get_random_file(data_dir)
-        video_tensor = video_to_tensor(file_path)
-        return video_tensor
-
-    def get_test_model_input(data_dir="test_cases/final_temporal_videos/"):
-        # TODO also feed in "test_cases/final_temporal_videos/"
-        tensor_video = get_test_model_input_nomasking(data_dir)
-        return tensor_video
-    
-    def output_to_mp4(output, output_file_path, output_shape):
-        '''
-        Make sure that the output of the decoder makes sense and we can convert it to a video file.
-        Go through it line by line if needed. Make sure you sue the original unmasked patches,
-         and the reconstructions for the masked ones.
-        '''
-        raise NotImplementedError
-        # # Rearrange patches to form a video tensor
-        # output_video_tensor = output.view(*output_shape)
-        # output_video_tensor = output_video_tensor.permute(0, 2, 3, 4, 1)  # Rearrange dimensions to (batch, time, height, width, channel)
-        # output_video_tensor = output_video_tensor.squeeze(0)  # Remove the batch dimension
-        
-        # # Convert the tensor back to the range [0, 255] and change its data type to uint8
-        # output_video_tensor = (output_video_tensor * 255).clamp(0, 255).byte().cpu().numpy()
-        
-        # # Write the frames to a video file
-        # fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-        # video_writer = cv2.VideoWriter(output_file_path, fourcc, 30, (224, 224))
-        
-        # for i in range(output_video_tensor.shape[0]):
-        #     frame = output_video_tensor[i]
-        #     bgr_frame = cv2.cvtColor(frame, cv2.COLOR_RGB2BGR)
-        #     video_writer.write(bgr_frame)
-        
-        # video_writer.release()
-    
-    # Starting evaluation
-    model.eval()
-    test_model_input = get_test_model_input()
-
-    with torch.no_grad():
-        _, test_model_output, _ = model(test_model_input, test_temporal=True)
-
-    output_file_path = os.path.join(folder_name, f"output_{data_iter_step}.mp4")
-    output_shape = (1, 3, 16, 224, 224)
-
-    output_to_mp4(test_model_output, output_file_path, output_shape)
-    model.train()
-
-    # End evaluation
-
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+
+def get_random_file(data_dir):
+    # List all files in the data directory
+    files = [f for f in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, f))]
+    
+    # Choose a random file
+    random_file = random.choice(files)
+    
+    # Return the random file's path
+    return os.path.join(data_dir, random_file)
+
+def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
+    # Read the video
+    video = cv2.VideoCapture(video_path)
+    
+    # Get the total number of frames
+    total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
+    
+    # Calculate the sampling rate to get the target number of frames
+    sampling_rate = total_frames // num_frames
+    
+    # Initialize an empty list to store the resized frames
+    resized_frames = []
+    
+    frame_count = 0
+    sampled_count = 0
+    
+    # Loop through the video frames
+    while True:
+        ret, frame = video.read()
+        if not ret:
+            break
+        
+        if frame_count % sampling_rate == 0:
+            # Resize the frame
+            resized_frame = cv2.resize(frame, target_size)
+            
+            # Convert the frame from BGR to RGB
+            rgb_frame = cv2.cvtColor(resized_frame, cv2.COLOR_BGR2RGB)
+            
+            # Append the resized frame to the list
+            resized_frames.append(rgb_frame)
+            sampled_count += 1
+            
+            if sampled_count >= num_frames:
+                break
+        
+        frame_count += 1
+    
+    # Release the video capture object
+    video.release()
+    
+    # Convert the list of frames to a PyTorch tensor
+    resized_frames = np.array(resized_frames)
+    video_tensor = torch.tensor(resized_frames, dtype=torch.float32)
+    
+    # Rearrange the tensor dimensions to (batch, channel, time, height, width)
+    video_tensor = video_tensor.permute(3, 0, 1, 2).unsqueeze(0)
+    
+    return video_tensor
+
+def load_image_as_tensor(image_path, target_shape=(3, 1, 224, 224)):
+    img = Image.open(image_path)
+    img = img.resize((target_shape[-1], target_shape[-2]), Image.ANTIALIAS)  # Resize to (width, height)
+    img = torch.from_numpy(np.array(img)).permute(2, 0, 1)  # Convert to a tensor and rearrange dimensions
+    img = img.unsqueeze(1)  # Add the num_frames dimension
+    img = img.unsqueeze(0)  # Add the batch_size dimension
+    return img
+
+def get_test_model_input_nomasking(data_dir):
+    # keep the top half of the video, and the bottom half of the first frame. mask everything else.
+    file_path = get_random_file(data_dir)
+    video_tensor = video_to_tensor(file_path)
+    return video_tensor
+
+png_files = []
+
+for root, _, files in os.walk("/shared/amir/dataset/arxiv_resized_train_val_split/train/"):
+    for file in files:
+        if file.lower().endswith('.png'):
+            png_files.append(os.path.join(root, file))
+
+if not png_files:
+    raise FileNotFoundError("No PNG files found in the folder")
+
+def get_test_model_input(data_dir="test_cases/final_temporal_videos/"):
+    # TODO also feed in "test_cases/final_spatiotemporal_videos/"
+    
+    if data_dir == "test_cases/final_temporal_videos/":
+        tensor_video = get_test_model_input_nomasking(data_dir)
+        return tensor_video
+    elif data_dir == "/shared/amir/dataset/arxiv_resized_train_val_split/train/":
+        random_png = random.choice(png_files)
+        tensor_image = load_image_as_tensor(random_png, (3, 1, 224, 224))
+        return tensor_image
+    else:
+        raise NotImplementedError

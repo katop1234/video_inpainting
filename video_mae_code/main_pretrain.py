@@ -10,6 +10,7 @@
 # --------------------------------------------------------
 import argparse
 import datetime
+import wandb
 import json
 import itertools
 import random, sys
@@ -26,7 +27,7 @@ import torch
 import torch.backends.cudnn as cudnn
 from iopath.common.file_io import g_pathmgr as pathmgr
 import models_mae
-from engine_pretrain import train_one_epoch
+from engine_pretrain import train_one_epoch, get_random_file, video_to_tensor, get_test_model_input, get_test_model_input_nomasking
 from util.kinetics import Kinetics
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from tensorboard.compat.tensorflow_stub.io.gfile import register_filesystem
@@ -97,6 +98,7 @@ def get_args_parser():
         metavar="LR",
         help="base learning rate: absolute_lr = base_lr * total_batch_size / 256",
     )
+    
     parser.add_argument(
         "--min_lr",
         type=float,
@@ -166,7 +168,7 @@ def get_args_parser():
     parser.add_argument("--checkpoint_period", default=1, type=int)
     parser.add_argument("--sampling_rate", default=4, type=int)
     parser.add_argument("--distributed", action="store_true")
-    parser.add_argument("--repeat_aug", default=4, type=int) 
+    parser.add_argument("--repeat_aug", default=1, type=int) 
     parser.add_argument(
         "--clip_grad",
         type=float,
@@ -265,16 +267,13 @@ def main(args):
             # For example, you can preprocess the dataset or set up some additional attributes
 
         def __iter__(self):
-            # Get the base class iterator
-            base_indices = list(super().__iter__())
 
             custom_indices = []
 
-            size_of_dataset = 8 #len(self.dataset)
-            prob_choose_image = 0 #self.prob_image_batch
+            num_elements_in_epoch = 10000 #len(self.dataset)
+            prob_choose_image = 0.5 #self.prob_image_batch
 
-
-            while len(custom_indices) < size_of_dataset:
+            while len(custom_indices) < num_elements_in_epoch:
                 if random.random() < prob_choose_image: # Choose image
                     # append batch_size number of images
                     random_image_indices = random.sample(self.image_indices, self.batch_size)
@@ -284,8 +283,10 @@ def main(args):
                     random_video_indices = random.sample(self.video_indices, self.batch_size)
                     custom_indices.extend(random_video_indices)
             
+            self.custom_indices = custom_indices
+            
             # Return the modified indices as an iterator
-            return iter(custom_indices)
+            return iter(self.custom_indices)
 
     if args.distributed:
         num_tasks = misc.get_world_size() # 8 gpus
@@ -358,6 +359,22 @@ def main(args):
     if args.lr is None:  # only base_lr is specified
         args.lr = args.blr * eff_batch_size / 256
 
+    # From yossi's code for wandb
+    wandb_config = vars(args)
+    base_lr = (args.lr * 256 / eff_batch_size)
+    wandb_config['base_lr'] = base_lr
+    print("base lr: %.2e" % base_lr)
+    print("actual lr: %.2e" % args.lr)
+        
+    wandb.init(
+        project="video_inpainting",
+        resume=False,
+        config=wandb_config)
+
+    if hasattr(model_without_ddp, 'projector'):
+        wandb.watch(model_without_ddp.projector, log_freq=100)
+    # From yossi's code for wandb
+
     print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
     print("actual lr: %.2e" % args.lr)
 
@@ -389,12 +406,16 @@ def main(args):
     )
     loss_scaler = NativeScaler(fp32=args.fp32)
 
-    misc.load_model(
-        args=args,
-        model_without_ddp=model_without_ddp,
-        optimizer=optimizer,
-        loss_scaler=loss_scaler,
-    )
+    # TODO uncomment this later, it loads models 
+    # it is is used to load a previously saved model checkpoint along
+    #  with its optimizer and loss scaler state dictionaries. 
+
+    # misc.load_model(
+    #     args=args,
+    #     model_without_ddp=model_without_ddp,
+    #     optimizer=optimizer,
+    #     loss_scaler=loss_scaler,
+    # )
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
@@ -441,6 +462,40 @@ def main(args):
                 "a",
             ) as f:
                 f.write(json.dumps(log_stats) + "\n")
+        
+        # From yossi's code
+        wandb.log(log_stats)
+        # From yossi's code
+
+        ### Starting evaluation
+        model.eval()
+
+        # First test on a temporal video
+        test_model_input = get_test_model_input(data_dir="test_cases/final_temporal_videos/")
+
+        with torch.no_grad():
+            _, test_model_output, _ = model(test_model_input, test_temporal=True)
+
+        # N, T, H, W, C
+        test_model_output = test_model_output.view([1, 16, 224, 224, 3])
+
+        # Reorder dimensions to [1, 224, 224, 3, 16]
+        reordered_video_tensor = test_model_output.permute(0, 2, 3, 4, 1)
+
+        # Convert tensor to NumPy array
+        video_numpy = reordered_video_tensor.cpu().numpy()
+
+        wandb.log({"video": wandb.Video(video_numpy, fps=30, format="mp4")})
+
+        # Second test on an image
+        # TODO ask how to get the data from the image prompting paper (it's not the data_dir i use below)
+        # test_model_input = get_test_model_input(data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/")
+
+        # with torch.no_grad():
+        #     _, test_model_output, _ = model(test_model_input, test_image=True)
+
+        model.train()
+        ### End evaluation
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
