@@ -10,8 +10,8 @@
 # --------------------------------------------------------
 
 import argparse
-import datetime
-import wandb
+import datetime, cv2
+#import wandb
 import json
 import itertools
 import random, sys
@@ -234,7 +234,7 @@ def main(args):
 
     dataset_train = KineticsAndCVF( # Custom Dataset
         mode="pretrain",
-        path_to_csv="/home/katop1234/video_inpainting/fb_mae_st/mae_st/kinetics_videos.csv", # This is the path to names of all kinetics files TODO
+        path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv", # This is the path to names of all kinetics files TODO
         path_to_data_dir="/shared/group/kinetics/train_256/", # video
         path_to_image_data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/", # images
         sampling_rate=args.sampling_rate,
@@ -271,8 +271,8 @@ def main(args):
 
             custom_indices = []
 
-            num_elements_in_epoch = 10000 #len(self.dataset)
-            prob_choose_image = 0.5 #self.prob_image_batch
+            num_elements_in_epoch = 1 #len(self.dataset)
+            prob_choose_image = 1 #self.prob_image_batch
 
             while len(custom_indices) < num_elements_in_epoch:
                 if random.random() < prob_choose_image: # Choose image
@@ -361,17 +361,17 @@ def main(args):
         args.lr = args.blr * eff_batch_size / 256
 
     # From yossi's code for wandb
-    wandb_config = vars(args)
-    base_lr = (args.lr * 256 / eff_batch_size)
-    wandb_config['base_lr'] = base_lr
-    print("base lr: %.2e" % base_lr)
-    print("actual lr: %.2e" % args.lr)
+    # wandb_config = vars(args)
+    # base_lr = (args.lr * 256 / eff_batch_size)
+    # wandb_config['base_lr'] = base_lr
+    # print("base lr: %.2e" % base_lr)
+    # print("actual lr: %.2e" % args.lr)
     
-    if misc.is_main_process():
-        wandb.init(
-            project="video_inpainting",
-            resume=False,
-            config=wandb_config)
+    # if misc.is_main_process():
+    #     wandb.init(
+    #         project="video_inpainting",
+    #         resume=False,
+    #         config=wandb_config)
     # From yossi's code for wandb
 
     print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
@@ -409,15 +409,12 @@ def main(args):
     # it is is used to load a previously saved model checkpoint along
     #  with its optimizer and loss scaler state dictionaries. 
 
-    misc.load_model(
-        args=args,
-        model_without_ddp=model_without_ddp,
-        optimizer=optimizer,
-        loss_scaler=loss_scaler,
-    )
-
-    print(model)
-    exit()
+    # misc.load_model(
+    #     args=args,
+    #     model_without_ddp=model_without_ddp,
+    #     optimizer=optimizer,
+    #     loss_scaler=loss_scaler,
+    # )
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
@@ -466,8 +463,8 @@ def main(args):
                 f.write(json.dumps(log_stats) + "\n")
         
         # From yossi's code
-        if misc.is_main_process():
-            wandb.log(log_stats)
+        # if misc.is_main_process():
+        #     wandb.log(log_stats)
         # From yossi's code
 
         ### Starting evaluation
@@ -481,26 +478,55 @@ def main(args):
         with torch.no_grad():
             _, test_model_output, _ = model(test_model_input, test_temporal=True)
 
+
         # N, T, H, W, C
         test_model_output = test_model_output.view([1, 16, 224, 224, 3])
 
         # Reorder dimensions to [1, 224, 224, 3, 16]
         reordered_video_tensor = test_model_output.permute(0, 2, 3, 4, 1)
 
-        # Convert tensor to NumPy array
-        video_numpy = reordered_video_tensor.cpu().numpy()
+        # Convert tensor to NumPy array and remove the batch dimension
+        video_numpy = reordered_video_tensor.squeeze(0).cpu().numpy()
+        min_value = video_numpy.min()
+        max_value = video_numpy.max()
+        video_numpy = (video_numpy - min_value) / (max_value - min_value)
+        video_numpy = (video_numpy * 255).astype(np.uint8)
 
-        if misc.is_main_process():
-            wandb.log({"video": wandb.Video(video_numpy, fps=30, format="mp4")})
+        # The shape should now be (224, 224, 3, 16)
+        height, width, channels, num_frames = video_numpy.shape
 
-        # Second test on an image
-        # TODO ask how to get the data from the image prompting paper (it's not the data_dir i use below)
+        fourcc = cv2.VideoWriter_fourcc('m','p','4','v')
+        output_video = cv2.VideoWriter("output_video.mp4", fourcc, 30.0, (width, height))
+
+        # Iterate over the frames
+        for i in range(num_frames):
+            frame = video_numpy[..., i]
+            output_video.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+
+        output_video.release()
+
+
+        # if misc.is_main_process():
+        #     wandb.log({"video": wandb.Video(video_numpy, fps=30, format="mp4")})
+
+        # Test on an image
         test_model_input = get_test_model_input(data_dir="test_cases/visual_prompting_images/")
 
         with torch.no_grad():
             _, test_model_output, _ = model(test_model_input, test_image=True)
 
+        test_model_output = test_model_output.view([1, 1, 224, 224, 3])
+        image_array = test_model_output.cpu().numpy()
+        image_array = np.squeeze(image_array)
+        min_value = image_array.min()
+        max_value = image_array.max()
+        image_array = (image_array - min_value) / (max_value - min_value)
+        image_array = (image_array * 255).astype(np.uint8)
+
+        cv2.imwrite("output_image.png", cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR))
+
         model.train()
+        exit()
         ### End evaluation
 
     total_time = time.time() - start_time
