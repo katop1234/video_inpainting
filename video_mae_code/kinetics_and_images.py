@@ -48,7 +48,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
         # decoding setting
         sampling_rate=4,
         num_frames=16,
-        target_fps=30,
+        target_fps=30, # TODO make sure the FPS is fine for video
         # train aug settings
         train_jitter_scales=(256, 320),
         train_crop_size=224,
@@ -94,6 +94,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
                 and sample multiple clips per video.
             num_retries (int): number of retries.
         """
+
         # Only support train, val, and test mode.
         assert mode in [
             "pretrain",
@@ -366,8 +367,12 @@ class KineticsAndCVF(torch.utils.data.Dataset):
                     rigid_decode_all_video=self.mode in ["pretrain"],
                 )
 
-                assert frames is not None, 'decoder does not work!'
+                if frames is None: # something went wrong
+                    new_index = random.choice(self.video_indices)
+                    print("COULD NOT DECODE VIDEO AT INDEX", index, "TRYING", new_index)
+                    return self[new_index]
 
+                # Original error checker
                 # If decoding failed (wrong format, video is too short, and etc),
                 # select another video.
                 if frames is None:

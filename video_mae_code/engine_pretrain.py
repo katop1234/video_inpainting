@@ -207,42 +207,31 @@ def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
     
     # Rearrange the tensor dimensions to (batch, channel, time, height, width)
     video_tensor = video_tensor.permute(3, 0, 1, 2).unsqueeze(0)
+
+    assert video_tensor.shape == (1, 3, 16, 224, 224)
     
     return video_tensor
 
-def load_image_as_tensor(image_path, target_shape=(3, 1, 224, 224)):
+def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
     img = Image.open(image_path)
     img = img.resize((target_shape[-1], target_shape[-2]), Image.ANTIALIAS)  # Resize to (width, height)
     img = torch.from_numpy(np.array(img)).permute(2, 0, 1)  # Convert to a tensor and rearrange dimensions
     img = img.unsqueeze(1)  # Add the num_frames dimension
     img = img.unsqueeze(0)  # Add the batch_size dimension
+
+    assert img.shape == target_shape
     return img
-
-def get_test_model_input_nomasking(data_dir):
-    # keep the top half of the video, and the bottom half of the first frame. mask everything else.
-    file_path = get_random_file(data_dir)
-    video_tensor = video_to_tensor(file_path)
-    return video_tensor
-
-png_files = []
-
-for root, _, files in os.walk("/shared/amir/dataset/arxiv_resized_train_val_split/train/"):
-    for file in files:
-        if file.lower().endswith('.png'):
-            png_files.append(os.path.join(root, file))
-
-if not png_files:
-    raise FileNotFoundError("No PNG files found in the folder")
 
 def get_test_model_input(data_dir="test_cases/final_temporal_videos/"):
     # TODO also feed in "test_cases/final_spatiotemporal_videos/"
     
     if data_dir == "test_cases/final_temporal_videos/":
-        tensor_video = get_test_model_input_nomasking(data_dir)
-        return tensor_video
-    elif data_dir == "/shared/amir/dataset/arxiv_resized_train_val_split/train/":
-        random_png = random.choice(png_files)
-        tensor_image = load_image_as_tensor(random_png, (3, 1, 224, 224))
-        return tensor_image
+        random_mp4 = get_random_file(data_dir)
+        video_tensor = video_to_tensor(random_mp4)
+        return video_tensor
+    elif data_dir == "test_cases/visual_prompting_images/":
+        random_png = get_random_file(data_dir)
+        image_tensor = image_to_tensor(random_png, (1, 3, 1, 224, 224))
+        return image_tensor
     else:
         raise NotImplementedError

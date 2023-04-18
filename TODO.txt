@@ -1,9 +1,11 @@
+
 Pretraining command:
-export CUDA_VISIBLE_DEVICES=0,2,3,4,5,6,7,8 && torchrun --nproc_per_node=8 video_mae_code/run_pretrain.py --batch_size=2
+export CUDA_VISIBLE_DEVICES=0,2,3,4,5,6,7,8 && torchrun --nproc_per_node=8 video_mae_code/run_pretrain.py
+
+export CUDA_VISIBLE_DEVICES=0,2,3,4,5,6,7,8 && torchrun --nproc_per_node=8 --master_port=29501 video_mae_code/run_pretrain.py
+
 
 Todo:
-1. Allow for any masking ratio (ideally just put in 90% for video and 75% for images,
-so the model is constantly forced to extract information optimally)
 2. Figure out how to get the mp4s to be saved properly. Make sure the decoder works as expected
 (i.e. keep the unmasked patches as is, and make sure decoded pixels go to where they should be)
 3. Go through the function and get rid of useless stuff like the logger, and add your own

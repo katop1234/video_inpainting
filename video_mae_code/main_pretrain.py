@@ -8,6 +8,7 @@
 # DeiT: https://github.com/facebookresearch/deit
 # BEiT: https://github.com/microsoft/unilm/tree/master/beit
 # --------------------------------------------------------
+
 import argparse
 import datetime
 import wandb
@@ -27,7 +28,7 @@ import torch
 import torch.backends.cudnn as cudnn
 from iopath.common.file_io import g_pathmgr as pathmgr
 import models_mae
-from engine_pretrain import train_one_epoch, get_random_file, video_to_tensor, get_test_model_input, get_test_model_input_nomasking
+from engine_pretrain import train_one_epoch, get_random_file, video_to_tensor, get_test_model_input
 from util.kinetics import Kinetics
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from tensorboard.compat.tensorflow_stub.io.gfile import register_filesystem
@@ -72,7 +73,7 @@ def get_args_parser():
     )
 
     parser.add_argument(
-        "--norm_pix_loss",
+        "--norm_pix_loss", # keep this false because it normalizes within N(0, 1) in a patch
         action="store_true",
         help="Use (per-patch) normalized pixels as targets for computing loss",
     )
@@ -365,14 +366,12 @@ def main(args):
     wandb_config['base_lr'] = base_lr
     print("base lr: %.2e" % base_lr)
     print("actual lr: %.2e" % args.lr)
-        
-    wandb.init(
-        project="video_inpainting",
-        resume=False,
-        config=wandb_config)
-
-    if hasattr(model_without_ddp, 'projector'):
-        wandb.watch(model_without_ddp.projector, log_freq=100)
+    
+    if misc.is_main_process():
+        wandb.init(
+            project="video_inpainting",
+            resume=False,
+            config=wandb_config)
     # From yossi's code for wandb
 
     print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
@@ -410,12 +409,15 @@ def main(args):
     # it is is used to load a previously saved model checkpoint along
     #  with its optimizer and loss scaler state dictionaries. 
 
-    # misc.load_model(
-    #     args=args,
-    #     model_without_ddp=model_without_ddp,
-    #     optimizer=optimizer,
-    #     loss_scaler=loss_scaler,
-    # )
+    misc.load_model(
+        args=args,
+        model_without_ddp=model_without_ddp,
+        optimizer=optimizer,
+        loss_scaler=loss_scaler,
+    )
+
+    print(model)
+    exit()
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
@@ -437,7 +439,7 @@ def main(args):
             fp32=args.fp32,
         )
 
-        if args.output_dir and (
+        if args.output_dir and ( # TODO make sure it saves the model each run and also name it properly
             epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs
         ):
             checkpoint_path = misc.save_model(
@@ -464,7 +466,8 @@ def main(args):
                 f.write(json.dumps(log_stats) + "\n")
         
         # From yossi's code
-        wandb.log(log_stats)
+        if misc.is_main_process():
+            wandb.log(log_stats)
         # From yossi's code
 
         ### Starting evaluation
@@ -472,6 +475,8 @@ def main(args):
 
         # First test on a temporal video
         test_model_input = get_test_model_input(data_dir="test_cases/final_temporal_videos/")
+        # TODO make sure the framerate is good
+        # TODO make sure the normalization matches up
 
         with torch.no_grad():
             _, test_model_output, _ = model(test_model_input, test_temporal=True)
@@ -485,14 +490,15 @@ def main(args):
         # Convert tensor to NumPy array
         video_numpy = reordered_video_tensor.cpu().numpy()
 
-        wandb.log({"video": wandb.Video(video_numpy, fps=30, format="mp4")})
+        if misc.is_main_process():
+            wandb.log({"video": wandb.Video(video_numpy, fps=30, format="mp4")})
 
         # Second test on an image
         # TODO ask how to get the data from the image prompting paper (it's not the data_dir i use below)
-        # test_model_input = get_test_model_input(data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/")
+        test_model_input = get_test_model_input(data_dir="test_cases/visual_prompting_images/")
 
-        # with torch.no_grad():
-        #     _, test_model_output, _ = model(test_model_input, test_image=True)
+        with torch.no_grad():
+            _, test_model_output, _ = model(test_model_input, test_image=True)
 
         model.train()
         ### End evaluation
