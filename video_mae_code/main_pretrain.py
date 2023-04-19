@@ -11,7 +11,8 @@
 
 import argparse
 import datetime, cv2
-#import wandb
+import wandb
+import imageio
 import json
 import itertools
 import random, sys
@@ -361,17 +362,17 @@ def main(args):
         args.lr = args.blr * eff_batch_size / 256
 
     # From yossi's code for wandb
-    # wandb_config = vars(args)
-    # base_lr = (args.lr * 256 / eff_batch_size)
-    # wandb_config['base_lr'] = base_lr
-    # print("base lr: %.2e" % base_lr)
-    # print("actual lr: %.2e" % args.lr)
+    wandb_config = vars(args)
+    base_lr = (args.lr * 256 / eff_batch_size)
+    wandb_config['base_lr'] = base_lr
+    print("base lr: %.2e" % base_lr)
+    print("actual lr: %.2e" % args.lr)
     
-    # if misc.is_main_process():
-    #     wandb.init(
-    #         project="video_inpainting",
-    #         resume=False,
-    #         config=wandb_config)
+    if misc.is_main_process():
+        wandb.init(
+            project="video_inpainting2",
+            resume=False,
+            config=wandb_config)
     # From yossi's code for wandb
 
     print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
@@ -463,8 +464,8 @@ def main(args):
                 f.write(json.dumps(log_stats) + "\n")
         
         # From yossi's code
-        # if misc.is_main_process():
-        #     wandb.log(log_stats)
+        if misc.is_main_process():
+            wandb.log(log_stats)
         # From yossi's code
 
         ### Starting evaluation
@@ -492,22 +493,28 @@ def main(args):
         video_numpy = (video_numpy - min_value) / (max_value - min_value)
         video_numpy = (video_numpy * 255).astype(np.uint8)
 
-        # The shape should now be (224, 224, 3, 16)
+        # The rest of your code remains the same up to this point
         height, width, channels, num_frames = video_numpy.shape
 
-        fourcc = cv2.VideoWriter_fourcc('m','p','4','v')
-        output_video = cv2.VideoWriter("output_video.mp4", fourcc, 30.0, (width, height))
-
-        # Iterate over the frames
+        # Create a list of frames
+        frames = []
         for i in range(num_frames):
             frame = video_numpy[..., i]
-            output_video.write(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
+            frames.append(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
 
-        output_video.release()
+        # Save the frames as a video
+        imageio.mimwrite("output_video.mp4", frames, fps=30, quality=9, macro_block_size=None)
 
+        # Reorder the dimensions to (num_frames, height, width, channels)
+        video_numpy_wandb = np.moveaxis(video_numpy, -1, 0)
 
-        # if misc.is_main_process():
-        #     wandb.log({"video": wandb.Video(video_numpy, fps=30, format="mp4")})
+        if misc.is_main_process():
+            wandb_video_object = wandb.Video(
+                data_or_path= "output_video.mp4",
+                caption=epoch,
+                fps=30,
+                )
+            wandb.log({"video": wandb_video_object})
 
         # Test on an image
         test_model_input = get_test_model_input(data_dir="test_cases/visual_prompting_images/")
@@ -525,8 +532,14 @@ def main(args):
 
         cv2.imwrite("output_image.png", cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR))
 
+        if misc.is_main_process():
+            images = wandb.Image(
+                image_array, 
+                )
+                    
+            wandb.log({"test images": images})
+
         model.train()
-        exit()
         ### End evaluation
 
     total_time = time.time() - start_time
