@@ -3,7 +3,6 @@
 # All rights reserved.
 
 from pathlib import Path
-
 from main_pretrain import get_args_parser, main
 
 if __name__ == "__main__":

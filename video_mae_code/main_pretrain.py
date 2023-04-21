@@ -38,6 +38,13 @@ from kinetics_and_images import KineticsAndCVF
 
 # From https://pytorch.org/docs/stable/distributed.html#launch-utility
 
+###
+test_image = False
+test_video = True
+###
+
+assert not (test_image and test_video), "Can't test both image and video"
+
 def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
     parser.add_argument(
@@ -68,9 +75,9 @@ def get_args_parser():
 
     parser.add_argument(
         "--mask_ratio",
-        default=0.75, # TODO other sizes not supported yet
+        default=0.9, # TODO other sizes not supported yet
         type=float,
-        help="Masking ratio (percentage of removed patches).",
+        help="Masking ratio (percentage of removed patches). 0.9 for video, and 0.75 for images",
     )
 
     parser.add_argument(
@@ -116,8 +123,9 @@ def get_args_parser():
     parser.add_argument(
         "--path_to_data_dir",
         default="",
-        help="path where to save, empty for no saving",
+        help="KINETICS_DIR or IMAGES DIR",
     )
+
     parser.add_argument(
         "--output_dir",
         default="./output_dir",
@@ -138,6 +146,7 @@ def get_args_parser():
     parser.add_argument(
         "--start_epoch", default=0, type=int, metavar="N", help="start epoch"
     )
+
     parser.add_argument("--num_workers", default=14, type=int)
     parser.add_argument(
         "--pin_mem",
@@ -223,7 +232,9 @@ def main(args):
     print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(", ", ",\n"))
 
-    local_rank = int(os.environ["LOCAL_RANK"]) if "LOCAL_RANK" in os.environ else args.local_rank
+    # I added this line because it's needed in new torch update
+    local_rank = int(os.environ["LOCAL_RANK"]) if "LOCAL_RANK" in os.environ else args.local_rank 
+    
     device = torch.device(args.device)
 
     # fix the seed for reproducibility
@@ -238,8 +249,8 @@ def main(args):
         path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv", # This is the path to names of all kinetics files TODO
         path_to_data_dir="/shared/group/kinetics/train_256/", # video
         path_to_image_data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/", # images
-        sampling_rate=args.sampling_rate,
-        num_frames=args.num_frames,
+        sampling_rate=args.sampling_rate, # 4 by default
+        num_frames=args.num_frames, # 16 by default
         train_jitter_scales=(256, 320),
         repeat_aug=args.repeat_aug,
         jitter_aspect_relative=args.jitter_aspect_relative,
@@ -272,9 +283,16 @@ def main(args):
 
             custom_indices = []
 
-            num_elements_in_epoch = 1 #len(self.dataset)
-            prob_choose_image = 1 #self.prob_image_batch
-
+            num_elements_in_epoch = len(self.dataset)
+            prob_choose_image = 0.5
+            
+            if test_image or test_video:
+                num_elements_in_epoch = 1
+                if test_image:
+                    prob_choose_image = 1 
+                else:
+                    prob_choose_image = 0
+            
             while len(custom_indices) < num_elements_in_epoch:
                 if random.random() < prob_choose_image: # Choose image
                     # append batch_size number of images
@@ -356,23 +374,23 @@ def main(args):
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
 
+    # (8192) * 8
     eff_batch_size = args.batch_size * accum_iter_determined_from_batch_size * misc.get_world_size()
 
     if args.lr is None:  # only base_lr is specified
         args.lr = args.blr * eff_batch_size / 256
-
-    # From yossi's code for wandb
-    wandb_config = vars(args)
-    base_lr = (args.lr * 256 / eff_batch_size)
-    wandb_config['base_lr'] = base_lr
-    print("base lr: %.2e" % base_lr)
-    print("actual lr: %.2e" % args.lr)
     
-    if misc.is_main_process():
-        wandb.init(
-            project="video_inpainting2",
-            resume=False,
-            config=wandb_config)
+    if not (test_image or test_video):
+    # From yossi's code for wandb
+        wandb_config = vars(args)
+        base_lr = (args.lr * 256 / eff_batch_size)
+        wandb_config['base_lr'] = base_lr
+        
+        if misc.is_main_process():
+            wandb.init(
+                project="video_inpainting2",
+                resume=False,
+                config=wandb_config)
     # From yossi's code for wandb
 
     print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
@@ -406,16 +424,16 @@ def main(args):
     )
     loss_scaler = NativeScaler(fp32=args.fp32)
 
-    # TODO uncomment this later, it loads models 
-    # it is is used to load a previously saved model checkpoint along
-    #  with its optimizer and loss scaler state dictionaries. 
-
-    # misc.load_model(
-    #     args=args,
-    #     model_without_ddp=model_without_ddp,
-    #     optimizer=optimizer,
-    #     loss_scaler=loss_scaler,
-    # )
+    # Loads model from checkpoint if specified
+    # even though it doesn't assign anything to model, it does assign to model_without_ddp
+    # which changes model under the hood
+    # use: --resume="path/to/checkpoint.pth"
+    misc.load_model(
+        args=args,
+        model_without_ddp=model_without_ddp,
+        optimizer=optimizer,
+        loss_scaler=loss_scaler,
+    )
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
@@ -437,7 +455,7 @@ def main(args):
             fp32=args.fp32,
         )
 
-        if args.output_dir and ( # TODO make sure it saves the model each run and also name it properly
+        if args.output_dir and (
             epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs
         ):
             checkpoint_path = misc.save_model(
@@ -464,7 +482,7 @@ def main(args):
                 f.write(json.dumps(log_stats) + "\n")
         
         # From yossi's code
-        if misc.is_main_process():
+        if not (test_image or test_video) and misc.is_main_process():
             wandb.log(log_stats)
         # From yossi's code
 
@@ -472,22 +490,25 @@ def main(args):
         model.eval()
 
         # First test on a temporal video
+        
+        # TODO go through this to make sure that it's correct (frames, normalization, decoding, etc.)
         test_model_input = get_test_model_input(data_dir="test_cases/final_temporal_videos/")
-        # TODO make sure the framerate is good
-        # TODO make sure the normalization matches up
-
+        print("test model input shape", test_model_input.shape)
         with torch.no_grad():
+            # Output is of dimension [1,3136, 768]
             _, test_model_output, _ = model(test_model_input, test_temporal=True)
-
-
-        # N, T, H, W, C
-        test_model_output = test_model_output.view([1, 16, 224, 224, 3])
-
-        # Reorder dimensions to [1, 224, 224, 3, 16]
-        reordered_video_tensor = test_model_output.permute(0, 2, 3, 4, 1)
-
-        # Convert tensor to NumPy array and remove the batch dimension
-        video_numpy = reordered_video_tensor.squeeze(0).cpu().numpy()
+        
+        # Test model output must be [1, 224, 224, 3, 16]
+        test_model_output.view(1, 224, 14, 256, 3)
+        print("test model output shape", test_model_output.shape)
+        exit()
+        
+        test_model_output = test_model_output.permute(0, 3, 4, 1, 2)
+        print("test model output shape after permuting", test_model_output.shape)
+        
+        test_model_output = test_model_output[0, :, :, :, :] # Batch size = 1
+        
+        video_numpy = test_model_output.cpu().numpy() 
         min_value = video_numpy.min()
         max_value = video_numpy.max()
         video_numpy = (video_numpy - min_value) / (max_value - min_value)
@@ -508,7 +529,7 @@ def main(args):
         # Reorder the dimensions to (num_frames, height, width, channels)
         video_numpy_wandb = np.moveaxis(video_numpy, -1, 0)
 
-        if misc.is_main_process():
+        if not (test_image or test_video) and misc.is_main_process():
             wandb_video_object = wandb.Video(
                 data_or_path= "output_video.mp4",
                 caption=epoch,
@@ -532,7 +553,7 @@ def main(args):
 
         cv2.imwrite("output_image.png", cv2.cvtColor(image_array, cv2.COLOR_RGB2BGR))
 
-        if misc.is_main_process():
+        if not (test_image or test_video) and misc.is_main_process():
             images = wandb.Image(
                 image_array, 
                 )
@@ -540,6 +561,7 @@ def main(args):
             wandb.log({"test images": images})
 
         model.train()
+        exit()
         ### End evaluation
 
     total_time = time.time() - start_time

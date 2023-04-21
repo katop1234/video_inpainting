@@ -42,7 +42,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
     def __init__(
         self,
         mode,
-        path_to_csv="/home/katop1234/video_inpainting/fb_mae_st/mae_st/kinetics_videos.csv", # This is the path to names of all kinetics files TODO
+        path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv", # This is the path to names of all kinetics files TODO
         path_to_data_dir="/shared/group/kinetics/train_256/", # video
         path_to_image_data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/", # FOR IMAGES
         # decoding setting
@@ -216,7 +216,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
 
         # Add support for image folder
         if self.image_folder: # FOR IMAGES
-            csv_file_path = "/home/katop1234/video_inpainting/fb_mae_st/mae_st/CVF_images.csv"
+            csv_file_path = "/shared/katop1234/video_inpainting/video_inpainting/CVF_images.csv"
             image_file_lookup = {}
 
             with open(csv_file_path, "r") as csv_file:
@@ -356,7 +356,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
                 # Decode video. Meta info is used to perform selective decoding.
                 frames, fps, decode_all_video = decoder.decode(
                     video_container,
-                    sampling_rate,
+                    sampling_rate, 
                     self._num_frames,
                     temporal_sample_index,
                     self._test_num_ensemble_views,
@@ -389,7 +389,8 @@ class KineticsAndCVF(torch.utils.data.Dataset):
                 frames_list = []
                 label_list = []
                 label = self._labels[index]
-                if self.rand_aug:
+
+                if self.rand_aug: # This is False always pretty sure
                     for i in range(self._repeat_aug):
                         clip_sz = sampling_rate * self._num_frames / self._target_fps * fps
                         start_idx, end_idx = get_start_end_idx(

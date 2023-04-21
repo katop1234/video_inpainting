@@ -14,6 +14,9 @@ from PIL import Image
 from typing import Iterable
 import itertools, random, os
 import numpy as np, shutil
+import torch
+import torchvision.transforms as transforms
+from PIL import Image
 
 import util.lr_sched as lr_sched
 import util.misc as misc
@@ -22,17 +25,6 @@ from datetime import datetime
 import torch
 from iopath.common.file_io import g_pathmgr as pathmgr
 from kinetics_and_images import KineticsAndCVF
-
-# Create the folder name with the current date and time
-current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-folder_name = f"pretraining_progress/progress_{current_datetime}"
-
-# Create the folder if it doesn't already exist
-if not os.path.exists(folder_name):
-    try:
-        os.makedirs(folder_name)
-    except FileExistsError: # Multiple GPUs might be doing this simulatenously
-       pass
 
 def train_one_epoch(
     model: torch.nn.Module,
@@ -64,7 +56,7 @@ def train_one_epoch(
     header = "Epoch: [{}]".format(epoch)
     print_freq = 20
 
-    accum_iter = accum_iter_determined_from_batch_size
+    accum_iter = accum_iter_determined_from_batch_size # calculated from batch_size
 
     optimizer.zero_grad()
 
@@ -91,8 +83,7 @@ def train_one_epoch(
             loss, _, _ = model(
                 samples,
                 mask_ratio_image=args.mask_ratio, # default .75
-                mask_ratio_video=0.9 # TODO hyperparameter
-
+                mask_ratio_video=0.9 # fixed hyperparameter
             )
 
         loss_value = loss.item()
@@ -115,7 +106,6 @@ def train_one_epoch(
             update_grad=(data_iter_step + 1) % accum_iter == 0, # updates grad every accum_iter
             clip_grad=args.clip_grad,
         )
-
 
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad() # zeroes out grad every accum iter
@@ -144,7 +134,7 @@ def train_one_epoch(
         
         if data_iter_step % 1000 == 0:
             print("Epoch: {}, Iter: {}, Loss: {}".format(epoch, data_iter_step, loss_value_reduce))
-    
+
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
@@ -222,6 +212,18 @@ def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
     assert img.shape == target_shape
     return img
 
+def denormalize(tensor, mean, std):
+    """
+    Denormalize an image tensor.
+    tensor: PyTorch tensor, the image tensor to denormalize
+    mean: list, the mean values used for normalization
+    std: list, the standard deviation values used for normalization
+    """
+    tensor = tensor.to(dtype=torch.float32)  # Convert the tensor to float data type
+    for t, m, s in zip(tensor, mean, std):
+        t.mul_(s).add_(m)
+    return tensor
+
 def get_test_model_input(data_dir="test_cases/final_temporal_videos/"):
     # TODO also feed in "test_cases/final_spatiotemporal_videos/"
     
@@ -232,6 +234,10 @@ def get_test_model_input(data_dir="test_cases/final_temporal_videos/"):
     elif data_dir == "test_cases/visual_prompting_images/":
         random_png = get_random_file(data_dir)
         image_tensor = image_to_tensor(random_png, (1, 3, 1, 224, 224))
-        return image_tensor
+        # Denormalize the output tensor
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+        denormalized_tensor = denormalize(image_tensor, mean, std)
+        return denormalized_tensor
     else:
         raise NotImplementedError
