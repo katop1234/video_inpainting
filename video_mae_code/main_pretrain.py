@@ -11,6 +11,7 @@
 
 import argparse
 import datetime, cv2
+from kinetics_and_images import save_frames_as_mp4
 import wandb
 import imageio
 import json
@@ -246,7 +247,7 @@ def main(args):
 
     dataset_train = KineticsAndCVF( # Custom Dataset
         mode="pretrain",
-        path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv", # This is the path to names of all kinetics files TODO
+        path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv", # This is the path to names of all kinetics files
         path_to_data_dir="/shared/group/kinetics/train_256/", # video
         path_to_image_data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/", # images
         sampling_rate=args.sampling_rate, # 4 by default
@@ -315,15 +316,15 @@ def main(args):
         #     dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
         # ) # Original
 
-        sampler_train = CustomDistributedSampler(
-            dataset_train, batch_size=args.batch_size, num_replicas=num_tasks, rank=global_rank
-        ) # My own for videos + images
-
-        print("Sampler_train = %s" % str(sampler_train))
     else:
         num_tasks = 1
         global_rank = 0
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
+
+    sampler_train = CustomDistributedSampler(
+            dataset_train, batch_size=args.batch_size, num_replicas=num_tasks, rank=global_rank
+        ) # My own for videos + images
+    print("Sampler_train = %s" % str(sampler_train))
 
     if global_rank == 0 and args.log_dir is not None:
         try:
@@ -354,6 +355,31 @@ def main(args):
     print("Batch size is", args.batch_size)
     print("Accumulate iterations is", args.accum_iter)
     print("Num GPUs is", misc.get_world_size())
+    
+    # def custom_collate_fn(batch):
+    #     images = []
+    #     videos = []
+
+    #     for sample in batch:
+    #         object, index = sample
+    #         if object.shape[2] == 16:  # It's a video [1, 3, 16, 224, 224]
+    #             videos.append(object)
+    #         elif object.shape[2] == 1:  # It's an image [1, 3, 1, 224, 224]
+    #             images.append(object)
+    #         else:
+    #             raise ValueError("Unexpected tensor shape in the batch.")
+
+    #     if images and videos:
+    #         raise ValueError("Mixed images and videos in the same batch.")
+
+    #     if images:
+    #         # Concatenate image tensors along the 0-th dimension
+    #         return torch.cat(images, dim=0)
+    #     elif videos:
+    #         # Concatenate video tensors along the 0-th dimension
+    #         return torch.cat(videos, dim=0)
+    #     else:
+    #         raise ValueError("Empty batch.")
 
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train,
@@ -434,7 +460,7 @@ def main(args):
         optimizer=optimizer,
         loss_scaler=loss_scaler,
     )
-
+    
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
@@ -455,9 +481,7 @@ def main(args):
             fp32=args.fp32,
         )
 
-        if args.output_dir and (
-            epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs
-        ):
+        if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
             checkpoint_path = misc.save_model(
                 args=args,
                 model=model,
@@ -490,48 +514,22 @@ def main(args):
         model.eval()
 
         # First test on a temporal video
-        
-        # TODO go through this to make sure that it's correct (frames, normalization, decoding, etc.)
+
         test_model_input = get_test_model_input(data_dir="test_cases/final_temporal_videos/")
-        print("test model input shape", test_model_input.shape)
+        save_frames_as_mp4(test_model_input, file_name="test_input_video.mp4")
+        test_model_input = test_model_input.cuda()
+        
         with torch.no_grad():
-            # Output is of dimension [1,3136, 768]
             _, test_model_output, _ = model(test_model_input, test_temporal=True)
         
-        # Test model output must be [1, 224, 224, 3, 16]
-        test_model_output.view(1, 224, 14, 256, 3)
-        print("test model output shape", test_model_output.shape)
-        exit()
+        test_model_output = model.unpatchify(test_model_output)
         
-        test_model_output = test_model_output.permute(0, 3, 4, 1, 2)
-        print("test model output shape after permuting", test_model_output.shape)
-        
-        test_model_output = test_model_output[0, :, :, :, :] # Batch size = 1
-        
-        video_numpy = test_model_output.cpu().numpy() 
-        min_value = video_numpy.min()
-        max_value = video_numpy.max()
-        video_numpy = (video_numpy - min_value) / (max_value - min_value)
-        video_numpy = (video_numpy * 255).astype(np.uint8)
-
-        # The rest of your code remains the same up to this point
-        height, width, channels, num_frames = video_numpy.shape
-
-        # Create a list of frames
-        frames = []
-        for i in range(num_frames):
-            frame = video_numpy[..., i]
-            frames.append(cv2.cvtColor(frame, cv2.COLOR_RGB2BGR))
-
-        # Save the frames as a video
-        imageio.mimwrite("output_video.mp4", frames, fps=30, quality=9, macro_block_size=None)
-
-        # Reorder the dimensions to (num_frames, height, width, channels)
-        video_numpy_wandb = np.moveaxis(video_numpy, -1, 0)
+        # TODO WHY IS THIS STILL OUTPUTTING NOISE AFTER I USED THEIR UNPATCHIFY FUNCTION???
+        save_frames_as_mp4(test_model_output, file_name="test_output_video.mp4")
 
         if not (test_image or test_video) and misc.is_main_process():
             wandb_video_object = wandb.Video(
-                data_or_path= "output_video.mp4",
+                data_or_path= "test_output_video.mp4",
                 caption=epoch,
                 fps=30,
                 )
@@ -539,6 +537,7 @@ def main(args):
 
         # Test on an image
         test_model_input = get_test_model_input(data_dir="test_cases/visual_prompting_images/")
+        test_model_input = test_model_input.cuda()
 
         with torch.no_grad():
             _, test_model_output, _ = model(test_model_input, test_image=True)

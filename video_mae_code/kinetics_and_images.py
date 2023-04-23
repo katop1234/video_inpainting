@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import cv2
+import random
+import torch
 import imageio
 
 import torch.utils.data
@@ -27,6 +29,41 @@ def tensor_is_video(tensor):
 
 def tensor_is_image(tensor):
     return tensor.size()[1:] == (3, 1, 224, 224)
+
+import cv2
+import numpy as np
+
+def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
+    # Ensure the frames tensor has the correct shape
+    
+    assert frames.shape == torch.Size([1, 3, 16, 224, 224]), "The input tensor should have the shape: (1, 3, 16, 224, 224)"
+    
+    # Move the tensor to CPU and convert it to numpy array
+    frames_np = frames.squeeze(0).permute(1, 2, 3, 0).cpu().numpy()
+
+    # Normalize the frames based on their observed min and max values
+    min_value = frames_np.min()
+    max_value = frames_np.max()
+    frames_normalized = (frames_np - min_value) / (max_value - min_value)
+
+    # Scale the values to the range of [0, 255] and convert to uint8
+    frames_uint8 = (frames_normalized * 255).astype(np.uint8)
+
+    # Get the video dimensions
+    num_frames, height, width, _ = frames_uint8.shape
+
+    # Create a VideoWriter object to save the video
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(file_name, fourcc, 30.0, (width, height))
+
+    # Write each frame to the VideoWriter object
+    for i in range(num_frames):
+        frame = cv2.cvtColor(frames_uint8[i], cv2.COLOR_RGB2BGR)
+        out.write(frame)
+
+    # Release the VideoWriter object
+    out.release() 
+    return frames_uint8
 
 class KineticsAndCVF(torch.utils.data.Dataset):
     """
@@ -48,7 +85,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
         # decoding setting
         sampling_rate=4,
         num_frames=16,
-        target_fps=30, # TODO make sure the FPS is fine for video
+        target_fps=30, 
         # train aug settings
         train_jitter_scales=(256, 320),
         train_crop_size=224,
@@ -173,9 +210,6 @@ class KineticsAndCVF(torch.utils.data.Dataset):
         """
         Construct the video loader.
         """
-
-        # TODO kinetics has many subfolders, which then contain the raw videos
-        # TODO make sure this code can access the videos in those subfolders
 
         csv_file_name = {
             "pretrain": "train",
@@ -313,7 +347,8 @@ class KineticsAndCVF(torch.utils.data.Dataset):
 
             # Stack the transformed images
             transformed_images = torch.cat(transformed_images_list, dim=0)
-
+            # Should be of dimension [1, 3, 1, 224, 224]
+            
             if self.mode in ["test"]:
                 return transformed_images, torch.tensor(int(index)), index
             else:
@@ -470,7 +505,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
                 if self.mode in ["test"]:
                     return frames, torch.tensor(label_list), index
                 else:
-                    return frames, torch.tensor(label_list)
+                    return frames, torch.tensor(label_list) # see frames shape so you can write it to a video and observe it visually
             else:
                 raise RuntimeError(
                     "Failed to fetch video after {} retries.".format(self._num_retries)
@@ -568,25 +603,5 @@ class KineticsAndCVF(torch.utils.data.Dataset):
         """
         return len(self._path_to_videos)
 
-import random
-import torch
-
 # Instantiate the Kinetics class
 kinetics_dataset = KineticsAndCVF(mode="pretrain")
-
-def save_video_tensor_as_mp4(video_tensor, output_file="sample_video.mp4", fps=30):
-    if tensor_is_video(video_tensor):
-        # Convert the tensor to numpy array and move the color channel to the end
-        video_array = video_tensor.numpy().squeeze().transpose(0, 2, 3, 1)
-        
-        # Convert the video array to uint8
-        video_array = video_array.astype(np.uint8)
-        
-        # Save the video array as an mp4 file
-        with imageio.get_writer(output_file, format='FFMPEG', mode='I', fps=fps) as writer:
-            for frame_num in range(16):
-                frame = video_array[:, :, :, frame_num].transpose(1, 2, 0)
-                writer.append_data(frame)
-    else:
-        print("got image")
-

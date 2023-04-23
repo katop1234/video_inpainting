@@ -66,7 +66,7 @@ def train_one_epoch(
     for data_iter_step, (samples, _) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):  
-
+        print("ENTERING THE FOR LOOP")
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(
@@ -199,6 +199,8 @@ def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
     video_tensor = video_tensor.permute(3, 0, 1, 2).unsqueeze(0)
 
     assert video_tensor.shape == (1, 3, 16, 224, 224)
+    
+    
     
     return video_tensor
 

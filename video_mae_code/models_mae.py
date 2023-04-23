@@ -45,9 +45,6 @@ class MaskedAutoencoderViT(nn.Module):
         pred_t_dim=16,
         **kwargs,
     ):
-
-        # TODO go through this line by line also after you check if running an image through the pipeline without
-        # any deep learning works
         
         super().__init__()
         self.trunc_init = trunc_init
@@ -291,7 +288,6 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore, ids_keep
 
-    # TODO
     def mask_spatiotemporal(self, x):
         raise NotImplementedError
 
@@ -370,9 +366,9 @@ class MaskedAutoencoderViT(nn.Module):
         # embed patches
         # applies a 3D conv that preserves dimensionality but represents information better
         x = self.patch_embed(x)
-        N, T, L, C = x.shape # [1, 16, 196, 768] or [1, 1, 196, 768]
+        N, T, L, C = x.shape # [2, 16, 196, 1024] or [2, 1, 196, 1024]
 
-        x = x.reshape(N, T * L, C)
+        x = x.reshape(N, T * L, C) # [2, 3136, 1024] or [2, 196, 1024]
 
         # masking: length -> length * mask_ratio
         if pretraining_mode:
@@ -416,19 +412,17 @@ class MaskedAutoencoderViT(nn.Module):
 
         # add pos embed w/o cls token
         if self.sep_pos_embed:
-
-            # self.pos_embed_spatial.shape is torch.Size([1, 14^2 = 196, 1024]). I.e. each patch has a 1024 dimensional embedding
-            pos_embed = self.pos_embed_spatial.repeat( # This line repeats the spatial position embeddings along the temporal dimension 
+            pos_embed = self.pos_embed_spatial.repeat(
                 1, self.input_size[0], 1
-            ) # results in size [1, 16 * 14^2, 1024]
-
+            ) 
+            
             pos_embed += torch.repeat_interleave(
                 self.pos_embed_temporal, # (1, 16, 1024)
                 self.input_size[1] * self.input_size[2],
                 dim=1,
             ) # results in size [1, 14^2 * 16, 1024]
 
-            pos_embed = pos_embed.expand(x.shape[0], -1, -1) # expands the position embeddings tensor to match the batch size of the input tensor x
+            pos_embed = pos_embed.expand(x.shape[0], -1, -1) # copies along batch dimension to match x
 
             offsets = []
             if ids_keep.shape[1] == (1 - self.mask_ratio_image) * 196:
@@ -442,7 +436,6 @@ class MaskedAutoencoderViT(nn.Module):
                     offset = frame_to_simulate * 196
                     ids_keep[batch_index] = ids_keep[batch_index] + offset 
                     offsets.append(offset)
-            
             elif ids_keep.shape[1] == 196 * 3 // 4:
                 # test image
                 '''
@@ -454,7 +447,6 @@ class MaskedAutoencoderViT(nn.Module):
                     offset = frame_to_simulate * 196
                     ids_keep[batch_index] = ids_keep[batch_index] + offset 
                     offsets.append(offset)
-
             elif ids_keep.shape[1] == (1 - self.mask_ratio_video) * 3136:
                 # video
                 pass
@@ -472,7 +464,7 @@ class MaskedAutoencoderViT(nn.Module):
                 pos_embed,
                 dim=1,
                 index=ids_keep.unsqueeze(-1).repeat(1, 1, pos_embed.shape[2]),
-            ) # pos embed for the patches that are not masked
+            ) # pos embed only kept for the patches that are not masked
 
             if self.cls_embed:
                 pos_embed = torch.cat(
@@ -504,12 +496,10 @@ class MaskedAutoencoderViT(nn.Module):
 
         x = x.view([N, -1, C]) + pos_embed
 
-        # TODO uncomment when actually training
-        print("\n WARNING: TRANSFORMER BLOCKS COMMENTED OUT \n")
-        # # apply Transformer blocks
-        # for blk in self.blocks:
-        #     x = blk(x)
-        # x = self.norm(x)
+        # apply Transformer blocks
+        for blk in self.blocks:
+            x = blk(x)
+        x = self.norm(x)
 
         if self.cls_embed:
             # remove cls token
@@ -607,15 +597,15 @@ class MaskedAutoencoderViT(nn.Module):
         if requires_t_shape:
             x = x.view([N, T, H * W, C])
 
-        # TODO uncomment when actually training
-        print("\n WARNING: TRANSFORMER BLOCKS COMMENTED OUT \n")
-        # # apply Transformer blocks
-        # for blk in self.decoder_blocks:
-        #     x = blk(x)
-        # x = self.decoder_norm(x)
+        # apply Transformer blocks
+        for blk in self.decoder_blocks:
+            x = blk(x)
+        x = self.decoder_norm(x)
 
         # predictor projection
         x = self.decoder_pred(x)
+        
+        
 
         if requires_t_shape:
             x = x.view([N, T * H * W, -1])
