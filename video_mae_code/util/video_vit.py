@@ -51,23 +51,26 @@ class PatchEmbed(nn.Module):
 
         self.grid_size = img_size[0] // patch_size[0]
         self.t_grid_size = frames // t_patch_size
+        
+        self.embed_dim = embed_dim
 
-        kernel_size = [t_patch_size] + list(patch_size)
+        kernel_size = [t_patch_size] + list(patch_size) # 1, 16, 16
         self.proj = nn.Conv3d(
             in_chans, embed_dim, kernel_size=kernel_size, stride=kernel_size
         )
 
     def forward(self, x):
         B, C, T, H, W = x.shape
-        
+ 
         assert (
             H == self.img_size[0] and W == self.img_size[1]
         ), f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
 
         assert T == self.frames or T == 1
-        x = self.proj(x).flatten(3)
+        x = self.proj(x)
+        x = x.flatten(3)
         x = torch.einsum("ncts->ntsc", x)  # [N, T, H*W, C]
-        return x # Should have dims (B, 8, 196, 768), Because 32/4 = 8 temporal_strides, which 14^2 patches each, and each embedded to 768 dimensions
+        return x # Shape [B=2, T=16, num_patches=196, Embed_dim=1024]
 
 class Attention(nn.Module):
     def __init__(
