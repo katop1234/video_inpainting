@@ -459,7 +459,7 @@ def main(args):
             fp32=args.fp32,
         )
 
-        print("\n SKIPPED SAAVING THE MODEL UNCOMMENT WEHN ACTUALLY RUNNING \n")
+        print("\n SKIPPED SAVING THE MODEL UNCOMMENT WEHN ACTUALLY RUNNING \n")
         # TODO uncomment when actually running
         # if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
         #     checkpoint_path = misc.save_model(
@@ -500,23 +500,23 @@ def main(args):
         
         test_model_input = test_model_input.cuda()
         
-        test_model_input = util.decoder.util.tensor_normalize(test_model_input, 
-                                                               (0.45, 0.45, 0.45), 
-                                                               (0.225, 0.225, 0.225))
+        # TODO make normalization code proper
+        # TODO add spatial_sampling deterministic also
+        exit()
         
         print("test_model_input", test_model_input.shape, test_model_input)
         
         with torch.no_grad():
             # TODO change test_temporal to True later
             _, test_model_output, _ = model(test_model_input)
-            
+        
+        test_model_output = model.unpatchify(test_model_output)
+        
+        # TODO undo spatial sampling deterministic
+        # TODO make denormalization code proper
+        exit()
+        
         print("test_model_output", test_model_output.shape, test_model_output)
-        
-        test_model_output = model.module.unpatchify(test_model_output)
-        
-        # Denormalize
-        test_model_output = (test_model_output * 0.225) + 0.45
-        test_model_output = (test_model_output * 255).clamp(0, 255).byte()
         
         # TODO if this doesn't work, also try spatial sampling deterministic!
         save_frames_as_mp4(test_model_output, file_name="test_output_video.mp4")

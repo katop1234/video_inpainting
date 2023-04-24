@@ -238,6 +238,8 @@ def get_test_model_input(data_dir="test_cases/final_temporal_videos/"):
         mean = [0.485, 0.456, 0.406]
         std = [0.229, 0.224, 0.225]
         denormalized_tensor = denormalize(image_tensor, mean, std)
+        # TODO amirs comment
+        # Also re normalization - seems like you denomarlize the input image instead of normalizing it in test time for image:
         return denormalized_tensor
     else:
         raise NotImplementedError
