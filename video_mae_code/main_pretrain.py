@@ -520,7 +520,8 @@ def main(args):
         test_model_input = test_model_input.cuda()
         
         with torch.no_grad():
-            _, test_model_output, _ = model(test_model_input, test_temporal=True)
+            # TODO change test_temporal to True later
+            _, test_model_output, _ = model(test_model_input)
         
         test_model_output = model.unpatchify(test_model_output)
         
