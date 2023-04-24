@@ -257,6 +257,7 @@ def main(args):
         jitter_aspect_relative=args.jitter_aspect_relative,
         jitter_scales_relative=args.jitter_scales_relative,
     )
+    print("got dataloader")
 
     class CustomDistributedSampler(torch.utils.data.DistributedSampler):
         def __init__(self, dataset, batch_size=args.batch_size, num_replicas=None, rank=None):
@@ -355,31 +356,6 @@ def main(args):
     print("Batch size is", args.batch_size)
     print("Accumulate iterations is", args.accum_iter)
     print("Num GPUs is", misc.get_world_size())
-    
-    # def custom_collate_fn(batch):
-    #     images = []
-    #     videos = []
-
-    #     for sample in batch:
-    #         object, index = sample
-    #         if object.shape[2] == 16:  # It's a video [1, 3, 16, 224, 224]
-    #             videos.append(object)
-    #         elif object.shape[2] == 1:  # It's an image [1, 3, 1, 224, 224]
-    #             images.append(object)
-    #         else:
-    #             raise ValueError("Unexpected tensor shape in the batch.")
-
-    #     if images and videos:
-    #         raise ValueError("Mixed images and videos in the same batch.")
-
-    #     if images:
-    #         # Concatenate image tensors along the 0-th dimension
-    #         return torch.cat(images, dim=0)
-    #     elif videos:
-    #         # Concatenate video tensors along the 0-th dimension
-    #         return torch.cat(videos, dim=0)
-    #     else:
-    #         raise ValueError("Empty batch.")
 
     data_loader_train = torch.utils.data.DataLoader(
         dataset_train,
@@ -439,6 +415,7 @@ def main(args):
         args.weight_decay,
         bias_wd=args.bias_wd,
     )
+    
     if args.beta is None:
         beta = (0.9, 0.95)
     else:
@@ -454,6 +431,7 @@ def main(args):
     # even though it doesn't assign anything to model, it does assign to model_without_ddp
     # which changes model under the hood
     # use: --resume="path/to/checkpoint.pth"
+    print("loading model")
     misc.load_model(
         args=args,
         model_without_ddp=model_without_ddp,
@@ -481,15 +459,17 @@ def main(args):
             fp32=args.fp32,
         )
 
-        if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
-            checkpoint_path = misc.save_model(
-                args=args,
-                model=model,
-                model_without_ddp=model_without_ddp,
-                optimizer=optimizer,
-                loss_scaler=loss_scaler,
-                epoch=epoch,
-            )
+        print("\n SKIPPED SAAVING THE MODEL UNCOMMENT WEHN ACTUALLY RUNNING \n")
+        # TODO uncomment when actually running
+        # if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
+        #     checkpoint_path = misc.save_model(
+        #         args=args,
+        #         model=model,
+        #         model_without_ddp=model_without_ddp,
+        #         optimizer=optimizer,
+        #         loss_scaler=loss_scaler,
+        #         epoch=epoch,
+        #     )
 
         log_stats = {
             **{f"train_{k}": v for k, v in train_stats.items()},
@@ -517,15 +497,28 @@ def main(args):
 
         test_model_input = get_test_model_input(data_dir="test_cases/final_temporal_videos/")
         save_frames_as_mp4(test_model_input, file_name="test_input_video.mp4")
+        
         test_model_input = test_model_input.cuda()
+        
+        test_model_input = util.decoder.util.tensor_normalize(test_model_input, 
+                                                               (0.45, 0.45, 0.45), 
+                                                               (0.225, 0.225, 0.225))
+        
+        print("test_model_input", test_model_input.shape, test_model_input)
         
         with torch.no_grad():
             # TODO change test_temporal to True later
             _, test_model_output, _ = model(test_model_input)
+            
+        print("test_model_output", test_model_output.shape, test_model_output)
         
-        test_model_output = model.unpatchify(test_model_output)
+        test_model_output = model.module.unpatchify(test_model_output)
         
-        # TODO WHY IS THIS STILL OUTPUTTING NOISE AFTER I USED THEIR UNPATCHIFY FUNCTION???
+        # Denormalize
+        test_model_output = (test_model_output * 0.225) + 0.45
+        test_model_output = (test_model_output * 255).clamp(0, 255).byte()
+        
+        # TODO if this doesn't work, also try spatial sampling deterministic!
         save_frames_as_mp4(test_model_output, file_name="test_output_video.mp4")
 
         if not (test_image or test_video) and misc.is_main_process():

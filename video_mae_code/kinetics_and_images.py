@@ -36,20 +36,13 @@ import numpy as np
 def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     # Ensure the frames tensor has the correct shape
     
-    assert frames.shape == torch.Size([1, 3, 16, 224, 224]), "The input tensor should have the shape: (1, 3, 16, 224, 224)"
+    assert frames.shape == torch.Size([1, 3, 16, 224, 224]), "The input tensor should have the shape: (1, 3, 16, 224, 224) or (N, C, T, H, W)"
     
     # Move the tensor to CPU and convert it to numpy array
     frames_np = frames.squeeze(0).permute(1, 2, 3, 0).cpu().numpy()
 
-    # Normalize the frames based on their observed min and max values
-    min_value = frames_np.min()
-    max_value = frames_np.max()
-    frames_normalized = (frames_np - min_value) / (max_value - min_value)
-
-    # Scale the values to the range of [0, 255] and convert to uint8
-    frames_uint8 = (frames_normalized * 255).astype(np.uint8)
-
     # Get the video dimensions
+    frames_uint8 = frames_np
     num_frames, height, width, _ = frames_uint8.shape
 
     # Create a VideoWriter object to save the video

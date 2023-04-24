@@ -82,8 +82,8 @@ def train_one_epoch(
         with torch.cuda.amp.autocast(enabled=True):
             loss, _, _ = model(
                 samples,
-                mask_ratio_image=args.mask_ratio, # default .75
-                mask_ratio_video=0.9 # fixed hyperparameter
+                mask_ratio_image=0.75, # default .75
+                mask_ratio_video=args.mask_ratio # fixed hyperparameter
             )
 
         loss_value = loss.item()
@@ -199,8 +199,6 @@ def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
     video_tensor = video_tensor.permute(3, 0, 1, 2).unsqueeze(0)
 
     assert video_tensor.shape == (1, 3, 16, 224, 224)
-    
-    
     
     return video_tensor
 
