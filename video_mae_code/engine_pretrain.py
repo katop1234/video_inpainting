@@ -90,12 +90,14 @@ def train_one_epoch(
 
         if not math.isfinite(loss_value):
             for _ in range(args.num_checkpoint_del):
-                try:
-                    path = misc.get_last_checkpoint(args)
-                    pathmgr.rm(path)
-                    print(f"remove checkpoint {path}")
-                except Exception as _:
-                    pass
+                # WARNING commented this out but wtf why does it delete all the checkpoints whenever theres a nan loss??
+                # try:
+                #     path = misc.get_last_checkpoint(args)
+                #     pathmgr.rm(path)
+                #     print(f"remove checkpoint {path}")
+                # except Exception as _:
+                #     pass
+                pass
             raise Exception("Loss is {}, stopping training".format(loss_value))
 
         loss /= accum_iter
@@ -224,9 +226,27 @@ def denormalize(tensor, mean, std):
         t.mul_(s).add_(m)
     return tensor
 
-def get_test_model_input(data_dir="test_cases/final_temporal_videos/"):
+def get_test_model_input(file : str, data_dir : str):
+    # For img denormalization
+    mean=[0.485, 0.456, 0.406]
+    std=[0.229, 0.224, 0.225]
+        
+    # First check if direct file exists
+    if file:
+        if file.endswith(".mp4"):
+            video_tensor = video_to_tensor(file)
+            return video_tensor
+        elif file.endswith(".png"):
+            image_tensor = image_to_tensor(random_png, (1, 3, 1, 224, 224))
+            
+            # TODO make this "parallelized" for gpu
+            for c in range(3):
+                image_tensor[:, c, :, :, :] = (image_tensor[:, c, :, :, :] / 255 - mean[c]) / std[c]
+            
+            return image_tensor
+            
+    # If not, go to data_dir and get a random file
     # TODO also feed in "test_cases/final_spatiotemporal_videos/"
-    
     if data_dir == "test_cases/final_temporal_videos/":
         random_mp4 = get_random_file(data_dir)
         video_tensor = video_to_tensor(random_mp4)
@@ -234,15 +254,11 @@ def get_test_model_input(data_dir="test_cases/final_temporal_videos/"):
     elif data_dir == "test_cases/visual_prompting_images/":
         random_png = get_random_file(data_dir)
         image_tensor = image_to_tensor(random_png, (1, 3, 1, 224, 224))
-        # Denormalize the output tensor
-
-        mean=[0.485, 0.456, 0.406]
-        std=[0.229, 0.224, 0.225]
         
         # TODO make this "parallelized" for gpu
         for c in range(3):
             image_tensor[:, c, :, :, :] = (image_tensor[:, c, :, :, :] / 255 - mean[c]) / std[c]
         
         return image_tensor
-    else:
-        raise NotImplementedError
+
+    raise NotImplementedError

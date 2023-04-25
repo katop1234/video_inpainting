@@ -112,7 +112,7 @@ def get_args_parser():
     parser.add_argument(
         "--blr",
         type=float,
-        default=1e-3, # TODO was 1.6e-3 on the mae st code
+        default=1e-4, # NOTE was 1.6e-3 on the mae st code
         metavar="LR",
         help="base learning rate: absolute_lr = base_lr * total_batch_size / 256",
     )
@@ -126,7 +126,7 @@ def get_args_parser():
     )
 
     parser.add_argument(
-        "--warmup_epochs", type=int, default=40, metavar="N", help="epochs to warmup LR" # TODO was 5 on mae st
+        "--warmup_epochs", type=int, default=15, metavar="N", help="epochs to warmup LR" # NOTE was 5 on mae st
     )
 
     parser.add_argument(
@@ -181,7 +181,7 @@ def get_args_parser():
     )
 
     parser.add_argument("--decoder_embed_dim", default=512, type=int)
-    parser.add_argument("--decoder_depth", default=4, type=int)
+    parser.add_argument("--decoder_depth", default=8, type=int) # NOTE amir said to make this 8 for only images
     parser.add_argument("--decoder_num_heads", default=16, type=int)
     parser.add_argument("--t_patch_size", default=1, type=int)
     parser.add_argument("--num_frames", default=16, type=int)
@@ -283,7 +283,7 @@ def main(args):
             self.image_indices = dataset.image_indices
             self.video_indices = dataset.video_indices
             
-            self.prob_choose_image = 1 # TODO change this to 0.5 later
+            self.prob_choose_image = 1 # WARNING change this to 0.5 later
         
         def __len__(self):
             if self.prob_choose_image == 1:
@@ -293,10 +293,9 @@ def main(args):
             return len(self.dataset)
 
         def __iter__(self):
-
             custom_indices = []
 
-            num_elements_in_epoch = self.dataset.num_images # size of CVF dataset TODO can change later
+            num_elements_in_epoch = self.dataset.num_images # size of CVF dataset NOTE can change later
             
             if test_image or test_video:
                 num_elements_in_epoch = 1
@@ -358,12 +357,11 @@ def main(args):
     So B * A = 512 * 128 / 8 = 8192
     '''
 
-    # TODO use this to match MAE ST 
+    # WARNING use this to match MAE ST 
     # assert 8192 % args.batch_size == 0
     # accum_iter_determined_from_batch_size = 8192 // args.batch_size
     
-    # TODO I changed this to match amir's inpainting code
-    # TODO assuming 8 gpus like what i have right now
+    # WARNING I changed this to match amir's inpainting code
     accum_iter_determined_from_batch_size = 64 // args.batch_size
     args.accum_iter = accum_iter_determined_from_batch_size
 
@@ -459,48 +457,49 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
-                
-        train_stats = train_one_epoch(
-            model,
-            data_loader_train,
-            args.accum_iter,
-            optimizer,
-            device,
-            epoch,
-            loss_scaler,
-            log_writer=log_writer,
-            args=args,
-            fp32=args.fp32,
-        )
-
-        if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
-            checkpoint_path = misc.save_model(
+        
+        if not (test_image or test_video): # Actually train
+            train_stats = train_one_epoch(
+                model,
+                data_loader_train,
+                args.accum_iter,
+                optimizer,
+                device,
+                epoch,
+                loss_scaler,
+                log_writer=log_writer,
                 args=args,
-                model=model,
-                model_without_ddp=model_without_ddp,
-                optimizer=optimizer,
-                loss_scaler=loss_scaler,
-                epoch=epoch,
+                fp32=args.fp32,
             )
 
-        log_stats = {
-            **{f"train_{k}": v for k, v in train_stats.items()},
-            "epoch": epoch,
-        }
+            if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
+                checkpoint_path = misc.save_model(
+                    args=args,
+                    model=model,
+                    model_without_ddp=model_without_ddp,
+                    optimizer=optimizer,
+                    loss_scaler=loss_scaler,
+                    epoch=epoch,
+                )
 
-        if args.output_dir and misc.is_main_process():
-            if log_writer is not None:
-                log_writer.flush()
-            with pathmgr.open(
-                f"{args.output_dir}/log.txt",
-                "a",
-            ) as f:
-                f.write(json.dumps(log_stats) + "\n")
-        
-        # From yossi's code
-        if not (test_image or test_video) and misc.is_main_process():
-            wandb.log(log_stats)
-        # From yossi's code
+            log_stats = {
+                **{f"train_{k}": v for k, v in train_stats.items()},
+                "epoch": epoch,
+            }
+
+            if args.output_dir and misc.is_main_process():
+                if log_writer is not None:
+                    log_writer.flush()
+                with pathmgr.open(
+                    f"{args.output_dir}/log.txt",
+                    "a",
+                ) as f:
+                    f.write(json.dumps(log_stats) + "\n")
+            
+            # From yossi's code
+            if not (test_image or test_video) and misc.is_main_process():
+                wandb.log(log_stats)
+            # From yossi's code
 
         ### Starting evaluation
         model.eval()
@@ -536,7 +535,12 @@ def main(args):
             # TODO change test_temporal to True later
             _, test_model_output, _ = model(test_model_input)
         
-        test_model_output = model.module.unpatchify(test_model_output)
+        if type(model) is torch.nn.parallel.DistributedDataParallel:
+            test_model_output = model.module.unpatchify(test_model_output)
+        elif type(model) is models_mae.MaskedAutoencoderViT:
+            test_model_output = model.unpatchify(test_model_output)
+        else:
+            raise NotImplementedError("Something's funky")
         
         # Denormalize tensor as consistent with given code
         #test_model_output_denormalized = 255 * engine_pretrain.denormalize(test_model_output, mean=(0.45, 0.45, 0.45), std=(0.225, 0.225, 0.225))
@@ -552,40 +556,43 @@ def main(args):
                 )
             wandb.log({"video": wandb_video_object})
 
-        # Test on an image
-        test_model_input = get_test_model_input(data_dir="test_cases/visual_prompting_images/")
-        test_model_input = test_model_input.cuda()
+        # Test on images
+        for i, img_file in enumerate(os.listdir("test_cases/visual_prompting_images/")):
+            test_model_input = get_test_model_input(file=img_file)
+            test_model_input = test_model_input.cuda()
 
-        with torch.no_grad():
-            _, test_model_output, _ = model(test_model_input, test_image=True)
-        
-        test_model_output = model.module.unpatchify(test_model_output)
-        
-        mean = np.array([0.485, 0.456, 0.406])
-        std = np.array([0.229, 0.224, 0.225])
+            with torch.no_grad():
+                _, test_model_output, _ = model(test_model_input, test_image=True)
+            
+            test_model_output = model.module.unpatchify(test_model_output)
+            
+            # TODO abstract this away into a function
+            mean = np.array([0.485, 0.456, 0.406])
+            std = np.array([0.229, 0.224, 0.225])
 
-        # Denormalize the image
-        # TODO parallelize this
-        for c in range(3):
-            test_model_output[:, c, :, :, :] = test_model_output[:, c, :, :] * std[c] + mean[c]
+            # Denormalize the image
+            # WARNING parallelize this
+            for c in range(3):
+                test_model_output[:, c, :, :, :] = test_model_output[:, c, :, :] * std[c] + mean[c]
 
-        # Rearrange dimensions to have channels last, and remove unnecessary dimensions
-        denormalized_img = test_model_output.squeeze(0).permute(1, 2, 3, 0).squeeze(0)
+            # Rearrange dimensions to have channels last, and remove unnecessary dimensions
+            denormalized_img = test_model_output.squeeze(0).permute(1, 2, 3, 0).squeeze(0)
 
-        # Convert to numpy array, scale back to [0, 255] and convert to uint8 data type
-        image_array = (denormalized_img.cpu().numpy() * 255).astype(np.uint8)
-        
-        Image.fromarray(image_array).save('test_model_output_img.png')
+            # Convert to numpy array, scale back to [0, 255] and convert to uint8 data type
+            image_array = (denormalized_img.cpu().numpy() * 255).astype(np.uint8)
+            
+            output_img_name = 'test_model_output_img' + str(i) + '.png'
+            
+            Image.fromarray(image_array).save(output_img_name)
 
-        if not (test_image or test_video) and misc.is_main_process():
-            images = wandb.Image(
-                image_array, 
-                )
-                        
-            wandb.log({"test images": images})
-
+            if not (test_image or test_video) and misc.is_main_process():
+                image = wandb.Image(
+                    image_array, 
+                    )
+                            
+            wandb.log({output_img_name: image})
+            
         model.train()
-        
         ### End evaluation
 
     total_time = time.time() - start_time
