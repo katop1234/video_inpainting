@@ -19,6 +19,7 @@ import itertools
 import random, sys
 import os
 import time
+import engine_pretrain
 
 import util.env
 
@@ -432,6 +433,7 @@ def main(args):
     # which changes model under the hood
     # use: --resume="path/to/checkpoint.pth"
     print("loading model")
+    #TODO check args resume is true?
     misc.load_model(
         args=args,
         model_without_ddp=model_without_ddp,
@@ -445,19 +447,20 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
-
-        train_stats = train_one_epoch(
-            model,
-            data_loader_train,
-            args.accum_iter,
-            optimizer,
-            device,
-            epoch,
-            loss_scaler,
-            log_writer=log_writer,
-            args=args,
-            fp32=args.fp32,
-        )
+        
+        # TODO uncomment
+        # train_stats = train_one_epoch(
+        #     model,
+        #     data_loader_train,
+        #     args.accum_iter,
+        #     optimizer,
+        #     device,
+        #     epoch,
+        #     loss_scaler,
+        #     log_writer=log_writer,
+        #     args=args,
+        #     fp32=args.fp32,
+        # )
 
         print("\n SKIPPED SAVING THE MODEL UNCOMMENT WEHN ACTUALLY RUNNING \n")
         # TODO uncomment when actually running
@@ -471,23 +474,26 @@ def main(args):
         #         epoch=epoch,
         #     )
 
-        log_stats = {
-            **{f"train_{k}": v for k, v in train_stats.items()},
-            "epoch": epoch,
-        }
+        # TODO uncomment when atcually runninng
+        # log_stats = {
+        #     **{f"train_{k}": v for k, v in train_stats.items()},
+        #     "epoch": epoch,
+        # }
 
-        if args.output_dir and misc.is_main_process():
-            if log_writer is not None:
-                log_writer.flush()
-            with pathmgr.open(
-                f"{args.output_dir}/log.txt",
-                "a",
-            ) as f:
-                f.write(json.dumps(log_stats) + "\n")
+        # TODO uncomment when actually running
+        # if args.output_dir and misc.is_main_process():
+        #     if log_writer is not None:
+        #         log_writer.flush()
+        #     with pathmgr.open(
+        #         f"{args.output_dir}/log.txt",
+        #         "a",
+        #     ) as f:
+        #         f.write(json.dumps(log_stats) + "\n")
         
-        # From yossi's code
-        if not (test_image or test_video) and misc.is_main_process():
-            wandb.log(log_stats)
+        # From yossi's code\
+        # TODO uncomment when actually running
+        # if not (test_image or test_video) and misc.is_main_process():
+        #     wandb.log(log_stats)
         # From yossi's code
 
         ### Starting evaluation
@@ -498,13 +504,30 @@ def main(args):
         test_model_input = get_test_model_input(data_dir="test_cases/final_temporal_videos/")
         save_frames_as_mp4(test_model_input, file_name="test_input_video.mp4")
         
-        test_model_input = test_model_input.cuda()
+        test_model_input_original = test_model_input.cuda()
         
-        # TODO make normalization code proper
-        # TODO add spatial_sampling deterministic also
-        exit()
+        print(test_model_input.shape)
         
-        print("test_model_input", test_model_input.shape, test_model_input)
+        # Normalize the input as consistent with the Dataloader
+        test_model_input = util.decoder.utils.tensor_normalize(test_model_input_original, mean=(0.45, 0.45, 0.45), std=(0.225, 0.225, 0.225))
+        
+        # Add deterministic spatial_sampling deterministic also
+        spatial_idx = 1  # You can use 0, 1, or 2 for left/top, center, or right/bottom cropping
+        test_model_input = util.decoder.utils.spatial_sampling(
+            test_model_input.squeeze(0),
+            spatial_idx=spatial_idx,
+            min_scale=256,
+            max_scale=256,
+            crop_size=224,
+            random_horizontal_flip=False
+        )
+        
+        test_model_input = test_model_input.unsqueeze(0)
+        
+        # Video directly from the Kinetics Dataset
+        test_model_input = dataset_train[dataset_train.num_images + 100][0].cuda()
+        
+        save_frames_as_mp4(255 * ((test_model_input * 0.225) + 0.45), file_name="test_input_video.mp4")
         
         with torch.no_grad():
             # TODO change test_temporal to True later
@@ -512,14 +535,14 @@ def main(args):
         
         test_model_output = model.unpatchify(test_model_output)
         
-        # TODO undo spatial sampling deterministic
-        # TODO make denormalization code proper
-        exit()
+        # Denormalize tensor as consistent with given code
+        #test_model_output_denormalized = 255 * engine_pretrain.denormalize(test_model_output, mean=(0.45, 0.45, 0.45), std=(0.225, 0.225, 0.225))
+        test_model_output_denormalized = 255 * ((test_model_output * 0.225) + 0.45)
         
-        print("test_model_output", test_model_output.shape, test_model_output)
+        print("test_model_output", test_model_output_denormalized.shape, test_model_output_denormalized)
         
         # TODO if this doesn't work, also try spatial sampling deterministic!
-        save_frames_as_mp4(test_model_output, file_name="test_output_video.mp4")
+        save_frames_as_mp4(test_model_output_denormalized, file_name="test_output_video.mp4")
 
         if not (test_image or test_video) and misc.is_main_process():
             wandb_video_object = wandb.Video(
