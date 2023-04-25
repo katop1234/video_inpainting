@@ -66,7 +66,7 @@ def train_one_epoch(
     for data_iter_step, (samples, _) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):  
-        print("ENTERING THE FOR LOOP")
+        
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(
@@ -82,8 +82,8 @@ def train_one_epoch(
         with torch.cuda.amp.autocast(enabled=True):
             loss, _, _ = model(
                 samples,
-                mask_ratio_image=0.75, # default .75
-                mask_ratio_video=args.mask_ratio # fixed hyperparameter
+                mask_ratio_image=0.75, # default .75 # TODO allow to feed this in as an argument
+                mask_ratio_video=args.mask_ratio # fixed hyperparameter at 0.9
             )
 
         loss_value = loss.item()
@@ -210,7 +210,7 @@ def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
     img = img.unsqueeze(0)  # Add the batch_size dimension
 
     assert img.shape == target_shape
-    return img
+    return img.float()
 
 def denormalize(tensor, mean, std):
     """
@@ -235,11 +235,14 @@ def get_test_model_input(data_dir="test_cases/final_temporal_videos/"):
         random_png = get_random_file(data_dir)
         image_tensor = image_to_tensor(random_png, (1, 3, 1, 224, 224))
         # Denormalize the output tensor
-        mean = [0.485, 0.456, 0.406]
-        std = [0.229, 0.224, 0.225]
-        denormalized_tensor = denormalize(image_tensor, mean, std)
-        # TODO amirs comment
-        # Also re normalization - seems like you denomarlize the input image instead of normalizing it in test time for image:
-        return denormalized_tensor
+
+        mean=[0.485, 0.456, 0.406]
+        std=[0.229, 0.224, 0.225]
+        
+        # TODO make this "parallelized" for gpu
+        for c in range(3):
+            image_tensor[:, c, :, :, :] = (image_tensor[:, c, :, :, :] / 255 - mean[c]) / std[c]
+        
+        return image_tensor
     else:
         raise NotImplementedError
