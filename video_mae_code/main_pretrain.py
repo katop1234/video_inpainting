@@ -11,7 +11,7 @@
 
 import argparse
 import datetime, cv2
-from kinetics_and_images import save_frames_as_mp4
+from kinetics_and_images import save_frames_as_mp4, get_test_model_input_from_kinetics
 import wandb
 import imageio
 from PIL import Image
@@ -32,12 +32,12 @@ import torch
 import torch.backends.cudnn as cudnn
 from iopath.common.file_io import g_pathmgr as pathmgr
 import models_mae
-from engine_pretrain import train_one_epoch, get_random_file, video_to_tensor, get_test_model_input
+from engine_pretrain import train_one_epoch, get_random_file, video_to_tensor, get_test_model_input, spatial_sample_test_video, uint8_to_normalized, normalized_to_uint8
 from util.kinetics import Kinetics
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from tensorboard.compat.tensorflow_stub.io.gfile import register_filesystem
 from torch.utils.tensorboard import SummaryWriter
-from kinetics_and_images import KineticsAndCVF
+from kinetics_and_images import KineticsAndCVF, CVFonly
 
 # From https://pytorch.org/docs/stable/distributed.html#launch-utility
 
@@ -250,13 +250,78 @@ def main(args):
     seed = args.seed + misc.get_rank()
     torch.manual_seed(seed)
     np.random.seed(seed)
-    
-    # TODO remove positional embedding temrporal and then run with the timm transformer block !
 
     cudnn.benchmark = True
 
-    dataset_train = KineticsAndCVF( # Custom Dataset
-        mode="pretrain",
+    # WARNING uncomment this to get both Kinetics and CVF dataset
+    # dataset_train = KineticsAndCVF( # Custom Dataset
+    #     mode="pretrain",
+    #     path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv", # This is the path to names of all kinetics files
+    #     path_to_data_dir="/shared/group/kinetics/train_256/", # video
+    #     path_to_image_data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/", # images
+    #     sampling_rate=args.sampling_rate, # 4 by default
+    #     num_frames=args.num_frames, # 16 by default
+    #     train_jitter_scales=(256, 320),
+    #     repeat_aug=args.repeat_aug,
+    #     jitter_aspect_relative=args.jitter_aspect_relative,
+    #     jitter_scales_relative=args.jitter_scales_relative,
+    # )
+    # print("got dataloader")
+
+    # class CustomDistributedSampler(torch.utils.data.DistributedSampler):
+    #     def __init__(self, dataset, batch_size=args.batch_size, num_replicas=None, rank=None):
+    #         # Call the base class constructor
+    #         super().__init__(dataset, 
+    #                          num_replicas=num_replicas, 
+    #                          rank=rank, 
+    #                          shuffle=False) # No need to shuffle, I randomly sample anyway
+
+    #         self.dataset = dataset
+    #         self.num_images = dataset.num_images
+    #         self.num_videos = dataset.num_videos
+    #         self.batch_size = batch_size
+
+    #         self.image_indices = dataset.image_indices
+    #         self.video_indices = dataset.video_indices
+            
+    #         self.prob_choose_image = 1 # WARNING change this to 0.5 later
+        
+    #     def __len__(self):
+    #         if self.prob_choose_image == 1:
+    #             return self.num_images
+    #         elif self.prob_choose_image == 0:
+    #             return self.num_videos
+    #         return len(self.dataset)
+
+    #     def __iter__(self):
+    #         custom_indices = []
+
+    #         num_elements_in_epoch = self.dataset.num_images # size of CVF dataset NOTE can change later
+            
+    #         if test_image or test_video:
+    #             num_elements_in_epoch = 1
+    #             if test_image:
+    #                 self.prob_choose_image = 1 
+    #             else:
+    #                 self.prob_choose_image = 0
+            
+    #         while len(custom_indices) < num_elements_in_epoch:
+    #             if random.random() < self.prob_choose_image: # Choose image
+    #                 # append batch_size number of images
+    #                 random_image_indices = random.sample(self.image_indices, self.batch_size)
+    #                 custom_indices.extend(random_image_indices)
+    #             else: # Choose video
+    #                 # append batch_size number of videos
+    #                 random_video_indices = random.sample(self.video_indices, self.batch_size)
+    #                 custom_indices.extend(random_video_indices)
+            
+    #         self.custom_indices = custom_indices
+            
+    #         # Return the modified indices as an iterator
+    #         return iter(self.custom_indices)
+
+    dataset_train = CVFonly(
+            mode="pretrain",
         path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv", # This is the path to names of all kinetics files
         path_to_data_dir="/shared/group/kinetics/train_256/", # video
         path_to_image_data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/", # images
@@ -267,59 +332,6 @@ def main(args):
         jitter_aspect_relative=args.jitter_aspect_relative,
         jitter_scales_relative=args.jitter_scales_relative,
     )
-    print("got dataloader")
-
-    class CustomDistributedSampler(torch.utils.data.DistributedSampler):
-        def __init__(self, dataset, batch_size=args.batch_size, num_replicas=None, rank=None):
-            # Call the base class constructor
-            super().__init__(dataset, 
-                             num_replicas=num_replicas, 
-                             rank=rank, 
-                             shuffle=False) # No need to shuffle, I randomly sample anyway
-
-            self.dataset = dataset
-            self.num_images = dataset.num_images
-            self.num_videos = dataset.num_videos
-            self.batch_size = batch_size
-
-            self.image_indices = dataset.image_indices
-            self.video_indices = dataset.video_indices
-            
-            self.prob_choose_image = 1 # WARNING change this to 0.5 later
-        
-        def __len__(self):
-            if self.prob_choose_image == 1:
-                return self.num_images
-            elif self.prob_choose_image == 0:
-                return self.num_videos
-            return len(self.dataset)
-
-        def __iter__(self):
-            custom_indices = []
-
-            num_elements_in_epoch = self.dataset.num_images # size of CVF dataset NOTE can change later
-            
-            if test_image or test_video:
-                num_elements_in_epoch = 1
-                if test_image:
-                    self.prob_choose_image = 1 
-                else:
-                    self.prob_choose_image = 0
-            
-            while len(custom_indices) < num_elements_in_epoch:
-                if random.random() < self.prob_choose_image: # Choose image
-                    # append batch_size number of images
-                    random_image_indices = random.sample(self.image_indices, self.batch_size)
-                    custom_indices.extend(random_image_indices)
-                else: # Choose video
-                    # append batch_size number of videos
-                    random_video_indices = random.sample(self.video_indices, self.batch_size)
-                    custom_indices.extend(random_video_indices)
-            
-            self.custom_indices = custom_indices
-            
-            # Return the modified indices as an iterator
-            return iter(self.custom_indices)
 
     if args.distributed:
         num_tasks = misc.get_world_size() # 8 gpus
@@ -333,9 +345,12 @@ def main(args):
         global_rank = 0
         sampler_train = torch.utils.data.RandomSampler(dataset_train)
 
-    sampler_train = CustomDistributedSampler(
-            dataset_train, batch_size=args.batch_size, num_replicas=num_tasks, rank=global_rank
-        ) # My own for videos + images
+    # WARNING uncommented this to replicate original results exactly
+    # sampler_train = CustomDistributedSampler(
+    #         dataset_train, batch_size=args.batch_size, num_replicas=num_tasks, rank=global_rank
+    #     ) # My own for videos + images 
+    sampler_train = torch.utils.data.RandomSampler(dataset_train)
+    
     print("Sampler_train = %s" % str(sampler_train))
 
     if global_rank == 0 and args.log_dir is not None:
@@ -458,10 +473,12 @@ def main(args):
     start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
         if args.distributed:
-            data_loader_train.sampler.set_epoch(epoch)
+            # data_loader_train.sampler.set_epoch(epoch) # TODO uncomment when using distributed sampler!!!!
+            pass
         
         # NOTE can comment this to skip training
         
+        # TODO uncomment this block between the two notes to train
         if not (test_image or test_video):
             train_stats = train_one_epoch(
                 model,
@@ -510,32 +527,15 @@ def main(args):
         ### Starting evaluation
         model.eval()
 
-        ### Get actual testing video
-        test_model_input = get_test_model_input(data_dir="test_cases/final_temporal_videos/")
-        save_frames_as_mp4(test_model_input, file_name="test_input_video.mp4")
+        ### Test on video
+        test_model_input = get_test_model_input(data_dir="test_cases/final_temporal_videos/") # DEBUG check range and shape at each step
         
-        test_model_input_original = test_model_input.cuda()
+        save_frames_as_mp4(normalized_to_uint8(test_model_input), file_name="test_input_video.mp4")
         
-        # Normalize the input as consistent with the Dataloader
-        test_model_input = util.decoder.utils.tensor_normalize(test_model_input_original, mean=(0.45, 0.45, 0.45), std=(0.225, 0.225, 0.225))
-        
-        # Add deterministic spatial_sampling deterministic also
-        spatial_idx = 1  # You can use 0, 1, or 2 for left/top, center, or right/bottom cropping
-        test_model_input = util.decoder.utils.spatial_sampling(
-            test_model_input.squeeze(0),
-            spatial_idx=spatial_idx,
-            min_scale=256,
-            max_scale=256,
-            crop_size=224,
-            random_horizontal_flip=False
-        )
-        
-        test_model_input = test_model_input.unsqueeze(0)
-        
-        ### Video directly from the Kinetics Dataset
-        test_model_input = dataset_train[dataset_train.num_images + 100][0].cuda()
-        
-        save_frames_as_mp4(255 * ((test_model_input * 0.225) + 0.45), file_name="test_input_video.mp4")
+        test_model_input = spatial_sample_test_video(test_model_input)
+
+        # Override and just get a video directly from training dataset
+        test_model_input = get_test_model_input_from_kinetics(dataset_train)
         
         with torch.no_grad():
             # TODO change test_temporal to True later
@@ -548,10 +548,9 @@ def main(args):
         else:
             raise NotImplementedError("Something's funky")
         
-        # Denormalize tensor as consistent with given code
-        test_model_output_denormalized = 255 * ((test_model_output * 0.225) + 0.45)
+        test_model_output = normalized_to_uint8(test_model_output)
         
-        save_frames_as_mp4(test_model_output_denormalized, file_name="test_output_video.mp4")
+        save_frames_as_mp4(test_model_output, file_name="test_output_video.mp4")
 
         if not (test_image or test_video) and misc.is_main_process():
             wandb_video_object = wandb.Video(
@@ -560,11 +559,11 @@ def main(args):
                 fps=30,
                 )
             wandb.log({"video": wandb_video_object})
-
-        # Test on images
+        
+        ### Test on images
         test_img_folder = "test_cases/visual_prompting_images/"
         for i, img_file in enumerate(os.listdir(test_img_folder)):
-            img_file = test_img_folder + img_file
+            img_file = test_img_folder + img_file # TODO follow the dimensionality of the image
             test_model_input = get_test_model_input(file=img_file)
             test_model_input = test_model_input.cuda()
 
@@ -579,20 +578,17 @@ def main(args):
             else:
                 raise NotImplementedError("Something's funky")
             
-            # TODO abstract this away into a function
-            mean = np.array([0.485, 0.456, 0.406])
-            std = np.array([0.229, 0.224, 0.225])
-
-            # Denormalize the image
-            # WARNING parallelize this
-            for c in range(3):
-                test_model_output[:, c, :, :, :] = test_model_output[:, c, :, :] * std[c] + mean[c]
+            # TODO USE SINGLE MEAN STD FOR IMG + VIDEO, see wherever normalized_to_uint8 and inverse is called
+            mean = [0.485, 0.456, 0.406]
+            std = [0.229, 0.224, 0.225]
+            
+            test_model_output = normalized_to_uint8(test_model_output, mean, std)
 
             # Rearrange dimensions to have channels last, and remove unnecessary dimensions
-            denormalized_img = test_model_output.squeeze(0).permute(1, 2, 3, 0).squeeze(0)
+            denormalized_img = test_model_output.squeeze(0).permute(1, 2, 3, 0).squeeze(0) # (224, 224, 3)
 
             # Convert to numpy array, scale back to [0, 255] and convert to uint8 data type
-            image_array = (denormalized_img.cpu().numpy() * 255).astype(np.uint8)
+            image_array = (denormalized_img.cpu().numpy()).astype(np.uint8)
             
             output_img_name = 'test_model_output_img' + str(i) + '.png'
             

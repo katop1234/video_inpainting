@@ -72,7 +72,6 @@ def get_sequence(center_idx, half_len, sample_rate, num_frames):
             seq[seq_idx] = num_frames - 1
     return seq
 
-
 def spatial_sampling(
     frames,
     spatial_idx=-1,
@@ -111,6 +110,7 @@ def spatial_sampling(
     Returns:
         frames (tensor): spatially sampled frames.
     """
+
     assert spatial_idx in [-1, 0, 1, 2]
     if spatial_idx == -1:
         if aspect_ratio is None and scale is None:
@@ -191,7 +191,6 @@ def convert_to_video_level_labels(labels):
             labels[video_id][i] = video_level_labels
     return labels
 
-
 def load_image_lists(frame_list_file, prefix="", return_list=False):
     """
     Load image paths and labels from a "frame list".
@@ -234,7 +233,6 @@ def load_image_lists(frame_list_file, prefix="", return_list=False):
         return image_paths, labels
     return dict(image_paths), dict(labels)
 
-
 def tensor_normalize(tensor, mean, std):
     """
     Normalize a given tensor by subtracting the mean and dividing the std.
@@ -243,17 +241,26 @@ def tensor_normalize(tensor, mean, std):
         mean (tensor or list): mean value to subtract.
         std (tensor or list): std to divide.
     """
-    if tensor.dtype == torch.uint8:
-        tensor = tensor.float()
-        tensor = tensor / 255.0
+    tensor = tensor.float()
+    tensor = tensor / 255.0
     if type(mean) == tuple:
         mean = torch.tensor(mean)
     if type(std) == tuple:
         std = torch.tensor(std)
+    
+    if tensor.ndim == 5:
+        # Test time
+        assert tensor.shape in [(1, 3, 16, 224, 224), (1, 3, 1, 224, 224)]
+        # Reshape mean and std to match the tensor dimensions
+        mean = mean.view(1, 3, 1, 1, 1)
+        std = std.view(1, 3, 1, 1, 1)
+    
+    mean = mean.to(tensor.device)
+    std = std.to(tensor.device)
+    
     tensor = tensor - mean
     tensor = tensor / std
     return tensor
-
 
 def get_random_sampling_rate(long_cycle_sampling_rate, sampling_rate):
     """
@@ -266,7 +273,6 @@ def get_random_sampling_rate(long_cycle_sampling_rate, sampling_rate):
     else:
         return sampling_rate
 
-
 def revert_tensor_normalize(tensor, mean, std):
     """
     Revert normalization for a given tensor by multiplying by the std and adding the mean.
@@ -275,14 +281,15 @@ def revert_tensor_normalize(tensor, mean, std):
         mean (tensor or list): mean value to add.
         std (tensor or list): std to multiply.
     """
-    if type(mean) == list:
-        mean = torch.tensor(mean)
+    if type(mean) == list: # TODO see tensor dims and mean std dims
+        mean = torch.tensor(mean).view(1, 3, 1, 1, 1).cuda()
     if type(std) == list:
-        std = torch.tensor(std)
+        std = torch.tensor(std).view(1, 3, 1, 1, 1).cuda()
     tensor = tensor * std
     tensor = tensor + mean
+    
+    tensor = tensor * 255
     return tensor
-
 
 def create_sampler(dataset, shuffle, cfg):
     """
@@ -299,7 +306,6 @@ def create_sampler(dataset, shuffle, cfg):
     sampler = DistributedSampler(dataset) if cfg.NUM_GPUS > 1 else None
 
     return sampler
-
 
 def loader_worker_init_fn(dataset):
     """

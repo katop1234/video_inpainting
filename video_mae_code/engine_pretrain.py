@@ -11,6 +11,7 @@
 
 import math, cv2
 from PIL import Image
+import util
 from typing import Iterable
 import itertools, random, os
 import numpy as np, shutil
@@ -153,6 +154,10 @@ def get_random_file(data_dir):
     return os.path.join(data_dir, random_file)
 
 def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
+    '''
+    Converts a given video mp4 file to a PyTorch tensor
+    NOT normalized
+    '''
     # Read the video
     video = cv2.VideoCapture(video_path)
     
@@ -205,6 +210,10 @@ def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
     return video_tensor
 
 def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
+    '''
+    Returns a tensor of shape (1, 3, 1, 224, 224) from an image
+    NOT normalized
+    '''
     img = Image.open(image_path)
     img = img.resize((target_shape[-1], target_shape[-2]), Image.ANTIALIAS)  # Resize to (width, height)
     img = torch.from_numpy(np.array(img)).permute(2, 0, 1)  # Convert to a tensor and rearrange dimensions
@@ -214,51 +223,65 @@ def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
     assert img.shape == target_shape
     return img.float()
 
-def denormalize(tensor, mean, std):
+def uint8_to_normalized(tensor, mean=(0.45, 0.45, 0.45), std=(0.225, 0.225, 0.225)):
     """
-    Denormalize an image tensor.
-    tensor: PyTorch tensor, the image tensor to denormalize
-    mean: list, the mean values used for normalization
-    std: list, the standard deviation values used for normalization
+    Convert a uint8 tensor to a float tensor and normalize the values.
+    tensor: PyTorch tensor, the uint8 tensor to convert
     """
-    tensor = tensor.to(dtype=torch.float32)  # Convert the tensor to float data type
-    for t, m, s in zip(tensor, mean, std):
-        t.mul_(s).add_(m)
-    return tensor
+    # NOTE try to use a fixed mean and std all throughout training
+    return util.decoder.utils.tensor_normalize(tensor, mean, std)
+
+def normalized_to_uint8(tensor, mean=(0.45, 0.45, 0.45), std=(0.225, 0.225, 0.225)):
+    if type(mean) is tuple:
+        mean = list(mean)
+    if type(std) is tuple:
+        std = list(std)
+        
+    return util.decoder.utils.revert_tensor_normalize(tensor, mean, std)
 
 def get_test_model_input(file:str=None, data_dir:str=None):
-    # For img denormalization
-    mean=[0.485, 0.456, 0.406]
-    std=[0.229, 0.224, 0.225]
         
     # First check if direct file exists
     if file:
         if file.endswith(".mp4"):
             video_tensor = video_to_tensor(file)
-            return video_tensor
+            video_tensor = uint8_to_normalized(video_tensor)
+            return video_tensor.cuda()
         elif file.endswith(".png"):
-            image_tensor = image_to_tensor(file, (1, 3, 1, 224, 224))
-            
-            # TODO make this "parallelized" for gpu
-            for c in range(3):
-                image_tensor[:, c, :, :, :] = (image_tensor[:, c, :, :, :] / 255 - mean[c]) / std[c]
-            
+            image_tensor = image_to_tensor(file, (1, 3, 1, 224, 224)).cuda()
+            image_tensor = uint8_to_normalized(image_tensor)
             return image_tensor
+        raise NotImplementedError
             
     # If not, go to data_dir and get a random file
     # TODO also feed in "test_cases/final_spatiotemporal_videos/"
     if data_dir == "test_cases/final_temporal_videos/":
         random_mp4 = get_random_file(data_dir)
         video_tensor = video_to_tensor(random_mp4)
-        return video_tensor
+        video_tensor = uint8_to_normalized(video_tensor)
+        return video_tensor.cuda()
     elif data_dir == "test_cases/visual_prompting_images/":
         random_png = get_random_file(data_dir)
         image_tensor = image_to_tensor(random_png, (1, 3, 1, 224, 224))
-        
-        # TODO make this "parallelized" for gpu
-        for c in range(3):
-            image_tensor[:, c, :, :, :] = (image_tensor[:, c, :, :, :] / 255 - mean[c]) / std[c]
-        
-        return image_tensor
-
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+            
+        image_tensor = uint8_to_normalized(image_tensor, mean, std)
+        return image_tensor.cuda()
     raise NotImplementedError
+
+def spatial_sample_test_video(test_model_input):
+  
+    # Deterministic spatial sampling (center crop)
+    spatial_idx = 1 # applies center crop
+    test_model_input = util.decoder.utils.spatial_sampling(
+            test_model_input.squeeze(0),
+            spatial_idx=spatial_idx,
+            min_scale=256,
+            max_scale=256,
+            crop_size=224,
+            random_horizontal_flip=False
+                        )
+    test_model_input = test_model_input.unsqueeze(0)
+    return test_model_input # shape (1, 3, 16, 224, 224)
+
