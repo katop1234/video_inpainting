@@ -10,6 +10,8 @@
 # --------------------------------------------------------
 
 import argparse
+import torchvision.transforms as transforms
+from torchvision import datasets
 import datetime, cv2
 from kinetics_and_images import save_frames_as_mp4, get_test_model_input_from_kinetics
 import wandb
@@ -320,18 +322,14 @@ def main(args):
     #         # Return the modified indices as an iterator
     #         return iter(self.custom_indices)
 
-    dataset_train = CVFonly(
-            mode="pretrain",
-        path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv", # This is the path to names of all kinetics files
-        path_to_data_dir="/shared/group/kinetics/train_256/", # video
-        path_to_image_data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/", # images
-        sampling_rate=args.sampling_rate, # 4 by default
-        num_frames=args.num_frames, # 16 by default
-        train_jitter_scales=(256, 320),
-        repeat_aug=args.repeat_aug,
-        jitter_aspect_relative=args.jitter_aspect_relative,
-        jitter_scales_relative=args.jitter_scales_relative,
-    )
+    # simple augmentation
+    transforms_train = transforms.Compose([
+        transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
+        transforms.RandomHorizontalFlip(),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+
+    dataset_train = datasets.ImageFolder("/shared/amir/dataset/arxiv_resized_train_val_split/train/", transform=transforms_train)
 
     if args.distributed:
         num_tasks = misc.get_world_size() # 8 gpus
@@ -349,7 +347,9 @@ def main(args):
     # sampler_train = CustomDistributedSampler(
     #         dataset_train, batch_size=args.batch_size, num_replicas=num_tasks, rank=global_rank
     #     ) # My own for videos + images 
-    sampler_train = torch.utils.data.RandomSampler(dataset_train)
+    sampler_train = torch.utils.data.DistributedSampler(
+            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+        ) # Original
     
     print("Sampler_train = %s" % str(sampler_train))
 
@@ -479,48 +479,48 @@ def main(args):
         # NOTE can comment this to skip training
         
         # TODO uncomment this block between the two notes to train
-        if not (test_image or test_video):
-            train_stats = train_one_epoch(
-                model,
-                data_loader_train,
-                args.accum_iter,
-                optimizer,
-                device,
-                epoch,
-                loss_scaler,
-                log_writer=log_writer,
-                args=args,
-                fp32=args.fp32,
-            )
+        # if not (test_image or test_video):
+        #     train_stats = train_one_epoch(
+        #         model,
+        #         data_loader_train,
+        #         args.accum_iter,
+        #         optimizer,
+        #         device,
+        #         epoch,
+        #         loss_scaler,
+        #         log_writer=log_writer,
+        #         args=args,
+        #         fp32=args.fp32,
+        #     )
 
-            if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
-                checkpoint_path = misc.save_model(
-                    args=args,
-                    model=model,
-                    model_without_ddp=model_without_ddp,
-                    optimizer=optimizer,
-                    loss_scaler=loss_scaler,
-                    epoch=epoch,
-                )
+        #     if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
+        #         checkpoint_path = misc.save_model(
+        #             args=args,
+        #             model=model,
+        #             model_without_ddp=model_without_ddp,
+        #             optimizer=optimizer,
+        #             loss_scaler=loss_scaler,
+        #             epoch=epoch,
+        #         )
 
-            log_stats = {
-                **{f"train_{k}": v for k, v in train_stats.items()},
-                "epoch": epoch,
-            }
+        #     log_stats = {
+        #         **{f"train_{k}": v for k, v in train_stats.items()},
+        #         "epoch": epoch,
+        #     }
 
-            if args.output_dir and misc.is_main_process():
-                if log_writer is not None:
-                    log_writer.flush()
-                with pathmgr.open(
-                    f"{args.output_dir}/log.txt",
-                    "a",
-                ) as f:
-                    f.write(json.dumps(log_stats) + "\n")
+        #     if args.output_dir and misc.is_main_process():
+        #         if log_writer is not None:
+        #             log_writer.flush()
+        #         with pathmgr.open(
+        #             f"{args.output_dir}/log.txt",
+        #             "a",
+        #         ) as f:
+        #             f.write(json.dumps(log_stats) + "\n")
             
-            # From yossi's code
-            if not (test_image or test_video) and misc.is_main_process():
-                wandb.log(log_stats)
-            # From yossi's code
+        #     # From yossi's code
+        #     if not (test_image or test_video) and misc.is_main_process():
+        #         wandb.log(log_stats)
+        #     # From yossi's code
             
         # NOTE can comment this to skip training
 
@@ -535,7 +535,7 @@ def main(args):
         test_model_input = spatial_sample_test_video(test_model_input)
 
         # Override and just get a video directly from training dataset
-        test_model_input = get_test_model_input_from_kinetics(dataset_train)
+        # test_model_input = get_test_model_input_from_kinetics(dataset_train) # NOTE this relies on using Kinetics and CVF as original dataset_train
         
         with torch.no_grad():
             # TODO change test_temporal to True later

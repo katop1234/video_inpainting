@@ -11,6 +11,8 @@ import cv2
 import random
 import torch
 import imageio
+import cv2
+import numpy as np
 
 import torch.utils.data
 from PIL import Image
@@ -30,9 +32,7 @@ def tensor_is_video(tensor):
 def tensor_is_image(tensor):
     return tensor.size()[1:] == (3, 1, 224, 224)
 
-import cv2
-import numpy as np
-
+# TODO put all these helper functions in engine_pretrain.py so it's all consolidated
 def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     # Ensure the frames tensor has the correct shape
     assert frames.shape == torch.Size([1, 3, 16, 224, 224]), "The input tensor should have the shape: (1, 3, 16, 224, 224) or (N, C, T, H, W)"
@@ -59,6 +59,12 @@ def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     # Release the VideoWriter object
     out.release()
     return frames_uint8
+
+def save_test_output(output, name):
+    if output.shape == (1, 3, 16, 224, 224):
+        return save_frames_as_mp4(output, name)
+    elif output.shape == (1, 3, 1, 224, 224):
+        return Image.fromarray(output).save(name)
 
 
 class KineticsAndCVF(torch.utils.data.Dataset):
@@ -600,5 +606,13 @@ class KineticsAndCVF(torch.utils.data.Dataset):
         """
         return len(self._path_to_videos)
 
+# Use to train on images only
+class CVFonly(KineticsAndCVF):
+    def __len__(self):
+        return self.num_images
+
 # Instantiate the Kinetics class
 kinetics_dataset = KineticsAndCVF(mode="pretrain")
+
+def get_test_model_input_from_kinetics(dataset_train):
+    return kinetics_dataset[dataset_train.num_images + 100][0].cuda()

@@ -396,6 +396,7 @@ class MaskedAutoencoderViT(nn.Module):
         ids_remove = torch.stack([ids_remove] * N) # Copy along the batch dimension
         return x_masked, mask, ids_restore, ids_keep
 
+    # DEBUG just see how x is linearized. is it h then w or what order?
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_spatiotemporal=False, test_temporal=False, test_image=False):
 
         test_modes = [int(mode) for mode in [test_spatiotemporal, test_temporal, test_image]]
@@ -736,6 +737,7 @@ class MaskedAutoencoderViT(nn.Module):
         return loss
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False):
+        # DEBUG follow the shape of imgs. It should have 1 in the frame dimension.
         latent, mask, ids_restore, offsets = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_spatiotemporal, test_temporal, test_image)
         pred = self.forward_decoder(latent, ids_restore, offsets)  # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred, mask)
