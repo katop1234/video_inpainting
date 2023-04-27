@@ -37,7 +37,7 @@ from util.kinetics import Kinetics
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from tensorboard.compat.tensorflow_stub.io.gfile import register_filesystem
 from torch.utils.tensorboard import SummaryWriter
-from kinetics_and_images import KineticsAndCVF, CVFonly
+from kinetics_and_images import KineticsAndCVF, CVFonly, save_test_output
 
 # From https://pytorch.org/docs/stable/distributed.html#launch-utility
 
@@ -550,7 +550,7 @@ def main(args):
         
         test_model_output = normalized_to_uint8(test_model_output)
         
-        save_frames_as_mp4(test_model_output, file_name="test_output_video.mp4")
+        save_test_output(test_model_output, name="test_output_video.mp4")
 
         if not (test_image or test_video) and misc.is_main_process():
             wandb_video_object = wandb.Video(
@@ -592,7 +592,7 @@ def main(args):
             
             output_img_name = 'test_model_output_img' + str(i) + '.png'
             
-            Image.fromarray(image_array).save(output_img_name)
+            save_test_output(image_array, output_img_name)
 
             if not (test_image or test_video) and misc.is_main_process():
                 image = wandb.Image(
