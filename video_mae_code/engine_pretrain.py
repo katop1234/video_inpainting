@@ -226,7 +226,7 @@ def denormalize(tensor, mean, std):
         t.mul_(s).add_(m)
     return tensor
 
-def get_test_model_input(file : str, data_dir : str):
+def get_test_model_input(file:str=None, data_dir:str=None):
     # For img denormalization
     mean=[0.485, 0.456, 0.406]
     std=[0.229, 0.224, 0.225]
@@ -237,7 +237,7 @@ def get_test_model_input(file : str, data_dir : str):
             video_tensor = video_to_tensor(file)
             return video_tensor
         elif file.endswith(".png"):
-            image_tensor = image_to_tensor(random_png, (1, 3, 1, 224, 224))
+            image_tensor = image_to_tensor(file, (1, 3, 1, 224, 224))
             
             # TODO make this "parallelized" for gpu
             for c in range(3):

@@ -35,14 +35,16 @@ import numpy as np
 
 def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     # Ensure the frames tensor has the correct shape
-    
     assert frames.shape == torch.Size([1, 3, 16, 224, 224]), "The input tensor should have the shape: (1, 3, 16, 224, 224) or (N, C, T, H, W)"
     
     # Move the tensor to CPU and convert it to numpy array
     frames_np = frames.squeeze(0).permute(1, 2, 3, 0).cpu().numpy()
 
+    # Clamp the values in the range [0, 255]
+    frames_np = np.clip(frames_np, 0, 255)
+
     # Get the video dimensions
-    frames_uint8 = frames_np
+    frames_uint8 = frames_np.astype(np.uint8)
     num_frames, height, width, _ = frames_uint8.shape
 
     # Create a VideoWriter object to save the video
@@ -55,8 +57,9 @@ def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
         out.write(frame)
 
     # Release the VideoWriter object
-    out.release() 
+    out.release()
     return frames_uint8
+
 
 class KineticsAndCVF(torch.utils.data.Dataset):
     """
@@ -72,7 +75,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
     def __init__(
         self,
         mode,
-        path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv", # This is the path to names of all kinetics files TODO
+        path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv",
         path_to_data_dir="/shared/group/kinetics/train_256/", # video
         path_to_image_data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/", # FOR IMAGES
         # decoding setting
@@ -308,7 +311,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
         else:
             raise NotImplementedError("Does not support {} mode".format(self.mode))
 
-        if 0 <= index < self.num_images:  # SELECTION OF IMAGE OR VIDEO
+        if 0 <= index < self.num_images:  # SELECTION OF IMAGE
             # Randomly select an image
 
             img_path = self.image_file_lookup[index]
@@ -318,8 +321,8 @@ class KineticsAndCVF(torch.utils.data.Dataset):
             transforms_train = transforms.Compose([
                 transforms.RandomResizedCrop(output_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
                 transforms.RandomHorizontalFlip(),
-                transforms.ToTensor(),
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+                transforms.ToTensor(), # The ToTensor() operation automatically divides each pixel value by 255 during the conversion.
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]) # Normalizes the tensor by subtracting the mean and dividing by the standard deviation for each channel.
 
             # Load the image from file
             image = Image.open(img_path)
@@ -346,8 +349,9 @@ class KineticsAndCVF(torch.utils.data.Dataset):
                 return transformed_images, torch.tensor(int(index)), index
             else:
                 return transformed_images, torch.tensor(int(index))
+            
         elif index >= self.num_images:
-
+            assert index == self.num_images + 100, "Only training on images + a specific kinetics video at 100 index above self.num_images, got " + str(index) + " and num images is " + str(self.num_images)
             index = index - self.num_images # Sample from the videos you have
 
             self.choose_image = True # select images next batch

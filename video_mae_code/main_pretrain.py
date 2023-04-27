@@ -192,7 +192,7 @@ def get_args_parser():
     parser.add_argument(
         "--clip_grad",
         type=float,
-        default=0.02,
+        default=float("inf"), # NOTE changed this from 0.02 to inf
     )
     parser.add_argument("--no_qkv_bias", action="store_true")
     parser.add_argument("--bias_wd", action="store_true")
@@ -250,6 +250,8 @@ def main(args):
     seed = args.seed + misc.get_rank()
     torch.manual_seed(seed)
     np.random.seed(seed)
+    
+    # TODO remove positional embedding temrporal and then run with the timm transformer block !
 
     cudnn.benchmark = True
 
@@ -417,7 +419,7 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            # find_unused_parameters=True,
+            find_unused_parameters=True,
         )
         model_without_ddp = model.module
 
@@ -458,7 +460,9 @@ def main(args):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
         
-        if not (test_image or test_video): # Actually train
+        # NOTE can comment this to skip training
+        
+        if not (test_image or test_video):
             train_stats = train_one_epoch(
                 model,
                 data_loader_train,
@@ -500,6 +504,8 @@ def main(args):
             if not (test_image or test_video) and misc.is_main_process():
                 wandb.log(log_stats)
             # From yossi's code
+            
+        # NOTE can comment this to skip training
 
         ### Starting evaluation
         model.eval()
@@ -543,7 +549,6 @@ def main(args):
             raise NotImplementedError("Something's funky")
         
         # Denormalize tensor as consistent with given code
-        #test_model_output_denormalized = 255 * engine_pretrain.denormalize(test_model_output, mean=(0.45, 0.45, 0.45), std=(0.225, 0.225, 0.225))
         test_model_output_denormalized = 255 * ((test_model_output * 0.225) + 0.45)
         
         save_frames_as_mp4(test_model_output_denormalized, file_name="test_output_video.mp4")
@@ -557,14 +562,22 @@ def main(args):
             wandb.log({"video": wandb_video_object})
 
         # Test on images
-        for i, img_file in enumerate(os.listdir("test_cases/visual_prompting_images/")):
+        test_img_folder = "test_cases/visual_prompting_images/"
+        for i, img_file in enumerate(os.listdir(test_img_folder)):
+            img_file = test_img_folder + img_file
             test_model_input = get_test_model_input(file=img_file)
             test_model_input = test_model_input.cuda()
 
             with torch.no_grad():
+                # TODO why does it mask it weirdly, like only the bottom 1/4 even after i fixed the mask_test_image function??
                 _, test_model_output, _ = model(test_model_input, test_image=True)
             
-            test_model_output = model.module.unpatchify(test_model_output)
+            if type(model) is torch.nn.parallel.DistributedDataParallel:
+                test_model_output = model.module.unpatchify(test_model_output)
+            elif type(model) is models_mae.MaskedAutoencoderViT:
+                test_model_output = model.unpatchify(test_model_output)
+            else:
+                raise NotImplementedError("Something's funky")
             
             # TODO abstract this away into a function
             mean = np.array([0.485, 0.456, 0.406])
@@ -590,9 +603,11 @@ def main(args):
                     image_array, 
                     )
                             
-            wandb.log({output_img_name: image})
-            
+                wandb.log({output_img_name: image})
+        
         model.train()
+        #exit() # TODO delete later
+        print("Done loop on epoch {}".format(epoch))
         ### End evaluation
 
     total_time = time.time() - start_time
