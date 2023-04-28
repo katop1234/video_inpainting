@@ -97,25 +97,6 @@ class MaskedAutoencoderViT(nn.Module):
             self.pos_embed = nn.Parameter(
                 torch.zeros(1, _num_patches, embed_dim),
             )
-        
-        # NOTE Timm code
-#         self.blocks = nn.ModuleList(
-#             [
-#                 Block(
-#                     dim=embed_dim,
-#                     num_heads=num_heads,
-#                     mlp_ratio=mlp_ratio,
-#                     qkv_bias=not no_qkv_bias,
-#                     drop=0.,
-#                     attn_drop=0.,
-#                     init_values=None,
-#                     drop_path=0.,
-#                     act_layer=nn.GELU,
-#                     norm_layer=norm_layer,
-#                 )
-#                 for i in range(depth)
-#             ]
-# )
 
         self.blocks = nn.ModuleList(
             [
@@ -171,25 +152,6 @@ class MaskedAutoencoderViT(nn.Module):
                 for i in range(decoder_depth)
             ]
         )
-    
-    # NOTE timm block
-    #     self.decoder_blocks = nn.ModuleList(
-    # [
-    #     Block(
-    #         dim=decoder_embed_dim,
-    #         num_heads=decoder_num_heads,
-    #         mlp_ratio=mlp_ratio,
-    #         qkv_bias=not no_qkv_bias,
-    #         drop=0.,
-    #         attn_drop=0.,
-    #         init_values=None,
-    #         drop_path=0.,
-    #         act_layer=nn.GELU,
-    #         norm_layer=norm_layer,
-    #     )
-    #     for i in range(decoder_depth)
-    # ]
-    #     )
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(
@@ -278,7 +240,7 @@ class MaskedAutoencoderViT(nn.Module):
         imgs = x.reshape(shape=(N, 3, T, H, W))
         return imgs
 
-    def random_masking(self, x):
+    def random_masking(self, x, mask_ratio_image=0.75, mask_ratio_video=0.9):
         """
         Perform per-sample random masking by per-sample shuffling.
         Per-sample shuffling is done by argsort random noise.
@@ -288,10 +250,10 @@ class MaskedAutoencoderViT(nn.Module):
 
         if L == 14 ** 2 * 16:
             # video
-            mask_ratio = self.mask_ratio_video
+            mask_ratio = mask_ratio_video
             pass 
         elif L == 14 ** 2 * 1:
-            mask_ratio = self.mask_ratio_image
+            mask_ratio = mask_ratio_image
             # image
             pass
         else:
@@ -396,14 +358,12 @@ class MaskedAutoencoderViT(nn.Module):
         ids_remove = torch.stack([ids_remove] * N) # Copy along the batch dimension
         return x_masked, mask, ids_restore, ids_keep
 
-    # DEBUG just see how x is linearized. is it h then w or what order?
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_spatiotemporal=False, test_temporal=False, test_image=False):
-
         test_modes = [int(mode) for mode in [test_spatiotemporal, test_temporal, test_image]]
         assert sum(test_modes) <= 1, "Only one or zero test modes can be active at a time"
-
-        self.mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2) # quantizes it 
-        self.mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it 
+        
+        mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2 * 1) # quantizes it 
+        mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it 
 
         pretraining_mode = True
         if test_spatiotemporal or test_temporal or test_image:
@@ -422,7 +382,7 @@ class MaskedAutoencoderViT(nn.Module):
         # masking: length -> length * mask_ratio
         if pretraining_mode:
             # Do random masking
-            x, mask, ids_restore, ids_keep = self.random_masking(x)
+            x, mask, ids_restore, ids_keep = self.random_masking(x, mask_ratio_image, mask_ratio_video)
         
         elif test_image:
             x, mask, ids_restore, ids_keep = self.mask_test_image(x)
@@ -438,15 +398,16 @@ class MaskedAutoencoderViT(nn.Module):
             x, mask, ids_restore, ids_keep = self.mask_temporal(x)
             pass 
         else:
-            assert 1==0, "Invalid mode. Either have pretraining, test temporal, or test spatiotemporal"
+            raise NotImplementedError("Invalid mode. Either have pretraining, test temporal, or test spatiotemporal")
             
         # Check if output is for a video tensor (torch.Size([4, 3136, 1024]))
         # 3136 = 14 ** 2 * 16
         # 196 = 14 ** 2 * 1
-        if x.shape[1:] == torch.Size([int(3136*(1-self.mask_ratio_video)), 1024]) and mask.shape[1:] == torch.Size([3136]):
+
+        if x.shape[1:] == torch.Size([int(3136*(1-mask_ratio_video)), 1024]) and mask.shape[1:] == torch.Size([3136]):
             # Valid video tensor
             pass
-        elif x.shape[1:] == torch.Size([int(196*(1-self.mask_ratio_image)), 1024]) and mask.shape[1:] == torch.Size([196]):
+        elif x.shape[1:] == torch.Size([int(196*(1-mask_ratio_image)), 1024]) and mask.shape[1:] == torch.Size([196]):
             # Valid image tensor
             pass
         else:
@@ -479,7 +440,7 @@ class MaskedAutoencoderViT(nn.Module):
             
             # TODO try to have less redundant code
             offsets = []
-            if ids_keep.shape[1] == (1 - self.mask_ratio_image) * 196:
+            if ids_keep.shape[1] == (1 - mask_ratio_image) * 196:
                 # image
                 '''
                 Basically, for images, the ids to keep ranges from 0->195, so we need to add 0->15 * 196 to each row of ids_keep
@@ -489,8 +450,7 @@ class MaskedAutoencoderViT(nn.Module):
                     frame_to_simulate = random.randint(0, 15)
                     offset = frame_to_simulate * 196
                     ids_keep[batch_index] = ids_keep[batch_index] + offset 
-                    offsets.append(offset)
-                    
+                    offsets.append(offset)   
             elif ids_keep.shape[1] == 196 * 3 / 4:
                 # test image
                 '''
@@ -519,9 +479,8 @@ class MaskedAutoencoderViT(nn.Module):
                 
                 # Add offsets to ids_keep
                 ids_keep = ids_keep + offsets_expanded
-                '''
-                    
-            elif ids_keep.shape[1] == (1 - self.mask_ratio_video) * 3136:
+                '''       
+            elif ids_keep.shape[1] == (1 - mask_ratio_video) * 3136:
                 # video
                 pass
             elif ids_keep.shape[1] == 3136 * 9 / 16:
@@ -566,7 +525,7 @@ class MaskedAutoencoderViT(nn.Module):
                     1,
                 )
 
-        x = x.view([N, -1, C]) # + pos_embed # WARNING REMOVED POS EMBEDDING
+        x = x.view([N, -1, C]) + pos_embed
 
         # apply Transformer blocks
         for blk in self.blocks:
@@ -581,16 +540,19 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x, mask, ids_restore, offsets
 
-    def forward_decoder(self, x, ids_restore, offsets: list):
+    def forward_decoder(self, x, ids_restore, offsets: list, mask_ratio_image=0.75, mask_ratio_video=0.9):
         # TODO update offsets to work w out list
-        if not offsets:
-            offsets = [0] * x.shape[0]
+        # if not offsets:
+        #     offsets = [0] * x.shape[0]
         
-        assert len(offsets) == x.shape[0], "each offset corresponds to a single batch"
+        # assert len(offsets) == x.shape[0], "each offset corresponds to a single batch"
+        
+        mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2) # quantizes it 
+        mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it 
 
-        if x.shape[1] == 14 ** 2 * (1 - self.mask_ratio_image) * 1 or x.shape[1] == 14 ** 2 * (0.75) * 1: # image and image test. functionally the same
+        if x.shape[1] == 14 ** 2 * (1 - mask_ratio_image) * 1 or x.shape[1] == 14 ** 2 * (0.75) * 1: # image and image test. functionally the same
             T = 1 
-        elif x.shape[1] == 14 ** 2 * (1 - self.mask_ratio_video) * 16: # video
+        elif x.shape[1] == 14 ** 2 * (1 - mask_ratio_video) * 16: # video
             T = 16
         elif x.shape[1] == 3136 * 9 / 16: # video temporal inference
             T = 16
@@ -644,27 +606,32 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             decoder_pos_embed = self.decoder_pos_embed[:, :, :]
 
-        # add pos embed
         # TODO comment from Amir
         # the following code L427-L449 uses loops, rewrite without using loops to make it more GPU efficient
         # The idea is that you almost never want to use for loops for computation because it is inefficient, unless you have too. E.g, SGD.
+        # DEBUG check decoder_pos_emb shape
         if x.shape[1] == 1 + 14 ** 2: # image
-            for batch_index in range(x.shape[0]):
-                cls = x[batch_index, :1, :] # store cls on the side because unaffected by frame offsets
-                data_x = x[batch_index, 1:, :]
+            # Offset code (random temporal embedding) WARNING do not keep with below
+            # for batch_index in range(x.shape[0]):
+            #     cls = x[batch_index, :1, :] # store cls on the side because unaffected by frame offsets
+            #     data_x = x[batch_index, 1:, :]
 
-                cls_decoder_pos_embed = decoder_pos_embed[0, :1, :]
-                data_decoder_pos_embed = decoder_pos_embed[0, 1:, :]
+            #     cls_decoder_pos_embed = decoder_pos_embed[0, :1, :]
+            #     data_decoder_pos_embed = decoder_pos_embed[0, 1:, :]
 
-                first_frame = offsets[batch_index]
-                last_frame = offsets[batch_index] + 196
-                data_decoder_pos_embed = data_decoder_pos_embed[first_frame:last_frame, :]
+            #     first_frame = offsets[batch_index]
+            #     last_frame = offsets[batch_index] + 196
+            #     data_decoder_pos_embed = data_decoder_pos_embed[first_frame:last_frame, :]
                 
-                x[batch_index, 1:, :] = data_x # + data_decoder_pos_embed # WARNING removed pos embedding as per amirs suggestion
-                x[batch_index, :1, :] = cls # + cls_decoder_pos_embed # WARNING removed pos embedding as per amirs suggestion
+            #     x[batch_index, 1:, :] = data_x # + data_decoder_pos_embed # WARNING removed pos embedding as per amirs suggestion
+            #     x[batch_index, :1, :] = cls # + cls_decoder_pos_embed # WARNING removed pos embedding as per amirs suggestion
 
+            # WARNING do not keep with above
+            # No offsets
+            x = x + decoder_pos_embed[:, :197, :]
+            pass
         elif x.shape[1] == 1 + (14 ** 2) * 16: # video
-            x = x # + decoder_pos_embed # WARNING removed pos embedding as per amirs suggestion
+            x = x + decoder_pos_embed
         else:
             print("got bad x shape when adding decoder pos emb", x.shape)
             raise NotImplementedError 
@@ -720,9 +687,9 @@ class MaskedAutoencoderViT(nn.Module):
         target = self.patchify(_imgs)
         
         assert torch.allclose(_imgs.float(), self.unpatchify(target).float(), atol=0.01, rtol=0.01), "unpatchify(target) should yield _imgs"
+        assert not self.norm_pix_loss
         
         if self.norm_pix_loss:
-            assert not self.norm_pix_loss
             mean = target.mean(dim=-1, keepdim=True)
             var = target.var(dim=-1, keepdim=True)
             target = (target - mean) / (var + 1.0e-6) ** 0.5
@@ -737,9 +704,8 @@ class MaskedAutoencoderViT(nn.Module):
         return loss
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False):
-        # DEBUG follow the shape of imgs. It should have 1 in the frame dimension.
         latent, mask, ids_restore, offsets = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_spatiotemporal, test_temporal, test_image)
-        pred = self.forward_decoder(latent, ids_restore, offsets)  # [N, L, p*p*3]
+        pred = self.forward_decoder(latent, ids_restore, offsets, mask_ratio_image, mask_ratio_video)  # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
 
