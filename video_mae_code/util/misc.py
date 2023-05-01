@@ -275,7 +275,7 @@ def init_distributed_mode(args):
         "| distributed init (rank {}): {}, gpu {}".format(
             args.rank, args.dist_url, args.gpu
         ),
-        # flush=True,
+        flush=True,
     )
     torch.distributed.init_process_group(
         backend=args.dist_backend,

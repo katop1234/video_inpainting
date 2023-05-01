@@ -201,7 +201,7 @@ def get_args_parser():
         "--fp32",
         action="store_true",
     )
-    parser.set_defaults(fp32=True)
+    parser.set_defaults(fp32=False)
     parser.add_argument(
         "--jitter_scales_relative",
         default=[0.5, 1.0],
@@ -320,10 +320,10 @@ def main(args):
         transforms.ToTensor(),
         transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
 
-    dataset_train = datasets.ImageFolder("/shared/amir/dataset/arxiv_resized_train_val_split/train/",
+    dataset_train = datasets.ImageFolder("/home/amir/Datasets/arxiv_resized_train_val_split/train/",
                                          transform=transforms_train)
 
-    if args.distributed:
+    if True:
         num_tasks = misc.get_world_size()  # 8 gpus
         global_rank = misc.get_rank()
         sampler_train = torch.utils.data.DistributedSampler(
@@ -422,7 +422,7 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            find_unused_parameters=True,
+            find_unused_parameters=False,
         )
         model_without_ddp = model.module
 
