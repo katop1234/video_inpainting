@@ -420,7 +420,7 @@ def main(args):
 
             if misc.is_main_process():
                 wandb.log(log_stats)
-                visualize_prompting(model, args.video_prompts_dir, args.image_prompts_dir)
+                visualize_prompting(model, args.image_prompts_dir, args.video_prompts_dir)
 
         print("Done loop on epoch {}".format(epoch))
 
