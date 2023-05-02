@@ -243,9 +243,9 @@ def tensor_normalize(tensor, mean, std):
     """
     tensor = tensor.float()
     tensor = tensor / 255.0
-    if type(mean) == tuple:
+    if type(mean) == tuple or type(mean) == list:
         mean = torch.tensor(mean)
-    if type(std) == tuple:
+    if type(std) == tuple or type(std) == list:
         std = torch.tensor(std)
     
     if tensor.ndim == 5:

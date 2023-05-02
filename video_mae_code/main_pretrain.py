@@ -13,13 +13,11 @@ import argparse
 import torchvision.transforms as transforms
 from torchvision import datasets
 import datetime
-# from kinetics_and_images import save_frames_as_mp4
 import wandb
 import json
 import os
 import time
 from util.eval import visualize_prompting
-# import util.env
 
 import util.misc as misc
 
@@ -123,13 +121,13 @@ def get_args_parser():
 
     parser.add_argument(
         "--image_prompts_dir",
-        default="",
+        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/visual_prompting_images/",
         help="Image folder containing visualization examples.",
     )
 
     parser.add_argument(
         "--video_prompts_dir",
-        default="",
+        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/final_temporal_videos/",
         help="Folder containing video visualization examples.",
     )
 
@@ -413,7 +411,7 @@ def main(args):
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
 
-            if not (test_image or test_video) and misc.is_main_process():
+            if misc.is_main_process():
                 wandb.log(log_stats)
                 visualize_prompting(model, args.video_prompts_dir, args.image_prompts_dir)
 

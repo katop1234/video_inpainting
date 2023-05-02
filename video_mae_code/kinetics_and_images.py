@@ -61,9 +61,9 @@ def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     return frames_uint8
 
 def save_test_output(output, name):
-    if output.shape == (1, 3, 16, 224, 224):
+    if output.shape == (1, 3, 16, 224, 224): # WARNING are the dimensions right here
         return save_frames_as_mp4(output, name)
-    elif output.shape == (1, 3, 1, 224, 224):
+    elif output.shape == (224, 224, 3):
         return Image.fromarray(output).save(name)
 
 
@@ -288,6 +288,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
                 decoded, then return the index of the video. If not, return the
                 index of the video replacement that can be decoded.
         """
+        
         if self.mode in ["pretrain", "finetune", "val"]:
             # -1 indicates random sampling.
             temporal_sample_index = -1
@@ -356,7 +357,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
             else:
                 return transformed_images, torch.tensor(int(index))
             
-        elif index >= self.num_images:
+        elif index >= self.num_images: # SELECTION OF VIDEO
             assert index == self.num_images + 100, "Only training on images + a specific kinetics video at 100 index above self.num_images, got " + str(index) + " and num images is " + str(self.num_images)
             index = index - self.num_images # Sample from the videos you have
 

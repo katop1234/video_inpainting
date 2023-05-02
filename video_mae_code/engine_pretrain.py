@@ -194,6 +194,10 @@ def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
     
     return video_tensor
 
+def check_folder_equality(str1, str2):
+    n = len(str2)
+    return str1[-n:] == str2
+
 def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
     '''
     Returns a tensor of shape (1, 3, 1, 224, 224) from an image
@@ -222,7 +226,9 @@ def normalized_to_uint8(tensor, mean=(0.45, 0.45, 0.45), std=(0.225, 0.225, 0.22
     if type(std) is tuple:
         std = list(std)
         
-    return util.decoder.utils.revert_tensor_normalize(tensor, mean, std)
+    output = util.decoder.utils.revert_tensor_normalize(tensor, mean, std)
+    output = torch.round(output)
+    return output
 
 def get_test_model_input(file:str=None, data_dir:str=None):
         
@@ -234,20 +240,25 @@ def get_test_model_input(file:str=None, data_dir:str=None):
             return video_tensor.cuda()
         elif file.endswith(".png"):
             image_tensor = image_to_tensor(file, (1, 3, 1, 224, 224)).cuda()
-            image_tensor = uint8_to_normalized(image_tensor)
+            # TODO use the same mean, std across video/image also
+            mean = [0.485, 0.456, 0.406]
+            std = [0.229, 0.224, 0.225]
+            image_tensor = uint8_to_normalized(image_tensor, mean, std)
             return image_tensor
         raise NotImplementedError
             
     # If not, go to data_dir and get a random file
     # TODO also feed in "test_cases/final_spatiotemporal_videos/"
-    if data_dir == "test_cases/final_temporal_videos/":
+    if check_folder_equality(data_dir, "test_cases/final_temporal_videos/"):
         random_mp4 = get_random_file(data_dir)
         video_tensor = video_to_tensor(random_mp4)
         video_tensor = uint8_to_normalized(video_tensor)
         return video_tensor.cuda()
-    elif data_dir == "test_cases/visual_prompting_images/":
+    
+    elif check_folder_equality(data_dir, "test_cases/visual_prompting_images/"):
         random_png = get_random_file(data_dir)
         image_tensor = image_to_tensor(random_png, (1, 3, 1, 224, 224))
+        # TODO use the same mean, std across video/image also
         mean = [0.485, 0.456, 0.406]
         std = [0.229, 0.224, 0.225]
             
@@ -269,4 +280,3 @@ def spatial_sample_test_video(test_model_input):
                         )
     test_model_input = test_model_input.unsqueeze(0)
     return test_model_input # shape (1, 3, 16, 224, 224)
-
