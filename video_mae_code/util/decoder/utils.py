@@ -6,6 +6,7 @@ import logging
 import os
 import random
 import time
+import util.decoder.constants as constants
 from collections import defaultdict
 
 import cv2
@@ -17,7 +18,6 @@ from torch.utils.data.distributed import DistributedSampler
 from . import transform as transform
 
 logger = logging.getLogger(__name__)
-
 
 def retry_load_images(image_paths, retry=10, backend="pytorch"):
     """
@@ -48,7 +48,6 @@ def retry_load_images(image_paths, retry=10, backend="pytorch"):
             time.sleep(1.0)
         if i == retry - 1:
             raise Exception("Failed to load images {}".format(image_paths))
-
 
 def get_sequence(center_idx, half_len, sample_rate, num_frames):
     """
@@ -144,7 +143,6 @@ def spatial_sampling(
         frames = transform.uniform_crop(frames, crop_size, spatial_idx)
     return frames
 
-
 def as_binary_vector(labels, num_classes):
     """
     Construct binary label vector given a list of label indices.
@@ -160,7 +158,6 @@ def as_binary_vector(labels, num_classes):
         label_arr[lbl] = 1.0
     return label_arr
 
-
 def aggregate_labels(label_list):
     """
     Join a list of label list.
@@ -174,7 +171,6 @@ def aggregate_labels(label_list):
         for l in labels:
             all_labels.append(l)
     return list(set(all_labels))
-
 
 def convert_to_video_level_labels(labels):
     """
@@ -233,7 +229,7 @@ def load_image_lists(frame_list_file, prefix="", return_list=False):
         return image_paths, labels
     return dict(image_paths), dict(labels)
 
-def tensor_normalize(tensor, mean, std):
+def tensor_normalize(tensor):
     """
     Normalize a given tensor by subtracting the mean and dividing the std.
     Args:
@@ -241,25 +237,32 @@ def tensor_normalize(tensor, mean, std):
         mean (tensor or list): mean value to subtract.
         std (tensor or list): std to divide.
     """
+    assert tensor.shape in [(1, 3, 16, 224, 224), (1, 3, 1, 224, 224)], "Other shapes not supported"
+    
     tensor = tensor.float()
+    mean = constants.mean.to(tensor.device)
+    std = constants.std.to(tensor.device)
+    
     tensor = tensor / 255.0
-    if type(mean) == tuple or type(mean) == list:
-        mean = torch.tensor(mean)
-    if type(std) == tuple or type(std) == list:
-        std = torch.tensor(std)
-    
-    if tensor.ndim == 5:
-        # Test time
-        assert tensor.shape in [(1, 3, 16, 224, 224), (1, 3, 1, 224, 224)]
-        # Reshape mean and std to match the tensor dimensions
-        mean = mean.view(1, 3, 1, 1, 1)
-        std = std.view(1, 3, 1, 1, 1)
-    
-    mean = mean.to(tensor.device)
-    std = std.to(tensor.device)
-    
     tensor = tensor - mean
     tensor = tensor / std
+    return tensor
+
+def revert_tensor_normalize(tensor):
+    """
+    Revert normalization for a given tensor by multiplying by the std and adding the mean.
+    Args:
+        tensor (tensor): tensor to revert normalization.
+        mean (tensor or list): mean value to add.
+        std (tensor or list): std to multiply.
+    """
+    tensor = tensor.float()
+    mean = constants.mean.to(tensor.device)
+    std = constants.std.to(tensor.device)
+    
+    tensor = tensor * std
+    tensor = tensor + mean
+    tensor = tensor * 255
     return tensor
 
 def get_random_sampling_rate(long_cycle_sampling_rate, sampling_rate):
@@ -272,24 +275,6 @@ def get_random_sampling_rate(long_cycle_sampling_rate, sampling_rate):
         return random.randint(sampling_rate, long_cycle_sampling_rate)
     else:
         return sampling_rate
-
-def revert_tensor_normalize(tensor, mean, std):
-    """
-    Revert normalization for a given tensor by multiplying by the std and adding the mean.
-    Args:
-        tensor (tensor): tensor to revert normalization.
-        mean (tensor or list): mean value to add.
-        std (tensor or list): std to multiply.
-    """
-    if type(mean) == list: # TODO see tensor dims and mean std dims
-        mean = torch.tensor(mean).view(1, 3, 1, 1, 1).cuda()
-    if type(std) == list:
-        std = torch.tensor(std).view(1, 3, 1, 1, 1).cuda()
-    tensor = tensor * std
-    tensor = tensor + mean
-    
-    tensor = tensor * 255
-    return tensor
 
 def create_sampler(dataset, shuffle, cfg):
     """

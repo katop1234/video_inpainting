@@ -9,6 +9,7 @@ import numpy as np
 import torch
 import cv2
 import random
+import util.decoder.constants as constants
 import torch
 import imageio
 import cv2
@@ -31,41 +32,6 @@ def tensor_is_video(tensor):
 
 def tensor_is_image(tensor):
     return tensor.size()[1:] == (3, 1, 224, 224)
-
-# TODO put all these helper functions in engine_pretrain.py so it's all consolidated
-def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
-    # Ensure the frames tensor has the correct shape
-    assert frames.shape == torch.Size([1, 3, 16, 224, 224]), "The input tensor should have the shape: (1, 3, 16, 224, 224) or (N, C, T, H, W)"
-    
-    # Move the tensor to CPU and convert it to numpy array
-    frames_np = frames.squeeze(0).permute(1, 2, 3, 0).cpu().numpy()
-
-    # Clamp the values in the range [0, 255]
-    frames_np = np.clip(frames_np, 0, 255)
-
-    # Get the video dimensions
-    frames_uint8 = frames_np.astype(np.uint8)
-    num_frames, height, width, _ = frames_uint8.shape
-
-    # Create a VideoWriter object to save the video
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(file_name, fourcc, 30.0, (width, height))
-
-    # Write each frame to the VideoWriter object
-    for i in range(num_frames):
-        frame = cv2.cvtColor(frames_uint8[i], cv2.COLOR_RGB2BGR)
-        out.write(frame)
-
-    # Release the VideoWriter object
-    out.release()
-    return frames_uint8
-
-def save_test_output(output, name):
-    if output.shape == (1, 3, 16, 224, 224): # WARNING are the dimensions right here
-        return save_frames_as_mp4(output, name)
-    elif output.shape == (224, 224, 3):
-        return Image.fromarray(output).save(name)
-
 
 class KineticsAndCVF(torch.utils.data.Dataset):
     """
@@ -97,8 +63,8 @@ class KineticsAndCVF(torch.utils.data.Dataset):
         test_num_spatial_crops=3,
         test_crop_size=256,
         # norm setting
-        mean=(0.45, 0.45, 0.45),
-        std=(0.225, 0.225, 0.225),
+        mean=constants.mean,
+        std=constants.std,
         # other parameters
         enable_multi_thread_decode=False,
         use_offset_sampling=True,
@@ -329,7 +295,7 @@ class KineticsAndCVF(torch.utils.data.Dataset):
                 transforms.RandomResizedCrop(output_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
                 transforms.RandomHorizontalFlip(),
                 transforms.ToTensor(), # The ToTensor() operation automatically divides each pixel value by 255 during the conversion.
-                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])]) # Normalizes the tensor by subtracting the mean and dividing by the standard deviation for each channel.
+                transforms.Normalize(mean=self._mean, std=self._std)]) # Normalizes the tensor by subtracting the mean and dividing by the standard deviation for each channel.
 
             # Load the image from file
             image = Image.open(img_path)
