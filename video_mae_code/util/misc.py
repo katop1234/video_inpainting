@@ -401,6 +401,7 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
             if "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
             print("With optim & sched!")
+    return args.resume
 
 
 def all_reduce_mean(x):

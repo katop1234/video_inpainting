@@ -10,22 +10,16 @@
 # --------------------------------------------------------
 
 import math, cv2
-from PIL import Image
 import util
 from typing import Iterable
-import itertools, random, os
-import numpy as np, shutil
-import torch
-import torchvision.transforms as transforms
+import random
+import numpy as np
 from PIL import Image
 
 import util.lr_sched as lr_sched
 import util.misc as misc
 import os
-from datetime import datetime
 import torch
-from iopath.common.file_io import g_pathmgr as pathmgr
-from kinetics_and_images import KineticsAndCVF
 
 def train_one_epoch(
     model: torch.nn.Module,
@@ -91,18 +85,6 @@ def train_one_epoch(
             )
 
         loss_value = loss.item()
-
-        if not math.isfinite(loss_value):
-            for _ in range(args.num_checkpoint_del):
-                # WARNING commented this out but wtf why does it delete all the checkpoints whenever theres a nan loss??
-                # try:
-                #     path = misc.get_last_checkpoint(args)
-                #     pathmgr.rm(path)
-                #     print(f"remove checkpoint {path}")
-                # except Exception as _:
-                #     pass
-                pass
-            raise Exception("Loss is {}, stopping training".format(loss_value))
 
         loss /= accum_iter
         loss_scaler(
