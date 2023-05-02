@@ -31,13 +31,6 @@ from engine_pretrain import train_one_epoch
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from torch.utils.tensorboard import SummaryWriter
 
-###
-test_image = False
-test_video = False
-###
-
-assert not (test_image and test_video), "Can't test both image and video"
-
 
 def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
@@ -380,47 +373,46 @@ def main(args):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
 
-        if not (test_image or test_video):
-            train_stats = train_one_epoch(
-                model,
-                data_loader_train,
-                args.accum_iter,
-                optimizer,
-                device,
-                epoch,
-                loss_scaler,
-                log_writer=log_writer,
+        train_stats = train_one_epoch(
+            model,
+            data_loader_train,
+            args.accum_iter,
+            optimizer,
+            device,
+            epoch,
+            loss_scaler,
+            log_writer=log_writer,
+            args=args,
+            fp32=args.fp32,
+        )
+
+        if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
+            checkpoint_path = misc.save_model(
                 args=args,
-                fp32=args.fp32,
+                model=model,
+                model_without_ddp=model_without_ddp,
+                optimizer=optimizer,
+                loss_scaler=loss_scaler,
+                epoch=epoch,
             )
 
-            if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
-                checkpoint_path = misc.save_model(
-                    args=args,
-                    model=model,
-                    model_without_ddp=model_without_ddp,
-                    optimizer=optimizer,
-                    loss_scaler=loss_scaler,
-                    epoch=epoch,
-                )
+        log_stats = {
+            **{f"train_{k}": v for k, v in train_stats.items()},
+            "epoch": epoch,
+        }
 
-            log_stats = {
-                **{f"train_{k}": v for k, v in train_stats.items()},
-                "epoch": epoch,
-            }
+        if args.output_dir and misc.is_main_process():
+            if log_writer is not None:
+                log_writer.flush()
+            with pathmgr.open(
+                    f"{args.output_dir}/log.txt",
+                    "a",
+            ) as f:
+                f.write(json.dumps(log_stats) + "\n")
 
-            if args.output_dir and misc.is_main_process():
-                if log_writer is not None:
-                    log_writer.flush()
-                with pathmgr.open(
-                        f"{args.output_dir}/log.txt",
-                        "a",
-                ) as f:
-                    f.write(json.dumps(log_stats) + "\n")
-
-            if misc.is_main_process():
-                wandb.log(log_stats)
-                visualize_prompting(model, args.image_prompts_dir, args.video_prompts_dir)
+        if misc.is_main_process():
+            wandb.log(log_stats)
+            visualize_prompting(model, args.image_prompts_dir, args.video_prompts_dir)
 
         print("Done loop on epoch {}".format(epoch))
 
