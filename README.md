@@ -1,5 +1,9 @@
 # Video Prompting Readme
 
+## Availiable Machines in Darrell Cluster
+fangtooth - gpus 0,2,3,4,5,6,7,8
+kraken - all gpus (there are 2 big 48GB gpus) - if running on these, please remember to use accumulate_iter.
+
 ## Install env 
 ``conda env create -f environment.yml``
 This should take care of most dependencies.
