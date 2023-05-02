@@ -10,19 +10,19 @@
 # --------------------------------------------------------
 
 import argparse
+import json
 import torchvision.transforms as transforms
 from torchvision import datasets
 import datetime
 import wandb
-import json
 import os
 import time
 from util.eval import visualize_prompting
-
+import util.decoder.constants as constants
+import util.env  # do not uncomment
 import util.misc as misc
-
 import numpy as np
-import timm
+import timm # do not uncomment
 import torch
 import torch.backends.cudnn as cudnn
 from iopath.common.file_io import g_pathmgr as pathmgr
@@ -37,6 +37,7 @@ test_video = False
 ###
 
 assert not (test_image and test_video), "Can't test both image and video"
+
 
 def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
@@ -67,8 +68,15 @@ def get_args_parser():
     parser.add_argument("--input_size", default=224, type=int, help="images input size")
 
     parser.add_argument(
-        "--mask_ratio",
+        "--mask_ratio_video",
         default=0.9,
+        type=float,
+        help="Masking ratio (percentage of removed patches). 0.9 for video, and 0.75 for images",
+    )
+
+    parser.add_argument(
+        "--mask_ratio_image",
+        default=0.75,
         type=float,
         help="Masking ratio (percentage of removed patches). 0.9 for video, and 0.75 for images",
     )
@@ -130,7 +138,6 @@ def get_args_parser():
         default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/final_temporal_videos/",
         help="Folder containing video visualization examples.",
     )
-
 
     parser.add_argument(
         "--output_dir",
@@ -254,7 +261,7 @@ def main(args):
         transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        transforms.Normalize(mean=constants.mean, std=constants.std)])
 
     dataset_train = datasets.ImageFolder("/home/amir/Datasets/arxiv_resized_train_val_split/train/",
                                          transform=transforms_train)
