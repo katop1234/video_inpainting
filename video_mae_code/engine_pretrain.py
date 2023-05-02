@@ -97,7 +97,8 @@ def train_one_epoch(
         metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
         metric_logger.update(cpu_mem_all=misc.cpu_mem_usage()[1])
         metric_logger.update(gpu_mem=misc.gpu_mem_usage())
-        metric_logger.update(mask_ratio=args.mask_ratio)
+        metric_logger.update(mask_ratio=args.mask_ratio_image)
+        metric_logger.update(mask_ratio=args.mask_ratio_video)
 
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
