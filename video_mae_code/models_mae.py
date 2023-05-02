@@ -628,7 +628,7 @@ class MaskedAutoencoderViT(nn.Module):
 
             # WARNING do not keep with above
             # No offsets
-            x = x + decoder_pos_embed[:, :197, :]
+            x = x + decoder_pos_embed[:, :197, :] # NOTE treats as if came from first frame only
             pass
         elif x.shape[1] == 1 + (14 ** 2) * 16: # video
             x = x + decoder_pos_embed
