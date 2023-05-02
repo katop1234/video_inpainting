@@ -180,12 +180,11 @@ def reconstruct(mask, ground_truth, test_model_output):
 
 
 @torch.no_grad()
-def visualize_prompting(model, input_video_viz_dir, input_image_viz_dir):
+def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
     model.eval()
     visualize_image_prompting(model, input_image_viz_dir)
     visualize_video_prompting(model, input_video_viz_dir)
     model.train()
-
 
 @torch.no_grad()
 def visualize_image_prompting(model, input_image_viz_dir):
