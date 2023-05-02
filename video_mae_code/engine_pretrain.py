@@ -258,7 +258,10 @@ def get_test_model_input(file:str=None, data_dir:str=None):
             return video_tensor.cuda()
         elif file.endswith(".png"):
             image_tensor = image_to_tensor(file, (1, 3, 1, 224, 224)).cuda()
-            image_tensor = uint8_to_normalized(image_tensor)
+            # TODO use the same mean, std across video/image also
+            mean = [0.485, 0.456, 0.406]
+            std = [0.229, 0.224, 0.225]
+            image_tensor = uint8_to_normalized(image_tensor, mean, std)
             return image_tensor
         raise NotImplementedError
             
@@ -273,6 +276,7 @@ def get_test_model_input(file:str=None, data_dir:str=None):
     elif check_folder_equality(data_dir, "test_cases/visual_prompting_images/"):
         random_png = get_random_file(data_dir)
         image_tensor = image_to_tensor(random_png, (1, 3, 1, 224, 224))
+        # TODO use the same mean, std across video/image also
         mean = [0.485, 0.456, 0.406]
         std = [0.229, 0.224, 0.225]
             
