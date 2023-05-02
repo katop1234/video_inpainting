@@ -5,7 +5,7 @@ import numpy as np
 import models_mae
 import cv2
 from PIL import Image
-import util
+from util.decoder import utils
 import random
 
 
@@ -125,11 +125,11 @@ def uint8_to_normalized(tensor):
     Convert a uint8 tensor to a float tensor and normalize the values.
     tensor: PyTorch tensor, the uint8 tensor to convert
     """
-    return util.decoder.utils.tensor_normalize(tensor)
+    return utils.tensor_normalize(tensor)
 
 
 def normalized_to_uint8(tensor):
-    output = util.decoder.utils.revert_tensor_normalize(tensor)
+    output = utils.revert_tensor_normalize(tensor)
     output = torch.round(output)
     return output
 
@@ -161,7 +161,7 @@ def get_test_model_input(file: str = None, data_dir: str = None):
 
 def spatial_sample_test_video(test_model_input):
     spatial_idx = 1
-    test_model_input = util.decoder.utils.spatial_sampling(
+    test_model_input = utils.spatial_sampling(
         test_model_input.squeeze(0),
         spatial_idx=spatial_idx,
         min_scale=256,
