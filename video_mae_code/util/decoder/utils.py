@@ -260,8 +260,8 @@ def revert_tensor_normalize(tensor):
     mean = constants.mean.to(tensor.device)
     std = constants.std.to(tensor.device)
     
-    tensor = tensor * std
-    tensor = tensor + mean
+    tensor = tensor * std.view(1, 3, 1, 1, 1).to(tensor.device)
+    tensor = tensor + mean.view(1, 3, 1, 1, 1).to(tensor.device)
     tensor = tensor * 255
     return tensor
 
