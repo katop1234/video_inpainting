@@ -17,12 +17,12 @@ import datetime
 import wandb
 import os
 import time
+from dataset_factory import MergedDataset
 from util.eval import visualize_prompting
-import util.decoder.constants as constants
 import util.env  # do not uncomment
 import util.misc as misc
 import numpy as np
-import timm # do not uncomment
+import timm  # do not uncomment
 import torch
 import torch.backends.cudnn as cudnn
 from iopath.common.file_io import g_pathmgr as pathmgr
@@ -230,6 +230,14 @@ def get_args_parser():
     )
     parser.add_argument("--cls_embed", action="store_true")
     parser.set_defaults(cls_embed=True)
+
+    parser.add_argument("--dataset_root", default="/home/amir/Datasets", help="parent folder for all datasets")
+    parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[1.])
+    parser.add_argument('--video_dataset_list', nargs='+', default=[])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[])
+    parser.add_argument('--image_video_ratio', default=1, help='default means only images')
+
     return parser
 
 
@@ -249,22 +257,15 @@ def main(args):
 
     cudnn.benchmark = True
 
-    # simple augmentation
-    transforms_train = transforms.Compose([
-        transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=constants.mean, std=constants.std)])
+    # Dataset combining image and video data
+    dataset_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, args.video_dataset_list,
+                  args.video_dataset_conf, args.image_video_ratio)
 
-    dataset_train = datasets.ImageFolder("/home/amir/Datasets/arxiv_resized_train_val_split/train/",
-                                         transform=transforms_train)
-
-    if True:
-        num_tasks = misc.get_world_size()  # 8 gpus
-        global_rank = misc.get_rank()
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-        )  # Original
+    num_tasks = misc.get_world_size()  # 8 gpus
+    global_rank = misc.get_rank()
+    sampler_train = torch.utils.data.DistributedSampler(
+        dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+    )
 
     print("Sampler_train = %s" % str(sampler_train))
 
@@ -277,17 +278,6 @@ def main(args):
     else:
         log_writer = None
 
-    '''
-    lr = blr * batch_size * accum_iters * num_gpus
-    
-    for facebook they used
-    lr = 1.6e-3 * 512 * 1 * 128
-    
-    Therefore we use
-    lr = 1.6e-3 * B * A * 8 = 1.6e-3 * 512 * 1 * 128
-
-    So B * A = 512 * 128 / 8 = 8192
-    '''
     print("Batch size is", args.batch_size)
     print("Accumulate iterations is", args.accum_iter)
     print("Num GPUs is", misc.get_world_size())
@@ -311,10 +301,9 @@ def main(args):
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
 
-    # (8192) * 8
     eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
 
-    if args.lr is None:  # only base_lr is specified
+    if args.lr is None:
         args.lr = args.blr * eff_batch_size / 256
 
     print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
