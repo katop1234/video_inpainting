@@ -262,7 +262,7 @@ def revert_tensor_normalize(tensor):
     
     tensor = tensor * std.view(1, 3, 1, 1, 1).to(tensor.device)
     tensor = tensor + mean.view(1, 3, 1, 1, 1).to(tensor.device)
-    tensor = tensor * 255
+    tensor = torch.clip(tensor * 255, 0, 255)
     return tensor
 
 def get_random_sampling_rate(long_cycle_sampling_rate, sampling_rate):
