@@ -262,14 +262,3 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
             fps=30
             )
     wandb.log({"video": wandb_video_object})
-
-
-# class DummyModel(MaskedAutoencoderViT):
-    
-#     def forward():
-#         # return some output here
-#         pass
-
-# if __name__ == '__main__':
-#     my_model = DummyModel()
-#     visualize_image_prompting(my_model, images_dir="/shared/katop1234/video_inpainting/video_inpainting/test_cases/visual_prompting_images/")

@@ -310,10 +310,10 @@ class MaskedAutoencoderViT(nn.Module):
         mask[:, :len_keep] = 0
 
         # The indices that would restore the sorted noise tensor to its original order
-        ids_restore = torch.arange(L, device=x.device).repeat(N, 1).to("cuda")
+        ids_restore = torch.arange(L, device=x.device).repeat(N, 1).to(x.device)
 
         # The indices of the first len_keep elements in the sorted noise tensor
-        ids_keep = torch.arange(len_keep).unsqueeze(0).repeat(N, 1).to("cuda") # TODO use the logic of image masking here
+        ids_keep = torch.arange(len_keep).unsqueeze(0).repeat(N, 1).to(x.device) # TODO use the logic of image masking here
 
         '''
         Returns:
@@ -354,8 +354,8 @@ class MaskedAutoencoderViT(nn.Module):
         ids_shuffle = torch.cat((ids_keep, ids_remove), dim=0)
         ids_restore = torch.argsort(ids_shuffle, dim=0)
         
-        ids_keep = ids_keep.unsqueeze(0).repeat(N, 1).to("cuda")
-        ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to("cuda")
+        ids_keep = ids_keep.unsqueeze(0).repeat(N, 1).to(x.device)
+        ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to(x.device)
 
         return x_masked, mask, ids_restore, ids_keep
 
