@@ -10,23 +10,10 @@
 # BEiT: https://github.com/microsoft/unilm/tree/master/beit
 # --------------------------------------------------------
 
-import math, cv2
-from PIL import Image
-import util
 from typing import Iterable
-import itertools, random, os
-import numpy as np, shutil
-import torch
-import torchvision.transforms as transforms
-from PIL import Image
-
 import util.lr_sched as lr_sched
 import util.misc as misc
-import os
-from datetime import datetime
 import torch
-from iopath.common.file_io import g_pathmgr as pathmgr
-from kinetics_and_images import KineticsAndCVF
 
 def train_one_epoch(
     model: torch.nn.Module,
@@ -93,18 +80,6 @@ def train_one_epoch(
 
         loss_value = loss.item()
 
-        if not math.isfinite(loss_value):
-            for _ in range(args.num_checkpoint_del):
-                # WARNING commented this out but wtf why does it delete all the checkpoints whenever theres a nan loss??
-                # try:
-                #     path = misc.get_last_checkpoint(args)
-                #     pathmgr.rm(path)
-                #     print(f"remove checkpoint {path}")
-                # except Exception as _:
-                #     pass
-                pass
-            raise Exception("Loss is {}, stopping training".format(loss_value))
-
         loss /= accum_iter
         loss_scaler(
             loss,
@@ -123,7 +98,8 @@ def train_one_epoch(
         metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
         metric_logger.update(cpu_mem_all=misc.cpu_mem_usage()[1])
         metric_logger.update(gpu_mem=misc.gpu_mem_usage())
-        metric_logger.update(mask_ratio=args.mask_ratio)
+        metric_logger.update(mask_ratio=args.mask_ratio_image)
+        metric_logger.update(mask_ratio=args.mask_ratio_video)
 
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)

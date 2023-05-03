@@ -240,8 +240,8 @@ def tensor_normalize(tensor):
     assert tensor.shape in [(1, 3, 16, 224, 224), (1, 3, 1, 224, 224)], "Other shapes not supported"
     
     tensor = tensor.float()
-    mean = constants.mean.to(tensor.device)
-    std = constants.std.to(tensor.device)
+    mean = constants.mean.view(1, 3, 1, 1, 1).to(tensor.device)
+    std = constants.std.view(1, 3, 1, 1, 1).to(tensor.device)
     
     tensor = tensor / 255.0
     tensor = tensor - mean

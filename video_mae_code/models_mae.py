@@ -370,19 +370,12 @@ class MaskedAutoencoderViT(nn.Module):
         if test_spatiotemporal or test_temporal or test_image:
             pretraining_mode = False
 
-        # image x has dimensions torch.Size([1, 3, 1, 224, 224]) 
-        # video x has dimensions torch.Size([1, 3, 16, 224, 224]) 
-
-        # embed patches
-        # applies a 3D conv that preserves dimensionality but represents information better
+        # x .shape ==  (B, C, T, H, W). For image T == 1, for video T > 1
         x = self.patch_embed(x)
-        N, T, L, C = x.shape # [2, 16, 196, 1024] or [2, 1, 196, 1024]
+        N, T, L, C = x.shape
+        x = x.view(N, T * L, C)
 
-        x = x.reshape(N, T * L, C) # [2, 3136, 1024] or [2, 196, 1024]
-
-        # masking: length -> length * mask_ratio
         if pretraining_mode:
-            # Do random masking
             x, mask, ids_restore, ids_keep = self.random_masking(x, mask_ratio_image, mask_ratio_video)
         
         elif test_image:
@@ -433,27 +426,27 @@ class MaskedAutoencoderViT(nn.Module):
                 self.pos_embed_temporal, # (1, 16, 1024)
                 self.input_size[1] * self.input_size[2],
                 dim=1,
-            ) # results in size [1, 14^2 * 16, 1024] regardless of image or video 
+            )
 
             pos_embed = pos_embed.expand(x.shape[0], -1, -1) # copies along batch dimension to match x
-        
+
             if ids_keep.shape[1] == (1 - mask_ratio_image) * 196 or test_image:
                 # image
                 '''
                 Basically, for images, the ids to keep ranges from 0->195, so we need to add 0->15 * 196 to each row of ids_keep
                 as if it came from any of the frames
                 '''
-                offsets = torch.randint(0, 16, (N,), device=x.device) * 196 
+                offsets = torch.randint(0, 16, (N,), device=x.device) * 196
                 offsets = offsets.view(N, 1)
                 
-                ids_keep = ids_keep + offsets 
-                      
+                ids_keep = ids_keep + offsets
+
             elif ids_keep.shape[1] == (1 - mask_ratio_video) * 3136 or test_temporal or test_spatiotemporal:
                 # video, so no need to add offsets
                 offsets = torch.zeros((N, 1), device=x.device)
                 pass
             else:
-                print("got ids_keep shape not supported, probably an unsupported masking ratio or" 
+                raise ValueError("got ids_keep shape not supported, probably an unsupported masking ratio or"
                       + "tried video spatiotemporal inference which isn't supported. got ids keep shape", ids_keep.shape)
                 exit()
 
@@ -505,9 +498,9 @@ class MaskedAutoencoderViT(nn.Module):
             x = x[:, :, :]
 
         return x, mask, ids_restore, offsets
-  
+
     def forward_decoder(self, x, ids_restore, offsets: torch.tensor, mask_ratio_image=0.75, mask_ratio_video=0.9):
-        
+
         mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2) # quantizes it 
         mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it 
 
@@ -522,8 +515,6 @@ class MaskedAutoencoderViT(nn.Module):
         
         N = x.shape[0]
         H = W = self.patch_embed.grid_size
-        
-        assert offsets.shape[0] == N, "each offset corresponds to a single batch"
 
         # embed tokens
         x = self.decoder_embed(x)
@@ -578,10 +569,10 @@ class MaskedAutoencoderViT(nn.Module):
 
             # Update x with the CLS token and offset-based positions
             x[:, 0] = x[:, 0] + decoder_pos_embed[:, 0]
-            
+
             # Update rest of x with the offset-based positions (196 * k -> 196 * (k+1) for k in [0, 15])
             x[:, 1:] = x[:, 1:] + decoder_pos_embed[:, indices]
-        
+
         elif x.shape[1] == 1 + (14 ** 2) * 16: # video
             x = x + decoder_pos_embed
         else:

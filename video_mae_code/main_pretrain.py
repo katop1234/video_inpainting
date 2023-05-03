@@ -10,22 +10,17 @@
 # --------------------------------------------------------
 
 import argparse
-import torchvision.transforms as transforms
-from torchvision import datasets
-import datetime
-# from kinetics_and_images import save_frames_as_mp4
-import wandb
 import json
+import datetime
+import wandb
 import os
 import time
+from dataset_factory import MergedDataset
 from util.eval import visualize_prompting
-import util.decoder.constants as constants
-# import util.env
-
+import util.env  # do not uncomment
 import util.misc as misc
-
 import numpy as np
-import timm
+import timm  # do not uncomment
 import torch
 import torch.backends.cudnn as cudnn
 from iopath.common.file_io import g_pathmgr as pathmgr
@@ -33,19 +28,19 @@ import models_mae
 from engine_pretrain import train_one_epoch
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from torch.utils.tensorboard import SummaryWriter
-
 import util.decoder.utils as utils
+
 
 def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
-    
+
     parser.add_argument(
         "--test_mode",
         default=False,
         type=bool,
         help="If False, skips training and only runs inference on the test set, then exits",
     )
-    
+
     parser.add_argument(
         "--batch_size",
         default=64,
@@ -78,7 +73,7 @@ def get_args_parser():
         type=float,
         help="Masking ratio (percentage of removed patches). 0.9 for video, and 0.75 for images",
     )
-    
+
     parser.add_argument(
         "--mask_ratio_image",
         default=0.75,
@@ -144,7 +139,6 @@ def get_args_parser():
         help="Folder containing video visualization examples.",
     )
 
-
     parser.add_argument(
         "--output_dir",
         default="./output_dir",
@@ -191,11 +185,11 @@ def get_args_parser():
     )
 
     parser.add_argument("--decoder_embed_dim", default=512, type=int)
-    parser.add_argument("--decoder_depth", default=8, type=int)  # NOTE amir said to make this 8 from 4 when doing only images
+    parser.add_argument("--decoder_depth", default=8, type=int)  # NOTE amir said to make this 8 when doing only images
     parser.add_argument("--decoder_num_heads", default=16, type=int)
     parser.add_argument("--t_patch_size", default=1, type=int)
     parser.add_argument("--num_frames", default=16, type=int)
-    parser.add_argument("--checkpoint_period", default=1, type=int)
+    parser.add_argument("--checkpoint_period", default=50, type=int)
     parser.add_argument("--sampling_rate", default=4, type=int)
     parser.add_argument("--distributed", action="store_true")
     parser.add_argument("--repeat_aug", default=1, type=int)
@@ -243,7 +237,16 @@ def get_args_parser():
     )
     parser.add_argument("--cls_embed", action="store_true")
     parser.set_defaults(cls_embed=True)
+
+    parser.add_argument("--dataset_root", default="/home/amir/Datasets", help="parent folder for all datasets")
+    parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[1.])
+    parser.add_argument('--video_dataset_list', nargs='+', default=[])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[])
+    parser.add_argument('--image_video_ratio', default=1, help='default means only images')
+
     return parser
+
 
 def main(args):
     misc.init_distributed_mode(args)
@@ -261,99 +264,16 @@ def main(args):
 
     cudnn.benchmark = True
 
-    # WARNING uncomment this to get both Kinetics and CVF dataset
-    # dataset_train = KineticsAndCVF( # Custom Dataset
-    #     mode="pretrain",
-    #     path_to_csv="/shared/katop1234/video_inpainting/video_inpainting/kinetics_videos.csv", # This is the path to names of all kinetics files
-    #     path_to_data_dir="/shared/group/kinetics/train_256/", # video
-    #     path_to_image_data_dir="/shared/amir/dataset/arxiv_resized_train_val_split/train/", # images
-    #     sampling_rate=args.sampling_rate, # 4 by default
-    #     num_frames=args.num_frames, # 16 by default
-    #     train_jitter_scales=(256, 320),
-    #     repeat_aug=args.repeat_aug,
-    #     jitter_aspect_relative=args.jitter_aspect_relative,
-    #     jitter_scales_relative=args.jitter_scales_relative,
-    # )
-    # print("got dataloader")
+    # Dataset combining image and video data
+    dataset_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, args.video_dataset_list,
+                  args.video_dataset_conf, args.image_video_ratio)
 
-    # class CustomDistributedSampler(torch.utils.data.DistributedSampler):
-    #     def __init__(self, dataset, batch_size=args.batch_size, num_replicas=None, rank=None):
-    #         # Call the base class constructor
-    #         super().__init__(dataset, 
-    #                          num_replicas=num_replicas, 
-    #                          rank=rank, 
-    #                          shuffle=False) # No need to shuffle, I randomly sample anyway
+    num_tasks = misc.get_world_size()  # 8 gpus
+    global_rank = misc.get_rank()
+    sampler_train = torch.utils.data.DistributedSampler(
+        dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+    )
 
-    #         self.dataset = dataset
-    #         self.num_images = dataset.num_images
-    #         self.num_videos = dataset.num_videos
-    #         self.batch_size = batch_size
-
-    #         self.image_indices = dataset.image_indices
-    #         self.video_indices = dataset.video_indices
-
-    #         self.prob_choose_image = 1 # WARNING change this to 0.5 later
-
-    #     def __len__(self):
-    #         if self.prob_choose_image == 1:
-    #             return self.num_images
-    #         elif self.prob_choose_image == 0:
-    #             return self.num_videos
-    #         return len(self.dataset)
-
-    #     def __iter__(self):
-    #         custom_indices = []
-
-    #         num_elements_in_epoch = self.dataset.num_images # size of CVF dataset NOTE can change later
-
-    #         if test_image or test_video:
-    #             num_elements_in_epoch = 1
-    #             if test_image:
-    #                 self.prob_choose_image = 1 
-    #             else:
-    #                 self.prob_choose_image = 0
-
-    #         while len(custom_indices) < num_elements_in_epoch:
-    #             if random.random() < self.prob_choose_image: # Choose image
-    #                 # append batch_size number of images
-    #                 random_image_indices = random.sample(self.image_indices, self.batch_size)
-    #                 custom_indices.extend(random_image_indices)
-    #             else: # Choose video
-    #                 # append batch_size number of videos
-    #                 random_video_indices = random.sample(self.video_indices, self.batch_size)
-    #                 custom_indices.extend(random_video_indices)
-
-    #         self.custom_indices = custom_indices
-
-    #         # Return the modified indices as an iterator
-    #         return iter(self.custom_indices)
-
-    # simple augmentation
-    transforms_train = transforms.Compose([
-        transforms.RandomResizedCrop(args.input_size, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=constants.mean, std=constants.std)])
-
-    dataset_train = datasets.ImageFolder("/home/amir/Datasets/arxiv_resized_train_val_split/train/",
-                                         transform=transforms_train)
-
-    if True:
-        num_tasks = misc.get_world_size()  # 8 gpus
-        global_rank = misc.get_rank()
-        sampler_train = torch.utils.data.DistributedSampler(
-            dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-        )  # Original
-
-    else:
-        num_tasks = 1
-        global_rank = 0
-        sampler_train = torch.utils.data.RandomSampler(dataset_train)
-
-    # WARNING uncommented this to replicate original results exactly
-    # sampler_train = CustomDistributedSampler(
-    #         dataset_train, batch_size=args.batch_size, num_replicas=num_tasks, rank=global_rank
-    #     ) # My own for videos + images 
     print("Sampler_train = %s" % str(sampler_train))
 
     if global_rank == 0 and args.log_dir is not None:
@@ -364,26 +284,6 @@ def main(args):
         log_writer = SummaryWriter(log_dir=args.log_dir)
     else:
         log_writer = None
-
-    '''
-    lr = blr * batch_size * accum_iters * num_gpus
-    
-    for facebook they used
-    lr = 1.6e-3 * 512 * 1 * 128
-    
-    Therefore we use
-    lr = 1.6e-3 * B * A * 8 = 1.6e-3 * 512 * 1 * 128
-
-    So B * A = 512 * 128 / 8 = 8192
-    '''
-
-    # WARNING use this to match MAE ST 
-    # assert 8192 % args.batch_size == 0
-    # accum_iter_determined_from_batch_size = 8192 // args.batch_size
-
-    # WARNING I changed this to match amir's inpainting code
-    accum_iter_determined_from_batch_size = 64 // args.batch_size
-    args.accum_iter = accum_iter_determined_from_batch_size
 
     print("Batch size is", args.batch_size)
     print("Accumulate iterations is", args.accum_iter)
@@ -408,28 +308,15 @@ def main(args):
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
 
-    # (8192) * 8
-    eff_batch_size = args.batch_size * accum_iter_determined_from_batch_size * misc.get_world_size()
+    eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
 
-    if args.lr is None:  # only base_lr is specified
+    if args.lr is None:
         args.lr = args.blr * eff_batch_size / 256
-
-    # From yossi's code for wandb
-    wandb_config = vars(args)
-    base_lr = (args.lr * 256 / eff_batch_size)
-    wandb_config['base_lr'] = base_lr
-
-    if misc.is_main_process():
-        wandb.init(
-            project="video_inpainting2",
-            resume=False,
-            config=wandb_config)
-    # From yossi's code for wandb
 
     print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
     print("actual lr: %.2e" % args.lr)
 
-    print("accumulate grad iterations: %d" % accum_iter_determined_from_batch_size)
+    print("accumulate grad iterations: %d" % args.accum_iter)
     print("effective batch size: %d" % eff_batch_size)
 
     if args.distributed:
@@ -458,17 +345,21 @@ def main(args):
     )
     loss_scaler = NativeScaler(fp32=args.fp32)
 
-    # Loads model from checkpoint if specified
-    # even though it doesn't assign anything to model, it does assign to model_without_ddp
-    # which changes model under the hood
-    # use: --resume="path/to/checkpoint.pth"
     print("loading model")
-    misc.load_model(
+    resume = misc.load_model(
         args=args,
         model_without_ddp=model_without_ddp,
         optimizer=optimizer,
         loss_scaler=loss_scaler,
     )
+    if misc.is_main_process():
+        wandb_config = vars(args)
+        base_lr = (args.lr * 256 / eff_batch_size)
+        wandb_config['base_lr'] = base_lr
+        wandb.init(
+            project="video_inpainting2",
+            resume=resume != '',
+            config=wandb_config)
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
@@ -522,7 +413,7 @@ def main(args):
             visualize_prompting(model, args.video_prompts_dir, args.image_prompts_dir)
 
         print("Done loop on epoch {}".format(epoch))
-        
+
         if args.test_mode:
             exit()
         ### End evaluation
@@ -532,24 +423,3 @@ def main(args):
     print("Training time {}".format(total_time_str))
     print(torch.cuda.memory_allocated())
     return [checkpoint_path]
-
-def launch_one_thread(
-        local_rank,
-        shard_rank,
-        num_gpus_per_node,
-        num_shards,
-        init_method,
-        output_path,
-        opts,
-        stats_queue,
-):
-    print(opts)
-    args = get_args_parser()
-    args = args.parse_args(opts)
-    args.rank = shard_rank * num_gpus_per_node + local_rank
-    args.world_size = num_shards * num_gpus_per_node
-    args.gpu = local_rank
-    args.dist_url = init_method
-    args.output_dir = output_path
-    output = main(args)
-    stats_queue.put(output)
