@@ -356,7 +356,7 @@ class MaskedAutoencoderViT(nn.Module):
         
         ids_keep = ids_keep.unsqueeze(0).repeat(N, 1).to("cuda")
         ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to("cuda")
-        
+
         return x_masked, mask, ids_restore, ids_keep
 
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_spatiotemporal=False, test_temporal=False, test_image=False):
@@ -364,7 +364,7 @@ class MaskedAutoencoderViT(nn.Module):
         assert sum(test_modes) <= 1, "Only one or zero test modes can be active at a time"
         
         mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2 * 1) # quantizes it 
-        mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it 
+        mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it
 
         pretraining_mode = True
         if test_spatiotemporal or test_temporal or test_image:
@@ -436,53 +436,21 @@ class MaskedAutoencoderViT(nn.Module):
             ) # results in size [1, 14^2 * 16, 1024] regardless of image or video 
 
             pos_embed = pos_embed.expand(x.shape[0], -1, -1) # copies along batch dimension to match x
-            
-            offsets = []
-            if ids_keep.shape[1] == (1 - mask_ratio_image) * 196:
+        
+            if ids_keep.shape[1] == (1 - mask_ratio_image) * 196 or test_image:
                 # image
                 '''
                 Basically, for images, the ids to keep ranges from 0->195, so we need to add 0->15 * 196 to each row of ids_keep
                 as if it came from any of the frames
                 '''
-                for batch_index in range(ids_keep.shape[0]):
-                    frame_to_simulate = random.randint(0, 15)
-                    offset = frame_to_simulate * 196
-                    ids_keep[batch_index] = ids_keep[batch_index] + offset 
-                    offsets.append(offset)   
-            elif ids_keep.shape[1] == 196 * 3 / 4:
-                # test image
-                '''
-                Basically, for images, the ids to keep ranges from 0->195, so we need to add 0->15 * 196 to each row of ids_keep
-                as if it came from any of the frames (same as above)
-                '''
-                for batch_index in range(ids_keep.shape[0]):
-                    frame_to_simulate = random.randint(0, 15)
-                    offset = frame_to_simulate * 196
-                    ids_keep[batch_index] = ids_keep[batch_index] + offset 
-                    offsets.append(offset)
+                offsets = torch.randint(0, 16, (N,), device=x.device) * 196 
+                offsets = offsets.view(N, 1)
                 
-                # TODO use the below once you figure out how to incorporate offsets properly as a tensor into rest of code
-                '''
-                num_ids_keep = ids_keep.shape[1]
-                N = ids_keep.shape[0]
-
-                # Generate random integers for each row (along the first dimension)
-                frame_to_simulate = torch.randint(0, 16, size=(N, 1))
-
-                # Calculate the offsets
-                offsets = frame_to_simulate * 196
-
-                # Expand the offsets tensor to match ids_keep shape
-                offsets_expanded = offsets.expand(N, num_ids_keep).cuda()
-                
-                # Add offsets to ids_keep
-                ids_keep = ids_keep + offsets_expanded
-                '''       
-            elif ids_keep.shape[1] == (1 - mask_ratio_video) * 3136:
-                # video
-                pass
-            elif ids_keep.shape[1] == 3136 * 9 / 16:
-                # video temporal inference
+                ids_keep = ids_keep + offsets 
+                      
+            elif ids_keep.shape[1] == (1 - mask_ratio_video) * 3136 or test_temporal or test_spatiotemporal:
+                # video, so no need to add offsets
+                offsets = torch.zeros((N, 1), device=x.device)
                 pass
             else:
                 print("got ids_keep shape not supported, probably an unsupported masking ratio or" 
@@ -538,12 +506,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x, mask, ids_restore, offsets
   
-    def forward_decoder(self, x, ids_restore, offsets: list, mask_ratio_image=0.75, mask_ratio_video=0.9):
-        # TODO update offsets to work without list
-        # if not offsets:
-        #     offsets = [0] * x.shape[0]
-        
-        # assert len(offsets) == x.shape[0], "each offset corresponds to a single batch"
+    def forward_decoder(self, x, ids_restore, offsets: torch.tensor, mask_ratio_image=0.75, mask_ratio_video=0.9):
         
         mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2) # quantizes it 
         mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it 
@@ -559,6 +522,8 @@ class MaskedAutoencoderViT(nn.Module):
         
         N = x.shape[0]
         H = W = self.patch_embed.grid_size
+        
+        assert offsets.shape[0] == N, "each offset corresponds to a single batch"
 
         # embed tokens
         x = self.decoder_embed(x)
@@ -604,29 +569,19 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             decoder_pos_embed = self.decoder_pos_embed[:, :, :]
 
-        # TODO comment from Amir
-        # the following code L427-L449 uses loops, rewrite without using loops to make it more GPU efficient
-        # The idea is that you almost never want to use for loops for computation because it is inefficient, unless you have too. E.g, SGD.
         if x.shape[1] == 1 + 14 ** 2: # image
-            # Offset code (random temporal embedding) WARNING do not keep with below
-            # for batch_index in range(x.shape[0]):
-            #     cls = x[batch_index, :1, :] # store cls on the side because unaffected by frame offsets
-            #     data_x = x[batch_index, 1:, :]
+            # Create a range tensor for indexing
+            index_range = torch.arange(0, 196, device=x.device).view(1, -1)
 
-            #     cls_decoder_pos_embed = decoder_pos_embed[0, :1, :]
-            #     data_decoder_pos_embed = decoder_pos_embed[0, 1:, :]
+            # Calculate the indices to select from decoder_pos_emb
+            indices = offsets + index_range + 1
 
-            #     first_frame = offsets[batch_index]
-            #     last_frame = offsets[batch_index] + 196
-            #     data_decoder_pos_embed = data_decoder_pos_embed[first_frame:last_frame, :]
-                
-            #     x[batch_index, 1:, :] = data_x # + data_decoder_pos_embed # WARNING removed pos embedding as per amirs suggestion
-            #     x[batch_index, :1, :] = cls # + cls_decoder_pos_embed # WARNING removed pos embedding as per amirs suggestion
-
-            # WARNING do not keep with above
-            # No offsets
-            x = x + decoder_pos_embed[:, :197, :] # NOTE treats as if came from first frame only
-            pass
+            # Update x with the CLS token and offset-based positions
+            x[:, 0] = x[:, 0] + decoder_pos_embed[:, 0]
+            
+            # Update rest of x with the offset-based positions (196 * k -> 196 * (k+1) for k in [0, 15])
+            x[:, 1:] = x[:, 1:] + decoder_pos_embed[:, indices]
+        
         elif x.shape[1] == 1 + (14 ** 2) * 16: # video
             x = x + decoder_pos_embed
         else:
