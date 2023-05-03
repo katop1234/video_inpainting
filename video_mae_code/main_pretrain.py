@@ -358,7 +358,6 @@ def main(args):
         wandb_config['base_lr'] = base_lr
         wandb.init(
             project="video_inpainting2",
-            resume=resume != '',
             config=wandb_config)
 
     checkpoint_path = ""
