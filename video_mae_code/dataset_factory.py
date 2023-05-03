@@ -2,8 +2,8 @@ import torch
 import numpy as np
 from torchvision import datasets
 import os
-
 from torchvision.transforms import transforms
+from util.decoder import constants
 
 
 def get_image_transforms():
@@ -11,7 +11,7 @@ def get_image_transforms():
         transforms.RandomResizedCrop(224, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])])
+        transforms.Normalize(mean=constants.mean, std=constants.std)])
 
 
 def get_dataset(name, root_path, ds_type):
@@ -38,25 +38,20 @@ def get_dataset(name, root_path, ds_type):
 class MergedDataset(torch.utils.data.Dataset):
     def __init__(self, root_path, image_dataset_list, image_dataset_conf, video_dataset_list, video_dataset_conf,
                  image_pct):
-
-        self.image_datasets = [get_dataset(ds_name, root_path, 'image') for ds_name in image_dataset_list]
-        self.video_datasets = [get_dataset(ds_name, root_path, 'video') for ds_name in video_dataset_list]
-        self.image_dataset_conf = np.array(image_dataset_conf) / np.sum(image_dataset_conf)
-        self.video_dataset_conf = np.array(video_dataset_conf) / np.sum(video_dataset_conf)
-        self.image_pct = image_pct
+        image_datasets = [get_dataset(ds_name, root_path, 'image') for ds_name in image_dataset_list]
+        video_datasets = [get_dataset(ds_name, root_path, 'video') for ds_name in video_dataset_list]
+        datasets = image_datasets + video_datasets
+        conf = list(image_pct * np.array(image_dataset_conf)) + list((1 - image_pct) * np.array(video_dataset_conf))
+        self.datasets = datasets
+        self.conf = conf
 
     def __len__(self):
-        return min(len(self.dataset1), len(self.dataset2))
+        return 79490  # Fixing epoch to be CVF dataset size for reproducibility
 
     def __getitem__(self, index: int):
-
-        pct = np.random.uniform()
-        if pct < self.image_pct:
-            ds = np.random.choice(self.image_datasets, p=self.image_dataset_conf)
-        else:
-            ds = np.random.choice(self.video_datasets, p=self.video_dataset_conf)
-        idx = np.random.randint(0, len(ds))
-        return ds[idx]
+        sampled_ds_index = np.random.choice(np.arange(0, len(self.datasets)), p=self.conf)
+        ds = self.datasets[sampled_ds_index]
+        return ds[np.random.randint(0, len(ds))]
 
 
 if __name__ == '__main__':
