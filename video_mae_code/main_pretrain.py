@@ -129,7 +129,7 @@ def get_args_parser():
 
     parser.add_argument(
         "--image_prompts_dir",
-        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/visual_prompting_images/",
+        default="/shared/dannyt123/video_inpainting/video_inpainting/test_cases/visual_prompting_images",
         help="Image folder containing visualization examples.",
     )
 
