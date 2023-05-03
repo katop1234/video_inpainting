@@ -190,7 +190,7 @@ def get_args_parser():
     )
 
     parser.add_argument("--decoder_embed_dim", default=512, type=int)
-    parser.add_argument("--decoder_depth", default=8, type=int)  # NOTE amir said to make this 8 when doing only images
+    parser.add_argument("--decoder_depth", default=8, type=int)  # NOTE amir said to make this 8 from 4 when doing only images
     parser.add_argument("--decoder_num_heads", default=16, type=int)
     parser.add_argument("--t_patch_size", default=1, type=int)
     parser.add_argument("--num_frames", default=16, type=int)

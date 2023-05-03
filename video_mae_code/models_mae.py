@@ -351,11 +351,12 @@ class MaskedAutoencoderViT(nn.Module):
         ids_remove = torch.nonzero(mask == 1)[:, 1] # Get only the indices of the k elements
 
         # Create ids_restore by concatenating ids_keep and ids_remove
-        ids_restore = torch.cat((ids_keep, ids_remove), dim=0)  
+        ids_shuffle = torch.cat((ids_keep, ids_remove), dim=0)
+        ids_restore = torch.argsort(ids_shuffle, dim=0)
         
-        ids_restore = torch.stack([ids_restore] * N)
-        ids_keep = torch.stack([ids_keep] * N) # Copy along the batch dimension
-        ids_remove = torch.stack([ids_remove] * N) # Copy along the batch dimension
+        ids_keep = ids_keep.unsqueeze(0).repeat(N, 1).to("cuda")
+        ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to("cuda")
+        
         return x_masked, mask, ids_restore, ids_keep
 
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_spatiotemporal=False, test_temporal=False, test_image=False):
@@ -436,9 +437,6 @@ class MaskedAutoencoderViT(nn.Module):
 
             pos_embed = pos_embed.expand(x.shape[0], -1, -1) # copies along batch dimension to match x
             
-            # TODO use the same normalization for both videos and images
-            
-            # TODO try to have less redundant code
             offsets = []
             if ids_keep.shape[1] == (1 - mask_ratio_image) * 196:
                 # image
@@ -539,9 +537,9 @@ class MaskedAutoencoderViT(nn.Module):
             x = x[:, :, :]
 
         return x, mask, ids_restore, offsets
-
+  
     def forward_decoder(self, x, ids_restore, offsets: list, mask_ratio_image=0.75, mask_ratio_video=0.9):
-        # TODO update offsets to work w out list
+        # TODO update offsets to work without list
         # if not offsets:
         #     offsets = [0] * x.shape[0]
         
@@ -568,7 +566,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         # append mask tokens to sequence
         num_unmasked_tokens = x.shape[1]
-        mask_tokens = self.mask_token.repeat(N, T * H * W + 0 - num_unmasked_tokens, 1)
+        mask_tokens = self.mask_token.repeat(N, T * H * W - num_unmasked_tokens, 1)
 
         x_ = torch.cat([x[:, :, :], mask_tokens], dim=1)  # no cls token
         x_ = x_.view([N, T * H * W, C])
@@ -609,7 +607,6 @@ class MaskedAutoencoderViT(nn.Module):
         # TODO comment from Amir
         # the following code L427-L449 uses loops, rewrite without using loops to make it more GPU efficient
         # The idea is that you almost never want to use for loops for computation because it is inefficient, unless you have too. E.g, SGD.
-        # DEBUG check decoder_pos_emb shape
         if x.shape[1] == 1 + 14 ** 2: # image
             # Offset code (random temporal embedding) WARNING do not keep with below
             # for batch_index in range(x.shape[0]):
@@ -707,7 +704,7 @@ class MaskedAutoencoderViT(nn.Module):
         latent, mask, ids_restore, offsets = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_spatiotemporal, test_temporal, test_image)
         pred = self.forward_decoder(latent, ids_restore, offsets, mask_ratio_image, mask_ratio_video)  # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred, mask)
-        return loss, pred, mask # DEBUG what is mask?
+        return loss, pred, mask
 
 def mae_vit_base_patch16(**kwargs):
     model = MaskedAutoencoderViT(
