@@ -18,6 +18,7 @@ from util import video_vit
 import random
 from util.logging import master_print as print
 from timm.models.vision_transformer import Block
+from util.misc import is_valid_image_mask, is_valid_video_mask, is_masked_image, is_masked_video
 
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
@@ -354,8 +355,8 @@ class MaskedAutoencoderViT(nn.Module):
         ids_shuffle = torch.cat((ids_keep, ids_remove), dim=0)
         ids_restore = torch.argsort(ids_shuffle, dim=0)
         
-        ids_keep = ids_keep.unsqueeze(0).repeat(N, 1).to("cuda")
-        ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to("cuda")
+        ids_keep = ids_keep.unsqueeze(0).repeat(N, 1).to(x.device)
+        ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to(x.device)
 
         return x_masked, mask, ids_restore, ids_keep
 
@@ -363,8 +364,9 @@ class MaskedAutoencoderViT(nn.Module):
         test_modes = [int(mode) for mode in [test_spatiotemporal, test_temporal, test_image]]
         assert sum(test_modes) <= 1, "Only one or zero test modes can be active at a time"
         
-        mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2 * 1) # quantizes it 
-        mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it
+        # Quantizes mask ratio
+        mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2 * 1) 
+        mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16)
 
         pretraining_mode = True
         if test_spatiotemporal or test_temporal or test_image:
@@ -390,8 +392,6 @@ class MaskedAutoencoderViT(nn.Module):
             
         elif test_spatiotemporal:
             # For videos, mask bottom half of frames 2-16 for spatiotemporal
-
-            # figuring out the index of the masking for this will be a pain
             raise NotImplementedError
 
         elif test_temporal:
@@ -402,13 +402,11 @@ class MaskedAutoencoderViT(nn.Module):
             raise NotImplementedError("Invalid mode. Either have pretraining, test temporal, or test spatiotemporal")
             
         # Check if output is for a video tensor (torch.Size([4, 3136, 1024]))
-        # 3136 = 14 ** 2 * 16
-        # 196 = 14 ** 2 * 1
 
-        if x.shape[1:] == torch.Size([int(3136*(1-mask_ratio_video)), 1024]) and mask.shape[1:] == torch.Size([3136]):
+        if is_masked_video(x, mask_ratio_video) and is_valid_video_mask(mask):
             # Valid video tensor
             pass
-        elif x.shape[1:] == torch.Size([int(196*(1-mask_ratio_image)), 1024]) and mask.shape[1:] == torch.Size([196]):
+        elif is_masked_image(x, mask_ratio_image) and is_valid_image_mask(mask):
             # Valid image tensor
             pass
         else:
@@ -508,14 +506,17 @@ class MaskedAutoencoderViT(nn.Module):
   
     def forward_decoder(self, x, ids_restore, offsets: torch.tensor, mask_ratio_image=0.75, mask_ratio_video=0.9):
         
-        mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2) # quantizes it 
-        mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it 
+        # Quantizes it
+        mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2)
+        mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16)
 
-        if x.shape[1] == 14 ** 2 * (1 - mask_ratio_image) * 1 or x.shape[1] == 14 ** 2 * (0.75) * 1: # image and image test. functionally the same
+        if is_masked_image(x, mask_ratio=mask_ratio_image): # Regular image
             T = 1 
-        elif x.shape[1] == 14 ** 2 * (1 - mask_ratio_video) * 16: # video
+        elif is_masked_image(x, mask_ratio=1/4): # Test image
+            T = 1
+        elif is_masked_video(x, mask_ratio=mask_ratio_video): # video
             T = 16
-        elif x.shape[1] == 3136 * 9 / 16: # video temporal inference
+        elif is_masked_video(x, mask_ratio=7/16): # video temporal inference
             T = 16
         else:
             raise NotImplementedError("got unsupported x, x shape was " + str(x.shape))
@@ -570,16 +571,12 @@ class MaskedAutoencoderViT(nn.Module):
             decoder_pos_embed = self.decoder_pos_embed[:, :, :]
 
         if x.shape[1] == 1 + 14 ** 2: # image
-            # Create a range tensor for indexing
             index_range = torch.arange(0, 196, device=x.device).view(1, -1)
 
-            # Calculate the indices to select from decoder_pos_emb
+            # + 1 is for CLS
             indices = offsets + index_range + 1
 
-            # Update x with the CLS token and offset-based positions
             x[:, 0] = x[:, 0] + decoder_pos_embed[:, 0]
-            
-            # Update rest of x with the offset-based positions (196 * k -> 196 * (k+1) for k in [0, 15])
             x[:, 1:] = x[:, 1:] + decoder_pos_embed[:, indices]
         
         elif x.shape[1] == 1 + (14 ** 2) * 16: # video
