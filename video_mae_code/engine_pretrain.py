@@ -40,7 +40,10 @@ def train_one_epoch(
         "gpu_mem", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
     )
     metric_logger.add_meter(
-        "mask_ratio", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
+        "mask_ratio_image", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
+    )
+    metric_logger.add_meter(
+        "mask_ratio_video", misc.SmoothedValue(window_size=1, fmt="{value:.6f}")
     )
     header = "Epoch: [{}]".format(epoch)
     print_freq = 20
@@ -98,8 +101,8 @@ def train_one_epoch(
         metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
         metric_logger.update(cpu_mem_all=misc.cpu_mem_usage()[1])
         metric_logger.update(gpu_mem=misc.gpu_mem_usage())
-        metric_logger.update(mask_ratio=args.mask_ratio_image)
-        metric_logger.update(mask_ratio=args.mask_ratio_video)
+        metric_logger.update(mask_ratio_image=args.mask_ratio_image)
+        metric_logger.update(mask_ratio_video=args.mask_ratio_video)
 
         lr = optimizer.param_groups[0]["lr"]
         metric_logger.update(lr=lr)
