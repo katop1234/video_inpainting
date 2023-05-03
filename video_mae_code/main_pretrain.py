@@ -36,15 +36,16 @@ from torch.utils.tensorboard import SummaryWriter
 
 import util.decoder.utils as utils
 
-###
-test_image = False
-test_video = False
-###
-
-assert not (test_image and test_video), "Can't test both image and video"
-
 def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
+    
+    parser.add_argument(
+        "--test_mode",
+        default=False,
+        type=bool,
+        help="If False, skips training and only runs inference on the test set, then exits",
+    )
+    
     parser.add_argument(
         "--batch_size",
         default=64,
@@ -413,17 +414,16 @@ def main(args):
     if args.lr is None:  # only base_lr is specified
         args.lr = args.blr * eff_batch_size / 256
 
-    if not (test_image or test_video):
-        # From yossi's code for wandb
-        wandb_config = vars(args)
-        base_lr = (args.lr * 256 / eff_batch_size)
-        wandb_config['base_lr'] = base_lr
+    # From yossi's code for wandb
+    wandb_config = vars(args)
+    base_lr = (args.lr * 256 / eff_batch_size)
+    wandb_config['base_lr'] = base_lr
 
-        if misc.is_main_process():
-            wandb.init(
-                project="video_inpainting2",
-                resume=False,
-                config=wandb_config)
+    if misc.is_main_process():
+        wandb.init(
+            project="video_inpainting2",
+            resume=False,
+            config=wandb_config)
     # From yossi's code for wandb
 
     print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
@@ -478,53 +478,53 @@ def main(args):
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
 
-        # NOTE can comment this to skip training
+        if not args.test_mode:
+            train_stats = train_one_epoch(
+                model,
+                data_loader_train,
+                args.accum_iter,
+                optimizer,
+                device,
+                epoch,
+                loss_scaler,
+                log_writer=log_writer,
+                args=args,
+                fp32=args.fp32,
+            )
 
-        # TODO uncomment this block between the two notes to train
-        # if not (test_image or test_video):
-        #     train_stats = train_one_epoch(
-        #         model,
-        #         data_loader_train,
-        #         args.accum_iter,
-        #         optimizer,
-        #         device,
-        #         epoch,
-        #         loss_scaler,
-        #         log_writer=log_writer,
-        #         args=args,
-        #         fp32=args.fp32,
-        #     )
+            if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
+                checkpoint_path = misc.save_model(
+                    args=args,
+                    model=model,
+                    model_without_ddp=model_without_ddp,
+                    optimizer=optimizer,
+                    loss_scaler=loss_scaler,
+                    epoch=epoch,
+                )
 
-        #     if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
-        #         checkpoint_path = misc.save_model(
-        #             args=args,
-        #             model=model,
-        #             model_without_ddp=model_without_ddp,
-        #             optimizer=optimizer,
-        #             loss_scaler=loss_scaler,
-        #             epoch=epoch,
-        #         )
+            log_stats = {
+                **{f"train_{k}": v for k, v in train_stats.items()},
+                "epoch": epoch,
+            }
 
-        #     log_stats = {
-        #         **{f"train_{k}": v for k, v in train_stats.items()},
-        #         "epoch": epoch,
-        #     }
-
-        #     if args.output_dir and misc.is_main_process():
-        #         if log_writer is not None:
-        #             log_writer.flush()
-        #         with pathmgr.open(
-        #                 f"{args.output_dir}/log.txt",
-        #                 "a",
-        #         ) as f:
-        #             f.write(json.dumps(log_stats) + "\n")
+            if args.output_dir and misc.is_main_process():
+                if log_writer is not None:
+                    log_writer.flush()
+                with pathmgr.open(
+                        f"{args.output_dir}/log.txt",
+                        "a",
+                ) as f:
+                    f.write(json.dumps(log_stats) + "\n")
 
         if misc.is_main_process():
-            # wandb.log(log_stats) TODO uncomment before training or data won't be saved
+            if not args.test_mode:
+                wandb.log(log_stats)
             visualize_prompting(model, args.video_prompts_dir, args.image_prompts_dir)
 
         print("Done loop on epoch {}".format(epoch))
-        exit()
+        
+        if args.test_mode:
+            exit()
         ### End evaluation
 
     total_time = time.time() - start_time
@@ -532,7 +532,6 @@ def main(args):
     print("Training time {}".format(total_time_str))
     print(torch.cuda.memory_allocated())
     return [checkpoint_path]
-
 
 def launch_one_thread(
         local_rank,
