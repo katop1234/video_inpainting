@@ -178,7 +178,7 @@ def get_args_parser():
     )
 
     parser.add_argument("--decoder_embed_dim", default=512, type=int)
-    parser.add_argument("--decoder_depth", default=8, type=int)  # NOTE amir said to make this 8 when doing only images
+    parser.add_argument("--decoder_depth", default=4, type=int)
     parser.add_argument("--decoder_num_heads", default=16, type=int)
     parser.add_argument("--t_patch_size", default=1, type=int)
     parser.add_argument("--num_frames", default=16, type=int)
@@ -189,7 +189,7 @@ def get_args_parser():
     parser.add_argument(
         "--clip_grad",
         type=float,
-        default=float("inf"),  # NOTE changed this from 0.02 to inf
+        default=0.02,
     )
     parser.add_argument("--no_qkv_bias", action="store_true")
     parser.add_argument("--bias_wd", action="store_true")
@@ -363,6 +363,9 @@ def main(args):
 
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
+        
+        # TODO delete
+        print("repeat_aug", args.repeat_aug, "accum_iter", args.accum_iter, "batch_size", args.batch_size, "eff_batch_size", eff_batch_size)
 
         if not args.test_mode:
             train_stats = train_one_epoch(
