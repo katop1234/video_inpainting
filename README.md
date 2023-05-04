@@ -14,7 +14,7 @@ cp -R ~/Datasets
 ln -s /shared/group/ilsvrc ${HOME}/Datasets/ilsvrc
 ln -s /shared/group/kinetics ${HOME}/Datasets/kinetics
 ln -s /shared/amir/dataset/arxiv_resized_train_val_split ${HOME}/Datasets/arxiv_resized_train_val_split
-`
+```
 
 
 ## Example Pretraining command on a single node (8 gpus) on fangtooth:
