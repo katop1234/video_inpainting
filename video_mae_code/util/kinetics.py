@@ -160,10 +160,12 @@ class Kinetics(torch.utils.data.Dataset):
             "val": "val",
             "test": "test",
         }
-        path_to_file = os.path.join(
-            self._path_to_data_dir,
-            "{}.csv".format(csv_file_name[self.mode]),
-        )
+        
+        repo_root = os.path.dirname(os.path.abspath(__file__))
+        csv_file_path = os.path.join(repo_root, "datasets", "kinetics_video.csv")
+        
+        path_to_file = csv_file_path
+        
         assert pathmgr.exists(path_to_file), "{} dir not found".format(path_to_file)
 
         self._path_to_videos = []
