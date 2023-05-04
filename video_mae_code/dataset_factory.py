@@ -4,7 +4,7 @@ from torchvision import datasets
 import os
 from torchvision.transforms import transforms
 from util.decoder import constants
-
+from util.kinetics import Kinetics
 
 def get_image_transforms():
     return transforms.Compose([
@@ -12,7 +12,6 @@ def get_image_transforms():
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(mean=constants.mean, std=constants.std)])
-
 
 def get_dataset(name, root_path, ds_type):
     if ds_type == 'image':
@@ -27,7 +26,20 @@ def get_dataset(name, root_path, ds_type):
 
     elif ds_type == 'video':
         # TODO: add kinetics and more.
-        raise NotImplementedError()
+        
+        if name == "kinetics":
+            dataset_train = Kinetics(
+                mode="pretrain",
+                path_to_data_dir=os.path.join(root_path, 'kinetics/train_256/'),
+                sampling_rate=4,
+                num_frames=16,
+                train_jitter_scales=(256, 320),
+                repeat_aug=4,
+                jitter_aspect_relative=[0.75, 1.3333],
+                jitter_scales_relative=[0.5, 1.0],
+                )
+        else:
+            raise NotImplementedError()
 
     else:
         raise ValueError("Wrong dataset type.")
@@ -38,9 +50,15 @@ def get_dataset(name, root_path, ds_type):
 class MergedDataset(torch.utils.data.Dataset):
     def __init__(self, root_path, image_dataset_list, image_dataset_conf, video_dataset_list, video_dataset_conf,
                  image_pct):
+        
+        image_pct = float(image_pct)
+        image_dataset_conf = [float(x) for x in image_dataset_conf]
+        video_dataset_conf = [float(x) for x in video_dataset_conf]
+        
         image_datasets = [get_dataset(ds_name, root_path, 'image') for ds_name in image_dataset_list]
         video_datasets = [get_dataset(ds_name, root_path, 'video') for ds_name in video_dataset_list]
         datasets = image_datasets + video_datasets
+ 
         conf = list(image_pct * np.array(image_dataset_conf)) + list((1 - image_pct) * np.array(video_dataset_conf))
         self.datasets = datasets
         self.conf = conf

@@ -15,6 +15,8 @@ from torchvision import transforms
 from .decoder import decoder as decoder, utils as utils, video_container as container
 from .decoder.random_erasing import RandomErasing
 from .decoder.transform import create_random_augment
+from pathlib import Path
+
 
 
 class Kinetics(torch.utils.data.Dataset):
@@ -160,10 +162,12 @@ class Kinetics(torch.utils.data.Dataset):
             "val": "val",
             "test": "test",
         }
-        path_to_file = os.path.join(
-            self._path_to_data_dir,
-            "{}.csv".format(csv_file_name[self.mode]),
-        )
+        
+        repo_root = Path(__file__).resolve().parents[1] # chdir out of util/ into video_mae_code/
+        csv_file_path = repo_root / "datasets" / "kinetics_videos.csv"
+
+        path_to_file = csv_file_path
+        
         assert pathmgr.exists(path_to_file), "{} dir not found".format(path_to_file)
 
         self._path_to_videos = []
@@ -331,7 +335,7 @@ class Kinetics(torch.utils.data.Dataset):
                     )
 
                     new_frames = utils.tensor_normalize(
-                        new_frames, self._mean, self._std
+                        new_frames
                     )
                     new_frames = new_frames.permute(3, 0, 1, 2)
 
