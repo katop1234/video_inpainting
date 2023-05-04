@@ -231,7 +231,7 @@ def get_args_parser():
     parser.add_argument("--cls_embed", action="store_true")
     parser.set_defaults(cls_embed=True)
 
-    parser.add_argument("--dataset_root", default="/home/amir/Datasets", help="parent folder for all datasets")
+    parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
     parser.add_argument('--image_dataset_conf', nargs='+', default=[1])
     parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
