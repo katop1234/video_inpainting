@@ -335,7 +335,7 @@ class Kinetics(torch.utils.data.Dataset):
                     )
 
                     new_frames = utils.tensor_normalize(
-                        new_frames, self._mean, self._std
+                        new_frames
                     )
                     new_frames = new_frames.permute(3, 0, 1, 2)
 
