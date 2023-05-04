@@ -13,7 +13,6 @@ def get_image_transforms():
         transforms.ToTensor(),
         transforms.Normalize(mean=constants.mean, std=constants.std)])
 
-
 def get_dataset(name, root_path, ds_type):
     if ds_type == 'image':
         transforms_train = get_image_transforms()
@@ -31,7 +30,7 @@ def get_dataset(name, root_path, ds_type):
         if name == "kinetics":
             dataset_train = Kinetics(
                 mode="pretrain",
-                path_to_data_dir="/shared/group/kinetics/train_256/",
+                path_to_data_dir=os.path.join(root_path, 'kinetics/train_256/'),
                 sampling_rate=4,
                 num_frames=16,
                 train_jitter_scales=(256, 320),

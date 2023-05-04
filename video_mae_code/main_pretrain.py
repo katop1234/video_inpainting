@@ -121,12 +121,6 @@ def get_args_parser():
     )
 
     parser.add_argument(
-        "--path_to_data_dir",
-        default="",
-        help="path to the data directory. Should contain train and val subdirectories",
-    )
-
-    parser.add_argument(
         "--image_prompts_dir",
         default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/visual_prompting_images/",
         help="Image folder containing visualization examples.",
