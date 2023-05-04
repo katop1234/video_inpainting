@@ -121,12 +121,6 @@ def get_args_parser():
     )
 
     parser.add_argument(
-        "--image_prompts_dir",
-        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/visual_prompting_images/",
-        help="Image folder containing visualization examples.",
-    )
-
-    parser.add_argument(
         "--video_prompts_dir",
         default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/final_temporal_videos/",
         help="Folder containing video visualization examples.",
@@ -402,10 +396,12 @@ def main(args):
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
 
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        image_prompts_dir = os.path.join(dir_path, "../test_images")
         if misc.is_main_process():
             if not args.test_mode:
                 wandb.log(log_stats)
-            visualize_prompting(model, args.image_prompts_dir, args.video_prompts_dir)
+            visualize_prompting(model, image_prompts_dir, args.video_prompts_dir)
 
         print("Done loop on epoch {}".format(epoch))
 
