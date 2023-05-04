@@ -4,7 +4,7 @@ from torchvision import datasets
 import os
 from torchvision.transforms import transforms
 from util.decoder import constants
-
+from util.kinetics import Kinetics
 
 def get_image_transforms():
     return transforms.Compose([
@@ -12,7 +12,6 @@ def get_image_transforms():
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(mean=constants.mean, std=constants.std)])
-
 
 def get_dataset(name, root_path, ds_type):
     if ds_type == 'image':
@@ -27,7 +26,20 @@ def get_dataset(name, root_path, ds_type):
 
     elif ds_type == 'video':
         # TODO: add kinetics and more.
-        raise NotImplementedError()
+        
+        if name == "kinetics":
+            dataset_train = Kinetics(
+                mode="pretrain",
+                path_to_data_dir=os.path.join(root_path, 'kinetics/train_256/'),
+                sampling_rate=4,
+                num_frames=16,
+                train_jitter_scales=(256, 320),
+                repeat_aug=4,
+                jitter_aspect_relative=[0.75, 1.3333],
+                jitter_scales_relative=[0.5, 1.0],
+                )
+        else:
+            raise NotImplementedError()
 
     else:
         raise ValueError("Wrong dataset type.")

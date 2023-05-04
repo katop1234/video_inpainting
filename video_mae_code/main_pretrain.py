@@ -35,10 +35,9 @@ def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
 
     parser.add_argument(
-        "--test_mode",
-        default=False,
-        type=bool,
-        help="If False, skips training and only runs inference on the test set, then exits",
+    "--test_mode",
+    action="store_true",
+    help="If provided, skips training and only runs inference on the test set, then exits",
     )
 
     parser.add_argument(
@@ -119,12 +118,6 @@ def get_args_parser():
 
     parser.add_argument(
         "--warmup_epochs", type=int, default=15, metavar="N", help="epochs to warmup LR"  # NOTE was 5 on mae st
-    )
-
-    parser.add_argument(
-        "--path_to_data_dir",
-        default="",
-        help="KINETICS_DIR or IMAGES DIR. I hardcoded this so don't worry about it.",
     )
 
     parser.add_argument(
@@ -240,13 +233,12 @@ def get_args_parser():
 
     parser.add_argument("--dataset_root", default="/home/amir/Datasets", help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
-    parser.add_argument('--image_dataset_conf', nargs='+', default=[1.])
-    parser.add_argument('--video_dataset_list', nargs='+', default=[])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[])
-    parser.add_argument('--image_video_ratio', default=1, help='default means only images')
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[1])
+    parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
+    parser.add_argument('--image_video_ratio', default=0.5, help='default means only images')
 
     return parser
-
 
 def main(args):
     misc.init_distributed_mode(args)
@@ -265,8 +257,12 @@ def main(args):
     cudnn.benchmark = True
 
     # Dataset combining image and video data
-    dataset_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, args.video_dataset_list,
-                  args.video_dataset_conf, args.image_video_ratio)
+    dataset_train = MergedDataset(args.dataset_root, 
+                                  args.image_dataset_list, 
+                                  args.image_dataset_conf, 
+                                  args.video_dataset_list,
+                                  args.video_dataset_conf, 
+                                  args.image_video_ratio)
 
     num_tasks = misc.get_world_size()  # 8 gpus
     global_rank = misc.get_rank()
