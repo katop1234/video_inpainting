@@ -127,11 +127,11 @@ def get_args_parser():
         help="KINETICS_DIR or IMAGES DIR. I hardcoded this so don't worry about it.",
     )
 
-    parser.add_argument(
-        "--image_prompts_dir",
-        default="/shared/dannyt123/video_inpainting/video_inpainting/test_cases/visual_prompting_images",
-        help="Image folder containing visualization examples.",
-    )
+    # parser.add_argument(
+    #     "--image_prompts_dir",
+    #     default="/shared/dannyt123/video_inpainting/video_inpainting/test_cases/visual_prompting_images",
+    #     help="Image folder containing visualization examples.",
+    # )
 
     parser.add_argument(
         "--video_prompts_dir",
@@ -409,7 +409,7 @@ def main(args):
         if misc.is_main_process():
             if not args.test_mode:
                 wandb.log(log_stats)
-            visualize_prompting(model, args.image_prompts_dir, args.video_prompts_dir)
+            visualize_prompting(model, "../test_images", args.video_prompts_dir)
 
         print("Done loop on epoch {}".format(epoch))
 
