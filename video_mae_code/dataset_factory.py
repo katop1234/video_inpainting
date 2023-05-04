@@ -50,9 +50,15 @@ def get_dataset(name, root_path, ds_type):
 class MergedDataset(torch.utils.data.Dataset):
     def __init__(self, root_path, image_dataset_list, image_dataset_conf, video_dataset_list, video_dataset_conf,
                  image_pct):
+        
+        image_pct = float(image_pct)
+        image_dataset_conf = [float(x) for x in image_dataset_conf]
+        video_dataset_conf = [float(x) for x in video_dataset_conf]
+        
         image_datasets = [get_dataset(ds_name, root_path, 'image') for ds_name in image_dataset_list]
         video_datasets = [get_dataset(ds_name, root_path, 'video') for ds_name in video_dataset_list]
         datasets = image_datasets + video_datasets
+ 
         conf = list(image_pct * np.array(image_dataset_conf)) + list((1 - image_pct) * np.array(video_dataset_conf))
         self.datasets = datasets
         self.conf = conf
