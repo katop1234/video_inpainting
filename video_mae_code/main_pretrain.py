@@ -123,7 +123,7 @@ def get_args_parser():
     parser.add_argument(
         "--path_to_data_dir",
         default="",
-        help="KINETICS_DIR or IMAGES DIR. I hardcoded this so don't worry about it.",
+        help="path to the data directory. Should contain train and val subdirectories",
     )
 
     parser.add_argument(
@@ -239,9 +239,9 @@ def get_args_parser():
 
     parser.add_argument("--dataset_root", default="/home/amir/Datasets", help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
-    parser.add_argument('--image_dataset_conf', nargs='+', default=[0.5])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[1])
     parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[0.5])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
     parser.add_argument('--image_video_ratio', default=0.5, help='default means only images')
 
     return parser
