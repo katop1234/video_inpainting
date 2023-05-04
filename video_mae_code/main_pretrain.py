@@ -400,10 +400,12 @@ def main(args):
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
 
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        image_prompts_dir = os.path.join(dir_path, "../test_images")
         if misc.is_main_process():
             if not args.test_mode:
                 wandb.log(log_stats)
-            visualize_prompting(model, "../test_images", args.video_prompts_dir)
+            visualize_prompting(model, image_prompts_dir, args.video_prompts_dir)
 
         print("Done loop on epoch {}".format(epoch))
 
