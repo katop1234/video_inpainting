@@ -358,7 +358,7 @@ def main(args):
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
-    start_time = time.time()
+    start_time = time.ftime()
     for epoch in range(args.start_epoch, args.epochs):
 
         if args.distributed:
