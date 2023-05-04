@@ -127,12 +127,6 @@ def get_args_parser():
         help="KINETICS_DIR or IMAGES DIR. I hardcoded this so don't worry about it.",
     )
 
-    # parser.add_argument(
-    #     "--image_prompts_dir",
-    #     default="/shared/dannyt123/video_inpainting/video_inpainting/test_cases/visual_prompting_images",
-    #     help="Image folder containing visualization examples.",
-    # )
-
     parser.add_argument(
         "--video_prompts_dir",
         default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/final_temporal_videos/",
