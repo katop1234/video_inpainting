@@ -60,6 +60,7 @@ class MergedDataset(torch.utils.data.Dataset):
         datasets = image_datasets + video_datasets
  
         conf = list(image_pct * np.array(image_dataset_conf)) + list((1 - image_pct) * np.array(video_dataset_conf))
+        conf = [i / sum(conf) for i in conf]
         self.datasets = datasets
         self.conf = conf
 
