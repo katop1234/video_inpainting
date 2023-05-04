@@ -117,7 +117,7 @@ def get_args_parser():
     )
 
     parser.add_argument(
-        "--warmup_epochs", type=int, default=15, metavar="N", help="epochs to warmup LR"  # NOTE was 5 on mae st
+        "--warmup_epochs", type=int, default=5, metavar="N", help="epochs to warmup LR"
     )
 
     parser.add_argument(
@@ -358,7 +358,7 @@ def main(args):
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
-    start_time = time.ftime()
+    start_time = time.time()
     for epoch in range(args.start_epoch, args.epochs):
 
         if args.distributed:
