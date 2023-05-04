@@ -242,10 +242,9 @@ def get_args_parser():
     parser.add_argument('--image_dataset_conf', nargs='+', default=[0.5])
     parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
     parser.add_argument('--video_dataset_conf', nargs='+', default=[0.5])
-    parser.add_argument('--image_video_ratio', default=1, help='default means only images')
+    parser.add_argument('--image_video_ratio', default=0.5, help='default means only images')
 
     return parser
-
 
 def main(args):
     misc.init_distributed_mode(args)
@@ -264,8 +263,12 @@ def main(args):
     cudnn.benchmark = True
 
     # Dataset combining image and video data
-    dataset_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, args.video_dataset_list,
-                  args.video_dataset_conf, args.image_video_ratio)
+    dataset_train = MergedDataset(args.dataset_root, 
+                                  args.image_dataset_list, 
+                                  args.image_dataset_conf, 
+                                  args.video_dataset_list,
+                                  args.video_dataset_conf, 
+                                  args.image_video_ratio)
 
     num_tasks = misc.get_world_size()  # 8 gpus
     global_rank = misc.get_rank()
