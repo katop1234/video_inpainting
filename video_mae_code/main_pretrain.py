@@ -35,11 +35,11 @@ def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
 
     parser.add_argument(
-        "--test_mode",
-        default=False,
-        type=bool,
-        help="If False, skips training and only runs inference on the test set, then exits",
+    "--test_mode",
+    action="store_true",
+    help="If provided, skips training and only runs inference on the test set, then exits",
     )
+
 
     parser.add_argument(
         "--batch_size",
