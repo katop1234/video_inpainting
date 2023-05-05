@@ -266,31 +266,28 @@ class Kinetics(torch.utils.data.Dataset):
                 continue
 
             # Decode video. Meta info is used to perform selective decoding.
-            frames, fps, decode_all_video = decoder.decode(
-                video_container,
-                sampling_rate,
-                self._num_frames,
-                temporal_sample_index,
-                self._test_num_ensemble_views,
-                video_meta=self._video_meta[index],
-                target_fps=self._target_fps,
-                max_spatial_scale=min_scale,
-                use_offset=self._use_offset_sampling,
-                rigid_decode_all_video=self.mode in ["pretrain"],
-            )
-
-            # If decoding failed (wrong format, video is too short, and etc),
-            # select another video.
-            if frames is None:
+            
+            try:
+                frames, fps, decode_all_video = decoder.decode(
+                    video_container,
+                    sampling_rate,
+                    self._num_frames,
+                    temporal_sample_index,
+                    self._test_num_ensemble_views,
+                    video_meta=self._video_meta[index],
+                    target_fps=self._target_fps,
+                    max_spatial_scale=min_scale,
+                    use_offset=self._use_offset_sampling,
+                    rigid_decode_all_video=self.mode in ["pretrain"],
+                )
+            except Exception as e:
                 print(
-                    "Failed to decode video idx {} from {}; trial {}".format(
-                        index, self._path_to_videos[index], i_try
+                    "Failed to decode video idx {} from {} with error {}".format(
+                        index, self._path_to_videos[index], e
                     )
                 )
-                if self.mode not in ["test"] and i_try > self._num_retries // 2:
-                    # let's try another one
-                    index = random.randint(0, len(self._path_to_videos) - 1)
-                continue
+                index = random.randint(0, len(self._path_to_videos) - 1)
+                return self.__getitem__(index)
 
             frames_list = []
             label_list = []
