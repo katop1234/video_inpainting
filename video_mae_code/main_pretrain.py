@@ -304,7 +304,7 @@ def main(args):
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
 
-    eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size() * args.repeat_aug
+    eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
 
     if args.lr is None:
         args.lr = args.blr * eff_batch_size / 256
@@ -366,7 +366,7 @@ def main(args):
         
         # TODO delete
         print("repeat_aug", args.repeat_aug, "accum_iter", args.accum_iter, "batch_size", args.batch_size, "eff_batch_size", eff_batch_size)
-
+        
         if not args.test_mode:
             train_stats = train_one_epoch(
                 model,
