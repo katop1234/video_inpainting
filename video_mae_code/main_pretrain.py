@@ -185,7 +185,7 @@ def get_args_parser():
     parser.add_argument("--checkpoint_period", default=50, type=int)
     parser.add_argument("--sampling_rate", default=4, type=int)
     parser.add_argument("--distributed", action="store_true")
-    parser.add_argument("--repeat_aug", default=1, type=int)
+    parser.add_argument("--repeat_aug", default=1, type=int, help="We set this to 2 by default in dataset_factory.get_dataset for Kinetics.")
     parser.add_argument(
         "--clip_grad",
         type=float,
