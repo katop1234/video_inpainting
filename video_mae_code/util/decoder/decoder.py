@@ -240,6 +240,8 @@ def decode(
             video_meta["has_video"] = True  # Assuming the container has a video stream
             video_meta["video_duration"] = video_stream.duration * time_base
             video_meta["video_fps"] = fps
+        
+        fps = video_meta["video_fps"]
 
         # PyAV decoding
         frames_list = []
