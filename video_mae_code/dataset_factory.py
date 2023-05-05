@@ -34,7 +34,7 @@ def get_dataset(name, root_path, ds_type):
                 sampling_rate=4,
                 num_frames=16,
                 train_jitter_scales=(256, 320),
-                repeat_aug=4,
+                repeat_aug=2,
                 jitter_aspect_relative=[0.75, 1.3333],
                 jitter_scales_relative=[0.5, 1.0],
                 )
