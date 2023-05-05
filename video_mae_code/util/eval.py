@@ -125,6 +125,7 @@ def uint8_to_normalized(tensor):
     Convert a uint8 tensor to a float tensor and normalize the values.
     tensor: PyTorch tensor, the uint8 tensor to convert
     """
+
     return utils.tensor_normalize(tensor)
 
 
