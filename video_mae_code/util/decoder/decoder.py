@@ -253,7 +253,7 @@ def decode(
         v_frames = torch.from_numpy(np.stack(frames_list))
 
     except Exception as e:
-        print("Failed to decode with PyAV with exception: {}".format(e), "called index", index)
+        print("Failed to decode with PyAV with exception: {}".format(e))
         raise e
 
     # Return None if the frames were not decoded successfully.
