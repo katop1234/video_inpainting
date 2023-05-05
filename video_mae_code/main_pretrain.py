@@ -227,9 +227,11 @@ def get_args_parser():
 
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
-    parser.add_argument('--image_dataset_conf', nargs='+', default=[1])
-    parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[2]) #1 #added
+    # parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics']) #commented out
+    # parser.add_argument('--video_dataset_conf', nargs='+', default=[1]) #commented out
+    parser.add_argument('--video_dataset_list', nargs='+', default=[])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[])
     parser.add_argument('--image_video_ratio', default=0.5, help='default means only images')
 
     return parser
