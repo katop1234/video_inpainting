@@ -183,7 +183,7 @@ def reconstruct(mask, ground_truth, test_model_output):
 @torch.no_grad()
 def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
     model.eval()
-    visualize_image_prompting(model, input_image_viz_dir)
+    #visualize_image_prompting(model, input_image_viz_dir)
     visualize_video_prompting(model, input_video_viz_dir)
     model.train()
 
@@ -221,6 +221,8 @@ def visualize_image_prompting(model, input_image_viz_dir):
 def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_temporal_videos/"):
     test_model_input = get_test_model_input(data_dir=input_video_viz_dir)
     test_model_input = spatial_sample_test_video(test_model_input)
+    
+    print("video test model input", test_model_input.shape, test_model_input.min(), test_model_input.max(), test_model_input)
 
     with torch.no_grad():
         # TODO change test_temporal to True later when it works
@@ -234,10 +236,12 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
         raise NotImplementedError("Something's funky")
 
     test_model_output = normalized_to_uint8(test_model_output)
-    test_model_output_np = test_model_output.squeeze(0).permute(1, 0, 3, 2).cpu().numpy()
+    print("video test model output", test_model_output.shape, test_model_output.min(), test_model_output.max(), test_model_output)
+    test_model_output_np = test_model_output.squeeze(0).permute(1, 0, 3, 2).cpu().numpy().astype(np.uint8)
+    print("video test model output np", test_model_output_np.shape, test_model_output_np.min(), test_model_output_np.max(), test_model_output_np)
 
     wandb_video_object = wandb.Video(
         data_or_path=test_model_output_np,
-        fps=30
+        fps=30,
     )
     wandb.log({"video": wandb_video_object})

@@ -8,3 +8,4 @@ pretraining_progress/
 video_mae_code/__pycache__/
 video_mae_code/util/__pycache__
 video_mae_code/util/decoder/__pycache__/
+TODO.txt
