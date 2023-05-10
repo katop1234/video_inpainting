@@ -18,7 +18,7 @@ from util import video_vit
 import random
 from util.logging import master_print as print
 from timm.models.vision_transformer import Block
-# from vqgan import get_vq_model #added
+from vqgan import get_vq_model #added
 
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
@@ -41,9 +41,9 @@ class MaskedAutoencoderViT(nn.Module):
         t_patch_size=1,
         patch_embed=video_vit.PatchEmbed,
         no_qkv_bias=False,
-        sep_pos_embed=False,
+        sep_pos_embed=True, #False #added
         trunc_init=False,
-        cls_embed=False,
+        cls_embed=True, #False #added
         pred_t_dim=16,
         **kwargs,
     ):
@@ -116,7 +116,7 @@ class MaskedAutoencoderViT(nn.Module):
         )
         
         self.norm = norm_layer(embed_dim)
-        # self.vae = get_vg_model().eval() #added
+        self.vae = get_vq_model().eval() #added
         vocab_size = 1024 #added
         # --------------------------------------------------------------------------
 
@@ -440,7 +440,9 @@ class MaskedAutoencoderViT(nn.Module):
 
             pos_embed = pos_embed.expand(x.shape[0], -1, -1) # copies along batch dimension to match x
 
+            # print("test_image: ", test_image) #added
             if ids_keep.shape[1] == (1 - mask_ratio_image) * 196 or test_image:
+                # print("entered properly") #added
                 # image
                 '''
                 Basically, for images, the ids to keep ranges from 0->195, so we need to add 0->15 * 196 to each row of ids_keep
@@ -570,6 +572,7 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             decoder_pos_embed = self.decoder_pos_embed[:, :, :]
 
+        # print("x.shape: ", x.shape)
         if x.shape[1] == 1 + 14 ** 2: # image
             # Create a range tensor for indexing
             index_range = torch.arange(0, 196, device=x.device).view(1, -1)
@@ -631,22 +634,48 @@ class MaskedAutoencoderViT(nn.Module):
                     self.pred_t_dim,
                 )
                 .long()
-                .to(imgs.device),
+                .to(imgs.device)
             )
         else:
             # images
             _imgs = imgs #added comment [64, 3, 1, 224, 224]
 
-        store = pred.permute(0, 2, 1)
-        # print("store.shape: ", store.shape)
+        # _imgs = _imgs.to(torch.float)
+        # store = pred.permute(0, 2, 1)
+        # print("_imgs.shape: ", _imgs.shape)
+        T = _imgs.shape[2]
+        # _imgs = _imgs.squeeze() #added
 
-
+        # print("mask.shape video: ", mask.shape)
+        #added from here
         with torch.no_grad():
-            target = self.vae.get_codebook_indices(_img).flatten(1)
-            # print("target.shape: ", target.shape)
+
+            if (T == 1): #Image Case
+                
+                # print("_imgs.shape in image: ", _imgs.shape) #[3, 224, 224]
+                _imgs = torch.squeeze(_imgs, 2)
+                # print("_imgs.shape after squeeze: ", _imgs.shape)
+                target = self.vae.get_codebook_indices(_imgs).flatten(1)
+                # print("target.shape in image: ", target.shape) #[1, 196]
+                # print("pred.shape in image: ", pred.shape) #[1, 196, 1024]
+            elif (T == 16): #Video Case
+                # print("_imgs.shape in video: ", _imgs.shape) #[1, 3, 16, 224, 224]
+                _imgs = torch.squeeze(_imgs, 0) #remove batch dim
+                # print("_imgs.shape in video after squeeze: ", _imgs.shape)
+                # print("pred.shape in video: ", pred.shape) #[1, 3136, 1024]
+                _imgs = torch.einsum("cthw->tchw", _imgs) #time as the batch size just for vqgan [16, 3, 224, 224]
+                # print("_imgs.shape after einsum: ", _imgs.shape) #[16, 3, 224, 224]
+                target = self.vae.get_codebook_indices(_imgs).flatten(1)
+                # print("target.shape before einsum: ", target.shape) #[16, 196]
+                target = torch.reshape(target, [1, 16 * 196])
+                # print("target.shape after einsum: ", target.shape)
+            else:
+                print("Invalid Tensor Size")
+                raise NotImplementedError
+
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target) #Have be careful about the pred.permute(0, 2, 1) 
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches, have to check mask shape and stuff might have to be the same as below
-        # return loss
+        return loss
 
         # Old pixel_loss
         # target = self.patchify(_imgs)
@@ -669,8 +698,8 @@ class MaskedAutoencoderViT(nn.Module):
         # return loss
 
 
-
-    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False):
+    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False): #test_image=False #added
+        self.vae.eval()
         latent, mask, ids_restore, offsets = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_spatiotemporal, test_temporal, test_image)
         pred = self.forward_decoder(latent, ids_restore, offsets, mask_ratio_image, mask_ratio_video) #[N, L, 1024] after vqgan # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred, mask)
