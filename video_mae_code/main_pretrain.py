@@ -348,6 +348,7 @@ def main(args):
         optimizer=optimizer,
         loss_scaler=loss_scaler,
     )
+    
     if misc.is_main_process():
         wandb_config = vars(args)
         base_lr = (args.lr * 256 / eff_batch_size)
