@@ -118,12 +118,7 @@ def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
     img = Image.open(image_path)
     img = img.resize((target_shape[-1], target_shape[-2]), Image.ANTIALIAS)  # Resize to (width, height)
     
-    #added
     img = convert_tensor(img)
-
-    #original 
-    # img = img.resize((target_shape[-1], target_shape[-2]), Image.ANTIALIAS)  # Resize to (width, height)
-    # img = torch.from_numpy(np.array(img)).permute(2, 0, 1)  # Convert to a tensor and rearrange dimensions
     img = img.unsqueeze(1)  # Add the num_frames dimension
     img = img.unsqueeze(0)  # Add the batch_size dimension
 
@@ -150,11 +145,9 @@ def get_test_model_input(file: str = None, data_dir: str = None):
     if file:
         if file.endswith(".mp4"):
             video_tensor = video_to_tensor(file)
-            video_tensor = uint8_to_normalized(video_tensor)
             return video_tensor.cuda()
         elif file.endswith(".png"):
             image_tensor = image_to_tensor(file, (1, 3, 1, 224, 224))
-            # image_tensor = uint8_to_normalized(image_tensor)
             return image_tensor.cuda()
         raise NotImplementedError
 
@@ -185,9 +178,6 @@ def spatial_sample_test_video(test_model_input):
 
 
 def reconstruct(mask, ground_truth, test_model_output):
-    # print("ground_truth.shape: ", ground_truth.shape)
-    # print("test_model_output.shape: ", test_model_output.shape)
-    # print("mask.shape: ", mask.shape)
     expanded_mask = mask.unsqueeze(-1).expand_as(ground_truth)
     result = torch.where(expanded_mask == 1, test_model_output, ground_truth)
     return result
@@ -233,37 +223,27 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
         orig_image = torch.squeeze(orig_image, 2)
         mask = torch.squeeze(mask, 2)
     elif T == 16: #video
-        orig_image = orig_image.permute(2, 1, 0, 3, 4)
-        # orig_image = torch.einsum('ncthw->tcnhw', orig_image) #for video we treat the Time as the Batch [1, 3, 16, 224, 224]->[16, 3, 1, 224, 224]
+        orig_image = orig_image.permute(2, 1, 0, 3, 4) #'ncthw->tcnhw'
         orig_image = torch.squeeze(orig_image, 2) #[16, 3, 224, 224]
+        print("orig_image.shape: ", orig_image.shape)
 
-        mask = mask.permute(2, 1, 0, 3, 4)
-        # mask = torch.einsum('ncthw->tcnhw', mask) #same as orig_image
-        mask = torch.squeeze(mask, 2) #same as orig_image
+        mask = mask.permute(2, 1, 0, 3, 4) #'ncthw->tcnhw'
+        mask = torch.squeeze(mask, 2)
     else: 
         raise NotImplementedError("Not video or image")
 
-    mask = mask.permute(0, 2, 3, 1).detach().cpu()
-    orig_image = orig_image.permute(0, 2, 3, 1).detach().cpu()
-    # mask = torch.einsum('nchw->nhwc', mask).detach().cpu()
-    # orig_image = torch.einsum('nchw->nhwc', orig_image).cpu()
-    print("mask: ", mask)
+    mask = mask.permute(0, 2, 3, 1).detach().cpu() #'nchw->nhwc'
+    orig_image = orig_image.permute(0, 2, 3, 1).detach().cpu() #'nchw->nhwc'
     imagenet_mean = imagenet_mean.cpu().detach()
     imagenet_std = imagenet_std.cpu().detach()
-    print("orig_image.shape: ", orig_image.shape)
-    imagenet_mean = torch.tensor([0, 0, 0])
-    imagenet_std = torch.tensor([1, 1, 1])
+
     orig_image = (
-        torch.clip((orig_image[0].cpu().detach() * imagenet_std + imagenet_mean) * 255, 0, 255).int()).unsqueeze(0) #have to change/might not want to
+            torch.clip((orig_image.cpu().detach()) * 255, 0, 255).int()).unsqueeze(0) 
+    y = (
+        torch.clip(((y.cpu().detach() / 255 - imagenet_mean) / imagenet_std) * 255, 0, 255).int()).unsqueeze(0) #denormalizing generated image
 
-    # orig_image = normalized_to_uint8(orig_image)
-
-    # orig_image = (
-    #     torch.clip((orig_image[0].cpu().detach()), 0, 255).int()).unsqueeze(0) #have to change/might not want to
-    print("orig_image.shape: ", orig_image.shape)
     # MAE reconstruction pasted with visible patches
     im_paste = orig_image * (1 - mask) + y * mask
-    # im_paste = orig_image
     return im_paste, mask, orig_image
 
 
@@ -272,47 +252,33 @@ def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
     model.eval()
     visualize_image_prompting(model, input_image_viz_dir)
     visualize_video_prompting(model, input_video_viz_dir)
-    # model.train()
+    model.train()
 
 @torch.no_grad()
 def visualize_image_prompting(model, input_image_viz_dir):
     ### Test on images
     for i, img_file in enumerate(os.listdir(input_image_viz_dir)):
         img_file = os.path.join(input_image_viz_dir, img_file)
-        test_model_input = get_test_model_input(file=img_file) #added comment [1, 3, 1, 224, 224]
+        test_model_input = get_test_model_input(file=img_file) #[1, 3, 1, 224, 224]
         test_model_input = test_model_input.cuda()
 
         with torch.no_grad():
             if type(model) is torch.nn.parallel.DistributedDataParallel:
                 _, test_model_output, mask = model.module(test_model_input, test_image=True)
             elif type(model) is models_mae.MaskedAutoencoderViT:
-                _, test_model_output, mask = model(test_model_input, test_image=True) #running forward logically same as generate_raw_prediction #might need to make if statement
+                _, test_model_output, mask = model(test_model_input, test_image=True)
             else: 
                 raise NotImplementedError("Something's funky")
 
         num_patches = 14
-        y = test_model_output.argmax(dim=-1) #should still work
-        im_paste, mask, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y) #check
-        im_paste = im_paste.unsqueeze(0)
-        im_paste = im_paste.permute(0, 4, 1, 2, 3)
-        # im_paste = torch.einsum('nthwc->ncthw', im_paste)
-        
-        test_model_output = im_paste
-        print("test_model_output.shape: ", test_model_output.shape)
-        test_model_output = test_model_output.squeeze(2)
-        print("test_model_output.shape: ", test_model_output.shape)
-        denormalized_img = test_model_output.permute(0, 2, 3, 1)   # (224, 224, 3)
-
-        # test_model_output = normalized_to_uint8(im_paste)
-        # denormalized_img = test_model_output.squeeze(0).permute(1, 2, 3, 0) #.squeeze(0)  # (224, 224, 3)
-
-        image_array = (denormalized_img.cpu().numpy()).astype(np.uint8)
-        # print("image_array.shape: ", image_array.shape)
-        # return image_array, orig_image
+        y = test_model_output.argmax(dim=-1)
+        im_paste, _, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+        im_paste = im_paste.squeeze()
+        im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
         
         output_img_name = 'test_model_output_img' + str(i) + '.png'
-        image = wandb.Image(image_array)
-        wandb.log({output_img_name: image}) #temporarily commented out for jupyter playing around
+        image = wandb.Image(im_paste)
+        wandb.log({output_img_name: image})
 
 
 @torch.no_grad()
@@ -333,12 +299,13 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
     num_patches = 14
     y = test_model_output.argmax(dim=-1)
     im_paste, mask, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
-    im_paste = im_paste.unsqueeze(0)
-    im_paste = im_paste.permute((0, 1, 4, 2, 3))
+    im_paste = im_paste.permute((0, 1, 4, 2, 3)) #'nthwc->ntchw'
+
+    im_paste = (im_paste.cpu().numpy()).astype(np.uint8)  
 
     wandb_video_object = wandb.Video(
-        # data_or_path=test_model_output_np,
         data_or_path=im_paste,
-        fps=30
+        fps=30,
+        format="mp4"
     )
     wandb.log({"video": wandb_video_object})
