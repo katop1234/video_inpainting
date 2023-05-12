@@ -1265,8 +1265,7 @@ class VQModel(pl.LightningModule):
         return x
 
     def get_codebook_indices(self, x):
-        x = self.map_pixels(x) #passing [n, 3, 224, 224] for image and [1, 3, 16, 224, 224] for video
-        # print("x.shape: ", x.shape)
+        x = self.map_pixels(x)
         return self.encode(x)[-1][-1].view(x.shape[0], -1)
 
     def unmap_pixels(self, x: torch.Tensor) -> torch.Tensor:
@@ -1281,19 +1280,9 @@ class VQModel(pl.LightningModule):
 
     def map_pixels(self, x: torch.Tensor) -> torch.Tensor:
         if x.dtype != torch.float:
-            # print("HELLO")
             raise ValueError('expected input to have type float')
-        #original
         x = 2. * (x * torch.tensor(imagenet_std[None, :, None, None]).to(x.device) + torch.tensor(
             imagenet_mean[None, :, None, None]).to(x.device)) - 1.
-        #added
-        # dim = len(x.shape)
-        # if dim == 3: #Image
-        #      x = 2. * (x * torch.tensor(imagenet_std[None, :, None, None]).to(x.device) + torch.tensor(
-        #     imagenet_mean[None, :, None, None]).to(x.device)) - 1.
-        # if dim == 4: #Video
-        #     x = 2. * (x * torch.tensor(imagenet_std[None, :, None, None, None]).to(x.device) + torch.tensor(
-        #     imagenet_mean[None, :, None, None, None]).to(x.device)) - 1. 
         return x.float()
 
 

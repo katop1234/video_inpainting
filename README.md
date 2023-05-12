@@ -7,6 +7,11 @@ kraken - all gpus (there are 2 big 48GB gpus) - if running on these, please reme
 ## Install env 
 ``conda env create -f environment.yml``
 This should take care of most dependencies.
+``pip install pytorch-lightning==1.6.2 einops==0.6.1 omegaconf==2.3.0``
+Installing additional dependencies for VQGAN. 
+
+## Setup for VQGAN
+Download pretrained VQGAN codebook checkpoint and config [vqgan_imagenet_f16_1024](https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/?p=%2F), place both last.ckpt and model.yaml on the repository root.
 
 ## Setup up a datasets folder and create soft links to the datasets
 ```

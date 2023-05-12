@@ -18,7 +18,7 @@ from util import video_vit
 import random
 from util.logging import master_print as print
 from timm.models.vision_transformer import Block
-from vqgan import get_vq_model #added
+from vqgan import get_vq_model
 
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""

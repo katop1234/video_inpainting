@@ -7,8 +7,8 @@ import cv2
 from PIL import Image
 from util.decoder import utils
 import random
-import torch.nn.functional as F #added
-from torchvision import transforms #added
+import torch.nn.functional as F
+from torchvision import transforms
 
 imagenet_mean = torch.tensor([0.485, 0.456, 0.406])
 imagenet_std = torch.tensor([0.229, 0.224, 0.225])
@@ -114,7 +114,7 @@ def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
     Returns a tensor of shape (1, 3, 1, 224, 224) from an image
     NOT normalized
     '''
-    convert_tensor = transforms.ToTensor() #added
+    convert_tensor = transforms.ToTensor()
     img = Image.open(image_path)
     img = img.resize((target_shape[-1], target_shape[-2]), Image.ANTIALIAS)  # Resize to (width, height)
     
