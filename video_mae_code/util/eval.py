@@ -125,7 +125,6 @@ def uint8_to_normalized(tensor):
     Convert a uint8 tensor to a float tensor and normalize the values.
     tensor: PyTorch tensor, the uint8 tensor to convert
     """
-
     return utils.tensor_normalize(tensor)
 
 
@@ -216,17 +215,17 @@ def visualize_image_prompting(model, input_image_viz_dir):
         image = wandb.Image(image_array)
         wandb.log({output_img_name: image})
 
-
 @torch.no_grad()
 def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_temporal_videos/"):
     test_model_input = get_test_model_input(data_dir=input_video_viz_dir)
     test_model_input = spatial_sample_test_video(test_model_input)
-    
-    print("video test model input", test_model_input.shape, test_model_input.min(), test_model_input.max(), test_model_input)
 
     with torch.no_grad():
         # TODO change test_temporal to True later when it works
         _, test_model_output, _ = model(test_model_input)
+    
+    print("test model input", test_model_input.shape, test_model_input)
+    print("test model output", test_model_output.shape, test_model_output)
 
     if type(model) is torch.nn.parallel.DistributedDataParallel:
         test_model_output = model.module.unpatchify(test_model_output)
@@ -236,9 +235,15 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
         raise NotImplementedError("Something's funky")
 
     test_model_output = normalized_to_uint8(test_model_output)
-    print("video test model output", test_model_output.shape, test_model_output.min(), test_model_output.max(), test_model_output)
-    test_model_output_np = test_model_output.squeeze(0).permute(1, 0, 3, 2).cpu().numpy().astype(np.uint8)
-    print("video test model output np", test_model_output_np.shape, test_model_output_np.min(), test_model_output_np.max(), test_model_output_np)
+    print("after normalization", test_model_output.shape, test_model_output)
+    test_model_output_np = test_model_output.squeeze(0).permute(1, 0, 3, 2).unsqueeze(0).cpu().numpy()
+    test_model_output_np = test_model_output_np.astype(np.uint8)
+    
+    print("test model output np", test_model_output_np.shape, test_model_output_np)
+    
+    import imageio
+    print('saving locally')
+    #imageio.mimwrite('output.mp4', test_model_output_np.transpose(0, 2, 3, 1), fps=4)
 
     wandb_video_object = wandb.Video(
         data_or_path=test_model_output_np,
