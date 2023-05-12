@@ -9,3 +9,14 @@ video_mae_code/__pycache__/
 video_mae_code/util/__pycache__
 video_mae_code/util/decoder/__pycache__/
 TODO.txt
+CVF_images.csv
+Miniconda3-latest-Linux-x86_64.sh
+debug_loss/
+output.mp4
+output_image.png
+personal.txt
+prev_output_dirs/
+scratch.ipynb
+video_mae_code/debug/
+video_mae_code/wandb/
+wandb/

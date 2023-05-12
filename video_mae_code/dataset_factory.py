@@ -13,6 +13,7 @@ def get_image_transforms():
         transforms.ToTensor(),
         transforms.Normalize(mean=constants.mean, std=constants.std)])
 
+
 def get_dataset(name, root_path, ds_type):
     if ds_type == 'image':
         transforms_train = get_image_transforms()
@@ -25,7 +26,6 @@ def get_dataset(name, root_path, ds_type):
             raise ValueError("Wrong dataset name.")
 
     elif ds_type == 'video':
-        # TODO: add kinetics and more.
         
         if name == "kinetics":
             dataset_train = Kinetics(
@@ -34,7 +34,7 @@ def get_dataset(name, root_path, ds_type):
                 sampling_rate=4,
                 num_frames=16,
                 train_jitter_scales=(256, 320),
-                repeat_aug=2, # TODO this has been hardcoded, figure out how to make it more elegant
+                repeat_aug=1, # TODO this has been hardcoded, figure out how to make it more elegant
                 jitter_aspect_relative=[0.75, 1.3333],
                 jitter_scales_relative=[0.5, 1.0],
                 )
@@ -65,7 +65,7 @@ class MergedDataset(torch.utils.data.Dataset):
         self.conf = conf
 
     def __len__(self):
-        return 79490  # Fixing epoch to be CVF dataset size for reproducibility
+        return 79490 # Fixing epoch to be CVF dataset size for reproducibility
 
     def __getitem__(self, index: int):
         sampled_ds_index = np.random.choice(np.arange(0, len(self.datasets)), p=self.conf)

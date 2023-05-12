@@ -1,3 +1,4 @@
+
 # Copyright (c) Meta Platforms, Inc. and affiliates.
 # All rights reserved.
 
@@ -29,7 +30,6 @@ from engine_pretrain import train_one_epoch
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from torch.utils.tensorboard import SummaryWriter
 import util.decoder.utils as utils
-
 
 def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
@@ -236,7 +236,7 @@ def get_args_parser():
     parser.add_argument('--image_dataset_conf', nargs='+', default=[1])
     parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
     parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
-    parser.add_argument('--image_video_ratio', default=0.5, help='default means only images')
+    parser.add_argument('--image_video_ratio', default=0.5, help='default means equally mixed between the two')
 
     return parser
 
@@ -348,7 +348,7 @@ def main(args):
         optimizer=optimizer,
         loss_scaler=loss_scaler,
     )
-    
+
     if misc.is_main_process():
         wandb_config = vars(args)
         base_lr = (args.lr * 256 / eff_batch_size)
@@ -364,7 +364,7 @@ def main(args):
 
         if args.distributed:
             data_loader_train.sampler.set_epoch(epoch)
-        
+
         # TODO delete
         print("repeat_aug", args.repeat_aug, "accum_iter", args.accum_iter, "batch_size", args.batch_size, "eff_batch_size", eff_batch_size)
         

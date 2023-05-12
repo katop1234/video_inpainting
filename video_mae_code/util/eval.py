@@ -8,7 +8,6 @@ from PIL import Image
 from util.decoder import utils
 import random
 
-
 def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     '''
     "The input tensor should have the shape: (N, C, T, H, W)"
@@ -28,7 +27,6 @@ def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     out.release()
     return frames_uint8
 
-
 def save_test_output(output, name):
     if output.shape == (1, 3, 16, 224, 224):
         return save_frames_as_mp4(output, name)
@@ -36,12 +34,10 @@ def save_test_output(output, name):
         return Image.fromarray(output).save(name)
     raise NotImplementedError
 
-
 def get_random_file(data_dir):
     files = [f for f in os.listdir(data_dir) if os.path.isfile(os.path.join(data_dir, f))]
     random_file = random.choice(files)
     return os.path.join(data_dir, random_file)
-
 
 def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
     '''
@@ -99,11 +95,9 @@ def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
 
     return video_tensor
 
-
 def check_folder_equality(str1, str2):
     n = len(str2)
     return str1[-n:] == str2
-
 
 def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
     '''
@@ -119,14 +113,12 @@ def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
     assert img.shape == target_shape
     return img.float()
 
-
 def uint8_to_normalized(tensor):
     """
     Convert a uint8 tensor to a float tensor and normalize the values.
     tensor: PyTorch tensor, the uint8 tensor to convert
     """
     return utils.tensor_normalize(tensor)
-
 
 def normalized_to_uint8(tensor):
     output = utils.revert_tensor_normalize(tensor)
@@ -158,7 +150,6 @@ def get_test_model_input(file: str = None, data_dir: str = None):
 
     raise NotImplementedError
 
-
 def spatial_sample_test_video(test_model_input):
     spatial_idx = 1
     test_model_input = utils.spatial_sampling(
@@ -172,12 +163,10 @@ def spatial_sample_test_video(test_model_input):
     test_model_input = test_model_input.unsqueeze(0)
     return test_model_input  # shape (1, 3, 16, 224, 224)
 
-
 def reconstruct(mask, ground_truth, test_model_output):
     expanded_mask = mask.unsqueeze(-1).expand_as(ground_truth)
     result = torch.where(expanded_mask == 1, test_model_output, ground_truth)
     return result
-
 
 @torch.no_grad()
 def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
@@ -240,13 +229,9 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
     test_model_output_np = test_model_output_np.astype(np.uint8)
     
     print("test model output np", test_model_output_np.shape, test_model_output_np)
-    
-    import imageio
-    print('saving locally')
-    #imageio.mimwrite('output.mp4', test_model_output_np.transpose(0, 2, 3, 1), fps=4)
 
     wandb_video_object = wandb.Video(
         data_or_path=test_model_output_np,
-        fps=30,
+        fps=4,
     )
     wandb.log({"video": wandb_video_object})

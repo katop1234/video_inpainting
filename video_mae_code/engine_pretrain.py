@@ -70,10 +70,6 @@ def train_one_epoch(
             b, r, c, t, h, w = samples.shape # r is number of repeated variations
 
             samples = samples.reshape(b * r, c, t, h, w) # flatten the repeated variations to batches
-
-        # TODO make this more elegant
-        if len(samples.shape) == 4: # NOTE this is only when using original video inpainting dataset_train has shape (N, C, H, W)
-            samples = samples.unsqueeze(2) # add the num_frames dimension
         
         with torch.cuda.amp.autocast(enabled=not fp32):
             loss, _, _ = model(
