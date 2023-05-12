@@ -1,14 +1,12 @@
 import os
 import shutil
 
-def clear_directory(path):
-    os.chdir(path)
-
-    output_dir = 'output_dir'  # replace with your actual directory name
-    output_dir_path = os.path.join(path, output_dir)
-
+def clear_directory(output_dir_path="/shared/katop1234/video_inpainting/video_inpainting/output_dir/"):
     if os.path.exists(output_dir_path) and os.path.isdir(output_dir_path):
         shutil.rmtree(output_dir_path)
-        
-def clear_output_dir():
-    clear_directory("/shared/katop1234/video_inpainting/video_inpainting/output_dir/")
+        print(f"Directory '{output_dir_path}' has been cleared.")
+
+    # recreate the directory after clearing
+    os.makedirs(output_dir_path, exist_ok=True)
+    print(f"Directory '{output_dir_path}' has been created.")
+

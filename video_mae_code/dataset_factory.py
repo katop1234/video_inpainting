@@ -65,7 +65,7 @@ class MergedDataset(torch.utils.data.Dataset):
         self.conf = conf
 
     def __len__(self):
-        return 79490 # Fixing epoch to be CVF dataset size for reproducibility
+        return 16384 # Fixing epoch to be CVF dataset size for reproducibility
 
     def __getitem__(self, index: int):
         sampled_ds_index = np.random.choice(np.arange(0, len(self.datasets)), p=self.conf)
