@@ -9,9 +9,8 @@ from util.decoder import utils
 import random
 import torch.nn.functional as F
 from torchvision import transforms
+import util.decoder.constants as constants
 
-imagenet_mean = torch.tensor([0.485, 0.456, 0.406])
-imagenet_std = torch.tensor([0.229, 0.224, 0.225])
 
 def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     '''
@@ -174,7 +173,7 @@ def spatial_sample_test_video(test_model_input):
         random_horizontal_flip=False
     )
     test_model_input = test_model_input.unsqueeze(0)
-    return test_model_input  # shape (1, 3, 16, 224, 224)
+    return test_model_input
 
 
 def reconstruct(mask, ground_truth, test_model_output):
@@ -182,65 +181,41 @@ def reconstruct(mask, ground_truth, test_model_output):
     result = torch.where(expanded_mask == 1, test_model_output, ground_truth)
     return result
 
-#added function
 def decode_raw_prediction(mask, model, num_patches, orig_image, y):
-    imagenet_mean = torch.tensor([0.485, 0.456, 0.406])
-    imagenet_std = torch.tensor([0.229, 0.224, 0.225])
-    
+    N = orig_image.shape[0]
     T = orig_image.shape[2]
-    if T == 16:
-        y = torch.reshape(y, [16, 196])
+
+    y = torch.reshape(y, [N * T, 196])
     
     if type(model) is torch.nn.parallel.DistributedDataParallel:
-        y = model.module.vae.quantize.get_codebook_entry(y.reshape(-1),
+        model = model.module
+
+    y = model.vae.quantize.get_codebook_entry(y.reshape(-1),
                                               [y.shape[0], y.shape[-1] // num_patches, y.shape[-1] // num_patches, -1])
-        y = model.module.vae.decode(y)
-        y = F.interpolate(y, size=(224, 224), mode='bilinear').permute(0, 2, 3, 1)
-        y = torch.clip(y * 255, 0, 255).int().detach().cpu()
-        mask = mask.unsqueeze(-1).repeat(1, 1, model.module.patch_embed.patch_size[0] ** 2 * 3)
+    y = model.vae.decode(y)
+    y = F.interpolate(y, size=(224, 224), mode='bilinear').permute(0, 2, 3, 1)
+    y = torch.clip(y * 255, 0, 255).int().detach().cpu()
+    mask = mask.unsqueeze(-1).repeat(1, 1, model.patch_embed.patch_size[0] ** 2 * 3)
 
-        #patchify to get self.patch_info 
-        _ = model.module.patchify(orig_image)
+    #patchify to get self.patch_info 
+    _ = model.patchify(orig_image)
 
-        mask = model.module.unpatchify(mask)  # 1 is removing, 0 is keeping
-    elif type(model) is models_mae.MaskedAutoencoderViT:
-        y = model.vae.quantize.get_codebook_entry(y.reshape(-1),
-                                              [y.shape[0], y.shape[-1] // num_patches, y.shape[-1] // num_patches, -1])
-        y = model.vae.decode(y)
-        y = F.interpolate(y, size=(224, 224), mode='bilinear').permute(0, 2, 3, 1)
-        y = torch.clip(y * 255, 0, 255).int().detach().cpu()
-        mask = mask.unsqueeze(-1).repeat(1, 1, model.patch_embed.patch_size[0] ** 2 * 3)
+    mask = model.unpatchify(mask)  # 1 is removing, 0 is keeping
 
-        #patchify to get self.patch_info 
-        _ = model.patchify(orig_image)
+    orig_image = orig_image.permute(2, 0, 1, 3, 4)
+    orig_image = orig_image.flatten(0, 1)
+    mask = mask.permute(2, 0, 1, 3, 4)
+    mask = mask.flatten(0, 1)
 
-        mask = model.unpatchify(mask)  # 1 is removing, 0 is keeping
-    else:
-        raise NotImplementedError("Something's funky")
-
-    
-    if T == 1: #image
-        orig_image = torch.squeeze(orig_image, 2)
-        mask = torch.squeeze(mask, 2)
-    elif T == 16: #video
-        orig_image = orig_image.permute(2, 1, 0, 3, 4) #'ncthw->tcnhw'
-        orig_image = torch.squeeze(orig_image, 2) #[16, 3, 224, 224]
-        print("orig_image.shape: ", orig_image.shape)
-
-        mask = mask.permute(2, 1, 0, 3, 4) #'ncthw->tcnhw'
-        mask = torch.squeeze(mask, 2)
-    else: 
-        raise NotImplementedError("Not video or image")
-
-    mask = mask.permute(0, 2, 3, 1).detach().cpu() #'nchw->nhwc'
-    orig_image = orig_image.permute(0, 2, 3, 1).detach().cpu() #'nchw->nhwc'
-    imagenet_mean = imagenet_mean.cpu().detach()
-    imagenet_std = imagenet_std.cpu().detach()
+    mask = mask.permute(0, 2, 3, 1).detach().cpu()
+    orig_image = orig_image.permute(0, 2, 3, 1).detach().cpu()
+    mean = constants.mean.cpu().detach()
+    std = constants.std.cpu().detach()
 
     orig_image = (
             torch.clip((orig_image.cpu().detach()) * 255, 0, 255).int()).unsqueeze(0) 
     y = (
-        torch.clip(((y.cpu().detach() / 255 - imagenet_mean) / imagenet_std) * 255, 0, 255).int()).unsqueeze(0) #denormalizing generated image
+        torch.clip(((y.cpu().detach() / 255 - mean) / std) * 255, 0, 255).int()).unsqueeze(0) #normalizing generated image
 
     # MAE reconstruction pasted with visible patches
     im_paste = orig_image * (1 - mask) + y * mask
@@ -259,23 +234,20 @@ def visualize_image_prompting(model, input_image_viz_dir):
     ### Test on images
     for i, img_file in enumerate(os.listdir(input_image_viz_dir)):
         img_file = os.path.join(input_image_viz_dir, img_file)
-        test_model_input = get_test_model_input(file=img_file) #[1, 3, 1, 224, 224]
+        test_model_input = get_test_model_input(file=img_file)
         test_model_input = test_model_input.cuda()
 
         with torch.no_grad():
             if type(model) is torch.nn.parallel.DistributedDataParallel:
-                _, test_model_output, mask = model.module(test_model_input, test_image=True)
-            elif type(model) is models_mae.MaskedAutoencoderViT:
-                _, test_model_output, mask = model(test_model_input, test_image=True)
-            else: 
-                raise NotImplementedError("Something's funky")
+                model = model.module
+            _, test_model_output, mask = model(test_model_input, test_image=True)
 
         num_patches = 14
         y = test_model_output.argmax(dim=-1)
         im_paste, _, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
         im_paste = im_paste.squeeze()
         im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
-        
+
         output_img_name = 'test_model_output_img' + str(i) + '.png'
         image = wandb.Image(im_paste)
         wandb.log({output_img_name: image})
@@ -283,23 +255,19 @@ def visualize_image_prompting(model, input_image_viz_dir):
 
 @torch.no_grad()
 def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_temporal_videos/"):
-    test_model_input = get_test_model_input(data_dir=input_video_viz_dir) #[1, 3, 16, 224, 224]
-    test_model_input = spatial_sample_test_video(test_model_input) #[1, 3, 16, 224, 224]
+    test_model_input = get_test_model_input(data_dir=input_video_viz_dir)
+    test_model_input = spatial_sample_test_video(test_model_input)
 
     with torch.no_grad():
         # TODO change test_temporal to True later when it works
-        with torch.no_grad():
-            if type(model) is torch.nn.parallel.DistributedDataParallel:
-                _, test_model_output, mask = model.module(test_model_input)
-            elif type(model) is models_mae.MaskedAutoencoderViT:
-                _, test_model_output, mask = model(test_model_input)
-            else:
-                raise NotImplementedError("Something's funky")
+        if type(model) is torch.nn.parallel.DistributedDataParallel:
+            model = model.module
+        _, test_model_output, mask = model(test_model_input)
 
     num_patches = 14
     y = test_model_output.argmax(dim=-1)
     im_paste, mask, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
-    im_paste = im_paste.permute((0, 1, 4, 2, 3)) #'nthwc->ntchw'
+    im_paste = im_paste.permute((0, 1, 4, 2, 3))
 
     im_paste = (im_paste.cpu().numpy()).astype(np.uint8)  
 

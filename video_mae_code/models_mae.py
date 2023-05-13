@@ -41,9 +41,9 @@ class MaskedAutoencoderViT(nn.Module):
         t_patch_size=1,
         patch_embed=video_vit.PatchEmbed,
         no_qkv_bias=False,
-        sep_pos_embed=True, #False #added
+        sep_pos_embed=True,
         trunc_init=False,
-        cls_embed=True, #False #added
+        cls_embed=True,
         pred_t_dim=16,
         **kwargs,
     ):
@@ -76,7 +76,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         num_patches = self.patch_embed.num_patches
         input_size = self.patch_embed.input_size
-        self.input_size = input_size # 16, 14, 14
+        self.input_size = input_size
 
         if self.cls_embed:
             self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
@@ -87,7 +87,7 @@ class MaskedAutoencoderViT(nn.Module):
                 torch.zeros(1, input_size[1] * input_size[2], embed_dim)
             )
             self.pos_embed_temporal = nn.Parameter(
-                torch.zeros(1, input_size[0], embed_dim) # (1, 16, 1024)
+                torch.zeros(1, input_size[0], embed_dim)
             )
             if self.cls_embed:
                 self.pos_embed_class = nn.Parameter(torch.zeros(1, 1, embed_dim))
@@ -116,8 +116,8 @@ class MaskedAutoencoderViT(nn.Module):
         )
         
         self.norm = norm_layer(embed_dim)
-        self.vae = get_vq_model().eval() #added
-        vocab_size = 1024 #added
+        self.vae = get_vq_model().eval() 
+        vocab_size = 1024 
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
@@ -162,7 +162,7 @@ class MaskedAutoencoderViT(nn.Module):
         )
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
-        self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True) #added
+        self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
@@ -428,7 +428,7 @@ class MaskedAutoencoderViT(nn.Module):
             ) 
             
             pos_embed += torch.repeat_interleave(
-                self.pos_embed_temporal, # (1, 16, 1024)
+                self.pos_embed_temporal, 
                 self.input_size[1] * self.input_size[2],
                 dim=1,
             )
@@ -598,7 +598,7 @@ class MaskedAutoencoderViT(nn.Module):
         x = self.decoder_pred(x) # Linear into correct patchified dimensions
         
         if requires_t_shape:
-            x = x.view([N, T * H * W, -1]) #Might need to change
+            x = x.view([N, T * H * W, -1])
 
         if self.cls_embed:
             # remove cls token
@@ -629,29 +629,22 @@ class MaskedAutoencoderViT(nn.Module):
             )
         else:
             # images
-            _imgs = imgs #[64, 3, 1, 224, 224]
+            _imgs = imgs
 
+        N = _imgs.shape[0]
         T = _imgs.shape[2]
 
         with torch.no_grad():
-            if (T == 1): #Image Case
-                _imgs = torch.squeeze(_imgs, 2)
-                target = self.vae.get_codebook_indices(_imgs).flatten(1)
-            elif (T == 16): #Video Case
-                _imgs = torch.squeeze(_imgs, 0) #remove batch dim
-                _imgs = torch.einsum("cthw->tchw", _imgs) #time as the batch size just for vqgan [16, 3, 224, 224]
-                target = self.vae.get_codebook_indices(_imgs).flatten(1)
-                target = torch.reshape(target, [1, 16 * 196])
-            else:
-                print("Invalid Tensor Size")
-                raise NotImplementedError
+            _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
+            target = self.vae.get_codebook_indices(_imgs).flatten(1)
+            target = torch.reshape(target, [N, T * 196])
 
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
 
 
-    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False): #test_image=False #added
+    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False):
         self.vae.eval()
         latent, mask, ids_restore, offsets = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_spatiotemporal, test_temporal, test_image)
         pred = self.forward_decoder(latent, ids_restore, offsets, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
