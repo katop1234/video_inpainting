@@ -212,7 +212,7 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
     with torch.no_grad():
         # TODO change test_temporal to True later when it works
         _, test_model_output, _ = model(test_model_input)
-    
+
     print("test model input", test_model_input.shape, test_model_input)
     print("test model output", test_model_output.shape, test_model_output)
 
@@ -222,6 +222,16 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
         test_model_output = model.unpatchify(test_model_output)
     else:
         raise NotImplementedError("Something's funky")
+
+    # Save test_model_input
+    test_model_input_uint8 = normalized_to_uint8(test_model_input)
+    test_model_input_np = test_model_input_uint8.squeeze(0).permute(1, 0, 3, 2).unsqueeze(0).cpu().numpy()
+    test_model_input_np = test_model_input_np.astype(np.uint8)
+    wandb_input_video_object = wandb.Video(
+        data_or_path=test_model_input_np,
+        fps=4,
+    )
+    wandb.log({"input_video": wandb_input_video_object})
 
     test_model_output = normalized_to_uint8(test_model_output)
     print("after normalization", test_model_output.shape, test_model_output)
@@ -234,4 +244,5 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
         data_or_path=test_model_output_np,
         fps=4,
     )
-    wandb.log({"video": wandb_video_object})
+    wandb.log({"output_video": wandb_video_object})
+
