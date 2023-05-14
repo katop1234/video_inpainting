@@ -227,7 +227,7 @@ def get_args_parser():
 
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
-    parser.add_argument('--image_dataset_conf', nargs='+', default=[1])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
     parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
     parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
     parser.add_argument('--image_video_ratio', default=0.5, help='default means only images')
@@ -313,7 +313,7 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            find_unused_parameters=False,
+            find_unused_parameters=True,
         )
         model_without_ddp = model.module
 
