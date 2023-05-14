@@ -243,7 +243,6 @@ def tensor_normalize(tensor):
     mean = constants.mean.view(1, 3, 1, 1, 1).to(tensor.device)
     std = constants.std.view(1, 3, 1, 1, 1).to(tensor.device)
     
-    tensor = tensor / 255.0
     tensor = tensor - mean
     tensor = tensor / std
     return tensor

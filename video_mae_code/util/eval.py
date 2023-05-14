@@ -144,9 +144,11 @@ def get_test_model_input(file: str = None, data_dir: str = None):
     if file:
         if file.endswith(".mp4"):
             video_tensor = video_to_tensor(file)
+            video_tensor = uint8_to_normalized(video_tensor)
             return video_tensor.cuda()
         elif file.endswith(".png"):
             image_tensor = image_to_tensor(file, (1, 3, 1, 224, 224))
+            image_tensor = uint8_to_normalized(image_tensor)
             return image_tensor.cuda()
         raise NotImplementedError
 
@@ -213,10 +215,8 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     std = constants.std.cpu().detach()
 
     orig_image = (
-            torch.clip((orig_image.cpu().detach()) * 255, 0, 255).int()).unsqueeze(0) 
-    y = (
-        torch.clip(((y.cpu().detach() / 255 - mean) / std) * 255, 0, 255).int()).unsqueeze(0) #normalizing generated image
-
+            torch.clip((orig_image.cpu().detach() * std + mean) * 255, 0, 255).int()).unsqueeze(0) 
+    
     # MAE reconstruction pasted with visible patches
     im_paste = orig_image * (1 - mask) + y * mask
     return im_paste, mask, orig_image
