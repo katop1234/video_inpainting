@@ -171,7 +171,7 @@ def reconstruct(mask, ground_truth, test_model_output):
 @torch.no_grad()
 def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
     model.eval()
-    #visualize_image_prompting(model, input_image_viz_dir)
+    visualize_image_prompting(model, input_image_viz_dir)
     visualize_video_prompting(model, input_video_viz_dir)
     model.train()
 
@@ -211,7 +211,7 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
 
     with torch.no_grad():
         # TODO change test_temporal to True later when it works
-        _, test_model_output, _ = model(test_model_input)
+        _, test_model_output, _ = model(test_model_input, test_temporal=True)
 
     print("test model input", test_model_input.shape, test_model_input)
     print("test model output", test_model_output.shape, test_model_output)

@@ -72,7 +72,6 @@ class MergedDataset(torch.utils.data.Dataset):
         ds = self.datasets[sampled_ds_index]
         return ds[np.random.randint(0, len(ds))]
 
-
 if __name__ == '__main__':
     root_path = ''
     image_dataset_list = ['imagenet', 'cvf']

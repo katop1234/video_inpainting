@@ -295,35 +295,38 @@ class MaskedAutoencoderViT(nn.Module):
 
     def mask_temporal(self, x):
         """
-        Perform fixed masking for frames 10-16.
-        x: [N, L, D], sequence
+        Mask the last 7 frames of the image patches.
+        x: [N, L, D], sequence (for videos, L = 196 * num_frames)
         """
         N, L, D = x.shape  # batch, length, dim
-        
-        len_keep = L * 9 // 16
+        H, W = 14, 14  # height and width of each frame
+        num_frames = L // (H * W)  # total number of frames
 
-        # Keep the frames 1-9
-        x_masked = x[:, :len_keep, :]
+        assert num_frames == 16, "This only works for num_frames = 16 (video)"
 
         # Create the binary mask: 0 is keep, 1 is remove
-        mask = torch.ones([N, L], device=x.device)
-        mask[:, :len_keep] = 0
+        mask = torch.zeros([N, L], device=x.device)
+        for frame in range(num_frames):
+            for row in range(H):
+                for col in range(W):
+                    if frame >= num_frames - 7:
+                        mask[:, frame * H * W + row * W + col] = 1
 
-        # The indices that would restore the sorted noise tensor to its original order
-        ids_restore = torch.arange(L, device=x.device).repeat(N, 1).to(x.device)
+        # Apply the mask to the input tensor
+        x_masked = x[mask == 0].view(N, -1, D)
 
-        # The indices of the first len_keep elements in the sorted noise tensor
-        ids_keep = torch.arange(len_keep).unsqueeze(0).repeat(N, 1).to(x.device) # TODO use the logic of image masking here
+        ids_keep = torch.nonzero(mask == 0)[:, 1]  # Get only the indices of the kept elements
+        ids_remove = torch.nonzero(mask == 1)[:, 1]  # Get only the indices of the removed elements
 
-        '''
-        Returns:
-        x_masked: The masked input tensor with the shape (N, len_keep, D), containing the kept elements.
-        mask: The binary mask tensor with the shape (N, L), where 0s represent the kept elements and 1s represent the removed elements.
-        ids_restore: The indices that would restore the sorted noise tensor to its original order.
-        ids_keep: The indices of the first len_keep elements in the sorted noise tensor.
-        '''
+        # Create ids_restore by concatenating ids_keep and ids_remove
+        ids_shuffle = torch.cat((ids_keep, ids_remove), dim=0)
+        ids_restore = torch.argsort(ids_shuffle, dim=0)
+
+        ids_keep = ids_keep.unsqueeze(0).repeat(N, 1).to(x.device)
+        ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to(x.device)
 
         return x_masked, mask, ids_restore, ids_keep
+
 
     def mask_test_image(self, x):
         """
