@@ -121,12 +121,6 @@ def get_args_parser():
     )
 
     parser.add_argument(
-        "--image_prompts_dir",
-        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/visual_prompting_images/",
-        help="Image folder containing visualization examples.",
-    )
-
-    parser.add_argument(
         "--video_prompts_dir",
         default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/final_temporal_videos/",
         help="Folder containing video visualization examples.",
@@ -233,7 +227,7 @@ def get_args_parser():
 
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
-    parser.add_argument('--image_dataset_conf', nargs='+', default=[1])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
     parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
     parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
     parser.add_argument('--image_video_ratio', default=0.5, help='default means equally mixed between the two')
@@ -319,7 +313,7 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            find_unused_parameters=False,
+            find_unused_parameters=True,
         )
         model_without_ddp = model.module
 
@@ -406,10 +400,12 @@ def main(args):
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
 
+        dir_path = os.path.dirname(os.path.realpath(__file__))
+        image_prompts_dir = os.path.join(dir_path, "../test_images")
         if misc.is_main_process():
             if not args.test_mode:
                 wandb.log(log_stats)
-            visualize_prompting(model, args.image_prompts_dir, args.video_prompts_dir)
+            visualize_prompting(model, image_prompts_dir, args.video_prompts_dir)
 
         print("Done loop on epoch {}".format(epoch))
 

@@ -18,6 +18,7 @@ from util import video_vit
 import random
 from util.logging import master_print as print
 from timm.models.vision_transformer import Block
+from vqgan import get_vq_model
 
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
@@ -40,9 +41,9 @@ class MaskedAutoencoderViT(nn.Module):
         t_patch_size=1,
         patch_embed=video_vit.PatchEmbed,
         no_qkv_bias=False,
-        sep_pos_embed=False,
+        sep_pos_embed=True,
         trunc_init=False,
-        cls_embed=False,
+        cls_embed=True,
         pred_t_dim=16,
         **kwargs,
     ):
@@ -62,6 +63,8 @@ class MaskedAutoencoderViT(nn.Module):
 
         assert self.t_pred_patch_size > 0, "pred_t_dim must be a multiple of num_frames" + f"({t_patch_size}, {pred_t_dim}, {num_frames})"
 
+        # --------------------------------------------------------------------------
+        # MAE encoder specifics
         self.patch_embed = patch_embed(
             img_size,  # 224
             patch_size, # 16
@@ -73,7 +76,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         num_patches = self.patch_embed.num_patches
         input_size = self.patch_embed.input_size
-        self.input_size = input_size # 16, 14, 14
+        self.input_size = input_size
 
         if self.cls_embed:
             self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
@@ -84,7 +87,7 @@ class MaskedAutoencoderViT(nn.Module):
                 torch.zeros(1, input_size[1] * input_size[2], embed_dim)
             )
             self.pos_embed_temporal = nn.Parameter(
-                torch.zeros(1, input_size[0], embed_dim) # (1, 16, 1024)
+                torch.zeros(1, input_size[0], embed_dim)
             )
             if self.cls_embed:
                 self.pos_embed_class = nn.Parameter(torch.zeros(1, 1, embed_dim))
@@ -113,7 +116,12 @@ class MaskedAutoencoderViT(nn.Module):
         )
         
         self.norm = norm_layer(embed_dim)
+        self.vae = get_vq_model().eval() 
+        vocab_size = 1024 
+        # --------------------------------------------------------------------------
 
+        # --------------------------------------------------------------------------
+        # MAE decoder specifics
         self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
 
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
@@ -154,11 +162,8 @@ class MaskedAutoencoderViT(nn.Module):
         )
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
-        self.decoder_pred = nn.Linear(
-            decoder_embed_dim,
-            self.t_pred_patch_size * patch_size**2 * in_chans,
-            bias=True,
-        )
+        self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
+        # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
 
@@ -425,7 +430,7 @@ class MaskedAutoencoderViT(nn.Module):
             ) 
             
             pos_embed += torch.repeat_interleave(
-                self.pos_embed_temporal, # (1, 16, 1024)
+                self.pos_embed_temporal, 
                 self.input_size[1] * self.input_size[2],
                 dim=1,
             )
@@ -433,7 +438,6 @@ class MaskedAutoencoderViT(nn.Module):
             pos_embed = pos_embed.expand(x.shape[0], -1, -1) # copies along batch dimension to match x
 
             if ids_keep.shape[1] == (1 - mask_ratio_image) * 196 or test_image:
-                # image
                 '''
                 Basically, for images, the ids to keep ranges from 0->195, so we need to add 0->15 * 196 to each row of ids_keep
                 as if it came from any of the frames
@@ -609,7 +613,7 @@ class MaskedAutoencoderViT(nn.Module):
     def forward_loss(self, imgs, pred, mask):
         """
         imgs: [N, 3, T, H, W]
-        pred: [N, t*h*w, u*p*p*3]
+        pred: [N, t*h*w, u*p*p*3] pred: [N, t*h*w, u*1024] t*h*w ==196 for some reason not sure (u = 1)
         mask: [N*t, h*w], 0 is keep, 1 is remove,
         """
         if imgs.shape[2] == 16:
@@ -623,34 +627,29 @@ class MaskedAutoencoderViT(nn.Module):
                     self.pred_t_dim,
                 )
                 .long()
-                .to(imgs.device),
+                .to(imgs.device)
             )
         else:
             # images
             _imgs = imgs
-            
-        target = self.patchify(_imgs)
-        
-        assert torch.allclose(_imgs.float(), self.unpatchify(target).float(), atol=0.01, rtol=0.01), "unpatchify(target) should yield _imgs"
-        assert not self.norm_pix_loss
-        
-        if self.norm_pix_loss:
-            mean = target.mean(dim=-1, keepdim=True)
-            var = target.var(dim=-1, keepdim=True)
-            target = (target - mean) / (var + 1.0e-6) ** 0.5
 
-        loss = (pred - target) ** 2
-        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
-        mask = mask.view(loss.shape) 
-        
-        assert mask.sum() > 0, "mask should have at least one 1"
+        N = _imgs.shape[0]
+        T = _imgs.shape[2]
 
-        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
+        with torch.no_grad():
+            _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
+            target = self.vae.get_codebook_indices(_imgs).flatten(1)
+            target = torch.reshape(target, [N, T * 196])
+
+        loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
+        loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
 
+
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False):
+        self.vae.eval()
         latent, mask, ids_restore, offsets = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_spatiotemporal, test_temporal, test_image)
-        pred = self.forward_decoder(latent, ids_restore, offsets, mask_ratio_image, mask_ratio_video)  # [N, L, p*p*3]
+        pred = self.forward_decoder(latent, ids_restore, offsets, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
 
