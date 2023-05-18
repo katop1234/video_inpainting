@@ -10,6 +10,7 @@ import torch
 from omegaconf import OmegaConf
 import os
 from viz_utils import imagenet_std, imagenet_mean
+
 cwd = os.path.dirname(os.path.abspath(__file__))
 
 ## Code borrowed from VQGAN

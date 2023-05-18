@@ -1,0 +1,181 @@
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<title>heiBOX</title>
+<meta http-equiv="Content-type" content="text/html; charset=utf-8" />
+<meta name="keywords" content="File Collaboration Team Organization" />
+
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no" />
+
+
+<meta property="og:type" content="object" />
+<meta property="og:site_name" content="heibox.uni-heidelberg.de">
+<meta property="og:url" content="https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/files/" />
+<meta property="og:title" content="model.yaml" />
+<meta property="og:image" content="https://heibox.uni-heidelberg.de/media/img/file/192/file.png" />
+<meta property="og:description" content="Share link for model.yaml." />
+
+<meta http-equiv="x-ua-compatible" content="ie=edge" />
+<link rel="shortcut icon" href="/media/custom/img/favicon.ico" />
+<link rel="stylesheet" type="text/css" href="/media/fontawesome/css/fontawesome-all.min.css" />
+<link rel="stylesheet" type="text/css" href="/media/css/sf_font3/iconfont.css" />
+<link rel="stylesheet" type="text/css" href="/media/css/seafile-ui.css" />
+<link rel="stylesheet" type="text/css" href="/media/css/seahub_react.css?t=1398068110" />
+
+
+    <link type="text/css" href="/media/assets/frontend/css/sharedFileViewUnknown.68cb090f24bf.css" rel="stylesheet" />
+
+
+
+<link rel="stylesheet" type="text/css" href="/media/custom/urz.css" />
+<link rel="stylesheet" type="text/css" href="/custom-css/" />
+</head>
+
+<body>
+    <div id="wrapper" class="en"></div>
+    <div id="modal-wrapper" class="en"></div>
+
+<script type="text/javascript">
+    window.app = {
+        config: {
+            mediaUrl: '/media/',
+            logoPath: 'custom/img/heibox_logo.png',
+            logoWidth: '142',
+            logoHeight: '48',
+            faviconPath: 'custom/img/favicon.ico',
+            loginBGPath: 'img/login-bg.jpg',
+            siteTitle: 'heiBOX',
+            siteName: 'heibox.uni\u002Dheidelberg.de',
+            siteRoot: '/',
+            loginUrl: '/accounts/login/',
+            logoutUrl: '/accounts/logout/',
+            isPro: 'True',
+            isDocs: 'False',
+            lang: 'en',
+            fileServerRoot: 'https://heibox.uni-heidelberg.de/seafhttp/',
+            serviceURL: 'https://heibox.uni-heidelberg.de',
+            seafileVersion: '7.1.18',
+            avatarURL: 'https://heibox.uni-heidelberg.de/media/avatars/default.png'
+        },
+        pageOptions: {
+            csrfToken: "oLKmv2p6N2fP0TSaXU9XwfHHIa4TAJfws7UwHmpqC2wl0VjNMVCVcqhaJgnBdCom",
+            dtableWebServer: "",
+            seafileCollabServer: '',
+            name: "",
+            contactEmail: "",
+            username: "",
+            guideEnabled:  false ,
+            trashReposExpireDays:  null ,
+            canAddRepo:  false ,
+            canAddGroup:  false ,
+            canGenerateShareLink:  false ,
+            canGenerateUploadLink:  false ,
+            canSendShareLinkEmail:  false ,
+            canViewOrg:'',
+            fileAuditEnabled:   false , 
+            enableFileComment:  false ,
+            folderPermEnabled:  false ,
+            enableResetEncryptedRepoPassword: '',
+            isEmailConfigured: '',
+            enableUploadFolder: 'True',
+            enableResumableFileUpload: 'True',
+            resumableUploadFileBlockSize: '',
+            // storage backends
+            storages: (function () {
+              var storages = [];
+              
+              return storages;
+            })(),
+            // library template
+            libraryTemplates: (function () {
+              var libraryTemplates = [];
+              
+              return libraryTemplates;
+            })(),
+            enableRepoSnapshotLabel:  false ,
+            shareLinkPasswordMinLength: 10,
+            sideNavFooterCustomHtml: "",
+            aboutDialogCustomHtml: "",
+            maxFileName: "255",
+            canPublishRepo:  false ,
+            enableEncryptedLibrary:  false ,
+            enableRepoHistorySetting:  false ,
+            isSystemStaff:  false ,
+            thumbnailSizeForOriginal: 1024,
+            repoPasswordMinLength: 12,
+            canAddPublicRepo:  false ,
+            canInvitePeople:  false ,
+            customNavItems:  [] ,
+            enableShowContactEmailWhenSearchUser:  false ,
+            
+            
+            
+            enableTC:  false ,
+            showLogoutIcon:  false ,
+            additionalShareDialogNote:  null ,
+            additionalAppBottomLinks:  null ,
+            additionalAboutDialogLinks:  null 
+        }
+     };
+</script>
+<script src="/media/assets/scripts/i18n/en/djangojs.js?v=7.1.18"></script>
+<script type="text/javascript" src="/media/assets/frontend/commons/bundle.common.130f2e08bef5.js" ></script>
+
+<script type="text/javascript">
+  window.shared = {
+    pageOptions: {
+      repoID: '44b3b95a-ab51-47ac-ad2a-2ffadf3a4947',
+      filePath: '/configs/model.yaml',
+      sharedToken: '8088892a516d4e3baf92',
+      trafficOverLimit: false,
+      fileName: 'model.yaml',
+      fileSize: 645,
+      rawPath: 'https://heibox.uni\u002Dheidelberg.de/seafhttp/files/9909cb0e\u002D4ddf\u002D4ec0\u002Da664\u002Dbcee0b4c1a32/model.yaml',
+      sharedBy: 'ry416',
+      siteName: 'heibox.uni-heidelberg.de',
+      enableWatermark: false,
+      canDownload: true,
+      fileContent: '',
+      err: 'File preview unsupported',
+      fileType: 'Unknown',
+      fileExt: 'yaml',
+      commitID: '' || '03f5284289ca6e2b20115ebcf1cfc7de902f08aa',
+      enableShareLinkReportAbuse: false,
+      
+      // for 'view file in shared dir'
+      
+      zipped: (function() {
+        var list = [];
+        
+        list.push({
+          'name': 'vqgan_imagenet_f16_1024',
+          'path': '/'
+        });
+        
+        list.push({
+          'name': 'configs',
+          'path': '/configs'
+        });
+        
+        list.push({
+          'name': 'model.yaml',
+          'path': '/configs/model.yaml'
+        });
+        
+        return list;
+      })(),
+      
+      prevImgPath: '',
+      nextImgPath: ''
+    }
+  };
+</script>
+
+    <script type="text/javascript" src="/media/assets/frontend/js/sharedFileViewUnknown.dcbe85ca315a.js" ></script>
+
+
+</body>
+</html>
