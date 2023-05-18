@@ -117,7 +117,7 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.norm = norm_layer(embed_dim)
         self.vae = get_vq_model().eval() 
-        vocab_size = 1024 
+        vocab_size = 768 # NOTE was 1024 before but changed to fit into vqgan
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
@@ -668,7 +668,7 @@ def mae_vit_base_patch16(**kwargs):
 def mae_vit_large_patch16(**kwargs):
     model = MaskedAutoencoderViT(
         patch_size=16,
-        embed_dim=1024,
+        embed_dim=1024, 
         depth=24,
         num_heads=16,
         mlp_ratio=4,
