@@ -20,3 +20,5 @@ scratch.ipynb
 video_mae_code/debug/
 video_mae_code/wandb/
 wandb/
+video_mae_code/last.ckpt
+video_mae_code/model.yaml
