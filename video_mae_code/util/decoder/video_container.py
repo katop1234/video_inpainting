@@ -16,6 +16,9 @@ def get_video_container(path_to_vid, multi_thread_decode=False):
     Returns:
         container (container): video container.
     """
+    print("getting container in with open path to vid stuff", path_to_vid) # TODO delete
     with open(path_to_vid, "rb") as fp:
         container = fp.read()
+        
+    print("\n", "returned container", path_to_vid) # TODO delete
     return container

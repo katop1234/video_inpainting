@@ -68,9 +68,16 @@ class MergedDataset(torch.utils.data.Dataset):
         return (2 ** 14) * 5 # 2^14 * 5 = 81920, which is around CVF size
 
     def __getitem__(self, index: int):
+        print("getting output from getitem", "index", index, "len(self.datasets)", len(self.datasets))
         sampled_ds_index = np.random.choice(np.arange(0, len(self.datasets)), p=self.conf)
+        print("got sampled ds index", sampled_ds_index, index)
         ds = self.datasets[sampled_ds_index]
-        return ds[np.random.randint(0, len(ds))]
+        print("ds", ds, len(ds), index)
+        output_index = np.random.randint(0, len(ds))
+        print("got output index", output_index)
+        output = ds[output_index]
+        print("output", output[0].shape, index)
+        return output
 
 if __name__ == '__main__':
     root_path = ''

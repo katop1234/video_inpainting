@@ -230,7 +230,7 @@ def get_args_parser():
     parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
     parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
     parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
-    parser.add_argument('--image_video_ratio', default=0.5, help='default means equally mixed between the two')
+    parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
     return parser
 
@@ -260,6 +260,7 @@ def main(args):
 
     num_tasks = misc.get_world_size()  # 8 gpus
     global_rank = misc.get_rank()
+    
     sampler_train = torch.utils.data.DistributedSampler(
         dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
     )

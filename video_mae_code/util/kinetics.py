@@ -208,6 +208,9 @@ class Kinetics(torch.utils.data.Dataset):
                 decoded, then return the index of the video. If not, return the
                 index of the video replacement that can be decoded.
         """
+        
+        print("self mode is ", self.mode, "in kinetics, getting item at index", index)
+        
         if self.mode in ["pretrain", "finetune", "val"]:
             # -1 indicates random sampling.
             temporal_sample_index = -1
@@ -242,11 +245,15 @@ class Kinetics(torch.utils.data.Dataset):
         # decoded, repeatly find a random video replacement that can be decoded.
         for i_try in range(self._num_retries):
             video_container = None
+            
+            print('entering the try loop', "i_try is", i_try)
             try:
                 video_container = container.get_video_container(
                     self._path_to_videos[index],
                     self._enable_multi_thread_decode,
                 )
+                
+                print("got video container")
             except Exception as e:
                 print(
                     "Failed to load video from {} with error {}".format(
@@ -262,10 +269,13 @@ class Kinetics(torch.utils.data.Dataset):
                 )
                 if self.mode not in ["test"] and i_try > self._num_retries // 2:
                     # let's try another one
+                    print("trying again because failed to load video")
                     index = random.randint(0, len(self._path_to_videos) - 1)
                 continue
 
             # Decode video. Meta info is used to perform selective decoding.
+            
+            print("about to decode video")
             
             try:
                 frames, fps, decode_all_video = decoder.decode(
@@ -280,6 +290,7 @@ class Kinetics(torch.utils.data.Dataset):
                     use_offset=self._use_offset_sampling,
                     rigid_decode_all_video=self.mode in ["pretrain"],
                 )
+                
             except Exception as e:
                 print(
                     "Failed to decode video idx {} from {} with error {}".format(

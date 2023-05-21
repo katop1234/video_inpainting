@@ -117,7 +117,7 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.norm = norm_layer(embed_dim)
         self.vae = get_vq_model().eval() 
-        vocab_size = 768 # NOTE was 1024 before but changed to fit into vqgan
+        vocab_size = 1024
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
@@ -648,9 +648,13 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False):
         self.vae.eval()
+        print("set self vae to eval")
         latent, mask, ids_restore, offsets = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_spatiotemporal, test_temporal, test_image)
+        print("forward encoder done")
         pred = self.forward_decoder(latent, ids_restore, offsets, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
+        print("forward decoder done")
         loss = self.forward_loss(imgs, pred, mask)
+        print("loss done", loss)
         return loss, pred, mask
 
 def mae_vit_base_patch16(**kwargs):
