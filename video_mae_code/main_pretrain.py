@@ -294,7 +294,13 @@ def main(args):
         **vars(args),
     )
 
-    model.to(device)
+    try:
+        model.to(device)
+    except:
+        print("bugged out moving model to gpu")
+        print(torch.cuda.current_device())
+        print(torch.cuda.get_device_name(torch.cuda.current_device()))
+        exit()
 
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
