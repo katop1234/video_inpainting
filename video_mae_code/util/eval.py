@@ -260,10 +260,9 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
     im_paste = im_paste.permute((0, 1, 4, 2, 3)).squeeze(0).permute(1, 0, 3, 2).unsqueeze(0)
     im_paste = im_paste.cpu().numpy().astype(np.uint8)
 
-
     wandb_video_object = wandb.Video(
         data_or_path=im_paste,
-        fps=4
+        fps=4,
+        format="mp4"
     )
     wandb.log({"output_video": wandb_video_object})
-
