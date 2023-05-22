@@ -258,8 +258,8 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
     im_paste, mask, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
     im_paste = im_paste.permute((0, 1, 4, 2, 3))
 
+    im_paste = im_paste.squeeze(0).permute(1, 0, 3, 2).unsqueeze(0)
     im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
-    im_paste = im_paste.squeeze(0).permute(1, 0, 3, 2).unsqueeze(0).cpu().numpy()
 
     wandb_video_object = wandb.Video(
         data_or_path=im_paste,
