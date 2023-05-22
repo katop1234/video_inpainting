@@ -65,6 +65,7 @@ class MergedDataset(torch.utils.data.Dataset):
         self.conf = conf
 
     def __len__(self):
+        # return 16 # For testing purposes
         return (2 ** 14) * 5 # 2^14 * 5 = 81920, which is around CVF size
 
     def __getitem__(self, index: int):
