@@ -213,14 +213,14 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
 
 
 @torch.no_grad()
-def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir epoch):
+def visualize_prompting(model, epoch, input_image_viz_dir, input_video_viz_dir):
     model.eval()
-    visualize_image_prompting(model, input_image_viz_dir, epoch)
-    visualize_video_prompting(model, input_video_viz_dir, epoch)
+    visualize_image_prompting(model, epoch, input_image_viz_dir)
+    visualize_video_prompting(model, epoch, input_video_viz_dir)
     model.train()
 
 @torch.no_grad()
-def visualize_image_prompting(model, input_image_viz_dir, epoch):
+def visualize_image_prompting(model, epoch, input_image_viz_dir):
     ### Test on images
     for i, img_file in enumerate(os.listdir(input_image_viz_dir)):
         img_file = os.path.join(input_image_viz_dir, img_file)
