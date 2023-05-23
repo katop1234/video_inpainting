@@ -213,14 +213,14 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
 
 
 @torch.no_grad()
-def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
+def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir epoch):
     model.eval()
-    visualize_image_prompting(model, input_image_viz_dir)
-    visualize_video_prompting(model, input_video_viz_dir)
+    visualize_image_prompting(model, input_image_viz_dir, epoch)
+    visualize_video_prompting(model, input_video_viz_dir, epoch)
     model.train()
 
 @torch.no_grad()
-def visualize_image_prompting(model, input_image_viz_dir):
+def visualize_image_prompting(model, input_image_viz_dir, epoch):
     ### Test on images
     for i, img_file in enumerate(os.listdir(input_image_viz_dir)):
         img_file = os.path.join(input_image_viz_dir, img_file)
@@ -238,12 +238,12 @@ def visualize_image_prompting(model, input_image_viz_dir):
         im_paste = im_paste.squeeze()
         im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
 
-        output_img_name = 'test_model_output_img' + str(i) + '.png'
+        output_img_name = 'test_model_output_img' + str(i) + "epoch" + str(epoch) + '.png'
         image = wandb.Image(im_paste)
         wandb.log({output_img_name: image})
 
 @torch.no_grad()
-def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_temporal_videos/"):
+def visualize_video_prompting(model, epoch, input_video_viz_dir="test_cases/final_temporal_videos/"):
     test_model_input = get_test_model_input(data_dir=input_video_viz_dir)
     test_model_input = spatial_sample_test_video(test_model_input)
 
@@ -265,4 +265,5 @@ def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_tempo
         fps=4,
         format="mp4"
     )
-    wandb.log({"output_video": wandb_video_object})
+    video_title = "output_video" + "_epoch_" + str(epoch)
+    wandb.log({video_title: wandb_video_object})

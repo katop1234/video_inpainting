@@ -412,7 +412,7 @@ def main(args):
         if misc.is_main_process():
             if not args.test_mode:
                 wandb.log(log_stats)
-            visualize_prompting(model, image_prompts_dir, args.video_prompts_dir)
+            visualize_prompting(model, image_prompts_dir, args.video_prompts_dir, epoch)
 
         print("Done loop on epoch {}".format(epoch))
 
