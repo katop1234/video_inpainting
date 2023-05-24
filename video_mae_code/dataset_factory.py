@@ -1,10 +1,14 @@
-import torch
-import numpy as np
-from torchvision import datasets
-import os
-from torchvision.transforms import transforms
+from PIL import Image
+from torch.utils.data import Dataset
+from torchvision.transforms import Resize, ToTensor
 from util.decoder import constants
 from util.kinetics import Kinetics
+from torchvision import datasets
+from torchvision.transforms import transforms
+import glob
+import numpy as np
+import os
+import torch
 
 class VideoDataset(Kinetics):
     def __init__(self, path_to_data_dir, 
@@ -25,6 +29,45 @@ class VideoDataset(Kinetics):
                          jitter_aspect_relative=jitter_aspect_relative, 
                          jitter_scales_relative=jitter_scales_relative)
 
+class AtariDataset(Dataset):
+    def __init__(self, path_to_data_dir):
+        self.root_dir = path_to_data_dir
+        self.transform = torch.nn.Sequential(
+            Resize((224, 224)),
+            ToTensor(),
+        )
+        self.games = ['mspacman', 'pinball', 'qbert', 'revenge', 'spaceinvaders']
+        self.subfolders = []
+
+        # Populate the list of subfolders
+        for game in self.games:
+            game_folder = os.path.join(self.root_dir, game)
+            subfolders = glob.glob(os.path.join(game_folder, '*'))
+            self.subfolders.extend(subfolders)
+
+    def __len__(self):
+        # Return the total number of sub-subfolders across all games
+        return len(self.subfolders)
+
+    def __getitem__(self, idx):
+        # Get the list of image paths in the selected subfolder
+        image_paths = sorted(glob.glob(os.path.join(self.subfolders[idx], '*.png')))
+
+        # Ensure there are at least 16 images in the subfolder
+        if len(image_paths) < 16:
+            raise ValueError(f"Found a subfolder with less than 16 images: {self.subfolders[idx]}")
+
+        # Select a random start index for the sequence of 16 frames
+        start_idx = torch.randint(0, len(image_paths) - 15, (1,)).item()
+
+        # Load 16 consecutive images starting from the selected index and apply the transform
+        images = [self.transform(Image.open(image_paths[i])) for i in range(start_idx, start_idx + 16)]
+
+        # Stack the images into a tensor of shape [1, 3, 16, 224, 224]
+        images = torch.stack(images)
+        images = images.unsqueeze(0)
+
+        return images
 
 def get_image_transforms():
     return transforms.Compose([
@@ -45,7 +88,6 @@ def get_dataset(name, root_path, ds_type):
             raise ValueError("Wrong dataset name.")
 
     elif ds_type == 'video':
-        
         if name == "kinetics":
             dataset_train = Kinetics(
                 mode="pretrain",
@@ -61,6 +103,8 @@ def get_dataset(name, root_path, ds_type):
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron")
         elif name == "CrossTask":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask")
+        elif name == 'atari':
+            dataset_train = AtariDataset(path_to_data_dir="/shared/katop1234/Datasets/atari")
         else:
             raise NotImplementedError()
     else:

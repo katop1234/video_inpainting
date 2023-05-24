@@ -17,8 +17,6 @@ from .decoder.random_erasing import RandomErasing
 from .decoder.transform import create_random_augment
 from pathlib import Path
 
-
-
 class Kinetics(torch.utils.data.Dataset):
     """
     Kinetics video loader. Construct the Kinetics video loader, then sample
