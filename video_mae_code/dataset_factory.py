@@ -96,6 +96,9 @@ def get_dataset(name, root_path, ds_type):
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask")
         elif name == 'atari':
             dataset_train = AtariDataset(path_to_data_dir="/shared/katop1234/Datasets/atari")
+        elif name == "SSV2":
+            # 20BN Something Something-V2 
+            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos") 
         else:
             raise NotImplementedError()
     else:
