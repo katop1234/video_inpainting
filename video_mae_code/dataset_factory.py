@@ -89,16 +89,7 @@ def get_dataset(name, root_path, ds_type):
 
     elif ds_type == 'video':
         if name == "kinetics":
-            dataset_train = Kinetics(
-                mode="pretrain",
-                path_to_data_dir=os.path.join(root_path, 'kinetics/train_256/'),
-                sampling_rate=4,
-                num_frames=16,
-                train_jitter_scales=(256, 320),
-                repeat_aug=1, # TODO this has been hardcoded, figure out how to make it more elegant
-                jitter_aspect_relative=[0.75, 1.3333],
-                jitter_scales_relative=[0.5, 1.0],
-                )
+            dataset_train = VideoDataset(path_to_data_dir=os.path.join(root_path, 'kinetics/train_256/'))
         elif name == "Objectron":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron")
         elif name == "CrossTask":
