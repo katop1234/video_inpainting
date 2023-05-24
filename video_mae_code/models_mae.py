@@ -32,7 +32,7 @@ class MaskedAutoencoderViT(nn.Module):
         depth=24,
         num_heads=16,
         decoder_embed_dim=512,
-        decoder_depth=4, # TODO Made 8 from 4 because of Amir's suggestion
+        decoder_depth=4, # TODO Made 8 from 4 because of Amir's suggestion #8
         decoder_num_heads=16,
         mlp_ratio=4.0,
         norm_layer=nn.LayerNorm,
