@@ -216,57 +216,31 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
 def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
     model.eval()
     visualize_image_prompting(model, input_image_viz_dir)
-    # visualize_video_prompting(model, input_video_viz_dir)
+    visualize_video_prompting(model, input_video_viz_dir)
     model.train()
 
 @torch.no_grad()
-def visualize_image_prompting(model, input_image_viz_dir):
+def visualize_image_prompting(model, input_image_viz_dir):     
+    ## Test on images
     for i, img_file in enumerate(os.listdir(input_image_viz_dir)):
         img_file = os.path.join(input_image_viz_dir, img_file)
         test_model_input = get_test_model_input(file=img_file)
         test_model_input = test_model_input.cuda()
 
         with torch.no_grad():
+            if type(model) is torch.nn.parallel.DistributedDataParallel:
+                model = model.module
             _, test_model_output, mask = model(test_model_input, test_image=True)
 
-        if type(model) is torch.nn.parallel.DistributedDataParallel:
-            patchified_gt = model.module.patchify(test_model_input)
-            reconstructed_output = reconstruct(mask, patchified_gt, test_model_output)
-            test_model_output = model.module.unpatchify(reconstructed_output)
-        elif type(model) is models_mae.MaskedAutoencoderViT:
-            patchified_gt = model.patchify(test_model_input)
-            reconstructed_output = reconstruct(mask, patchified_gt, test_model_output)
-            test_model_output = model.unpatchify(reconstructed_output)
-        else:
-            raise NotImplementedError("Something's funky")
+        num_patches = 14
+        y = test_model_output.argmax(dim=-1)
+        im_paste, _, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+        im_paste = im_paste.squeeze()
+        im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
 
-        test_model_output = normalized_to_uint8(test_model_output)
-        denormalized_img = test_model_output.squeeze(0).permute(1, 2, 3, 0).squeeze(0)  # (224, 224, 3)
-        image_array = (denormalized_img.cpu().numpy()).astype(np.uint8)
         output_img_name = 'test_model_output_img' + str(i) + '.png'
-        image = wandb.Image(image_array)
+        image = wandb.Image(im_paste)
         wandb.log({output_img_name: image})
-        
-    ### Test on images
-    # for i, img_file in enumerate(os.listdir(input_image_viz_dir)):
-    #     img_file = os.path.join(input_image_viz_dir, img_file)
-    #     test_model_input = get_test_model_input(file=img_file)
-    #     test_model_input = test_model_input.cuda()
-
-    #     with torch.no_grad():
-    #         if type(model) is torch.nn.parallel.DistributedDataParallel:
-    #             model = model.module
-    #         _, test_model_output, mask = model(test_model_input, test_image=True)
-
-    #     num_patches = 14
-    #     y = test_model_output.argmax(dim=-1)
-    #     im_paste, _, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
-    #     im_paste = im_paste.squeeze()
-    #     im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
-
-    #     output_img_name = 'test_model_output_img' + str(i) + '.png'
-    #     image = wandb.Image(im_paste)
-    #     wandb.log({output_img_name: image})
 
 @torch.no_grad()
 def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_temporal_videos/"):
