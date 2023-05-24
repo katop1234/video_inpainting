@@ -162,7 +162,12 @@ class MaskedAutoencoderViT(nn.Module):
         )
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
-        self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
+        self.decoder_pred = nn.Linear(
+            decoder_embed_dim,
+            self.t_pred_patch_size * patch_size**2 * in_chans,
+            bias=True,
+        )
+        # self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
@@ -633,17 +638,35 @@ class MaskedAutoencoderViT(nn.Module):
             # images
             _imgs = imgs
 
-        N = _imgs.shape[0]
-        T = _imgs.shape[2]
+        target = self.patchify(_imgs)
+        assert torch.allclose(_imgs.float(), self.unpatchify(target).float(), atol=0.01, rtol=0.01), "unpatchify(target) should yield _imgs"
+        assert not self.norm_pix_loss
 
-        with torch.no_grad():
-            _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
-            target = self.vae.get_codebook_indices(_imgs).flatten(1)
-            target = torch.reshape(target, [N, T * 196])
+        if self.norm_pix_loss:
+            mean = target.mean(dim=-1, keepdim=True)
+            var = target.var(dim=-1, keepdim=True)
+            target = (target - mean) / (var + 1.0e-6) ** 0.5
 
-        loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
-        loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
+        loss = (pred - target) ** 2
+        loss = loss.mean(dim=-1)  # [N, L], mean loss per patch
+        mask = mask.view(loss.shape) 
+        
+        assert mask.sum() > 0, "mask should have at least one 1"
+
+        loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
+
+        # N = _imgs.shape[0]
+        # T = _imgs.shape[2]
+
+        # with torch.no_grad():
+        #     _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
+        #     target = self.vae.get_codebook_indices(_imgs).flatten(1)
+        #     target = torch.reshape(target, [N, T * 196])
+
+        # loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
+        # loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
+        # return loss
 
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False):

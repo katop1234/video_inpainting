@@ -16,6 +16,6 @@ def get_video_container(path_to_vid, multi_thread_decode=False):
     Returns:
         container (container): video container.
     """
-    with open(path_to_vid, "rb") as fp: 
+    with open(path_to_vid, "rb") as fp:
         container = fp.read()
     return container
