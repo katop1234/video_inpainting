@@ -429,11 +429,11 @@ class MaskedAutoencoderViT(nn.Module):
                 1, self.input_size[0], 1
             ) 
             
-            pos_embed += torch.repeat_interleave(
-                self.pos_embed_temporal, 
-                self.input_size[1] * self.input_size[2],
-                dim=1,
-            )
+            # pos_embed += torch.repeat_interleave(
+            #     self.pos_embed_temporal, 
+            #     self.input_size[1] * self.input_size[2],
+            #     dim=1,
+            # )
 
             pos_embed = pos_embed.expand(x.shape[0], -1, -1) # copies along batch dimension to match x
 
@@ -548,11 +548,11 @@ class MaskedAutoencoderViT(nn.Module):
             decoder_pos_embed = self.decoder_pos_embed_spatial.repeat(
                 1, self.input_size[0], 1
             )
-            decoder_pos_embed += torch.repeat_interleave(
-                self.decoder_pos_embed_temporal,
-                self.input_size[1] * self.input_size[2],
-                dim=1,
-            )
+            # decoder_pos_embed += torch.repeat_interleave(
+            #     self.decoder_pos_embed_temporal,
+            #     self.input_size[1] * self.input_size[2],
+            #     dim=1,
+            # )
             if self.cls_embed:
                 decoder_pos_embed = torch.cat(
                     [
