@@ -27,4 +27,8 @@ The dataset includes screenshots for five games: Space Invaders, Q*bert, Ms. Pac
 
 ## CrossTask
 
-Location: todo
+Location: `/shared/katop1234/Datasets/CrossTask_vids/`
+
+Data source: [Zip file]https://www.rocq.inria.fr/cluster-willow/dzhukov/missing_videos.tar.gz 
+
+Since the original videos were very long, we cropped them to be chunks of size between 240 and 480 frames
