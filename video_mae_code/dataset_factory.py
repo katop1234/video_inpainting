@@ -40,49 +40,6 @@ class VideoDataset(Kinetics):
         for i in range(len(self._path_to_videos)):
             self._video_meta[i] = {}
 
-class AtariDataset(Dataset):
-    def __init__(self, path_to_data_dir):
-        self.root_dir = path_to_data_dir
-        self.transform = Compose([
-            Resize((224, 224)),
-            ToTensor(),
-        ])
-        self.games = ['mspacman', 'pinball', 'qbert', 'revenge', 'spaceinvaders']
-        self.subfolders = []
-
-        # Populate the list of subfolders
-        for game in self.games:
-            game_folder = os.path.join(self.root_dir, game)
-            subfolders = glob.glob(os.path.join(game_folder, '*'))
-            self.subfolders.extend(subfolders)
-
-    def __len__(self):
-        # Return the total number of sub-subfolders across all games
-        return len(self.subfolders)
-
-    def __getitem__(self, idx):
-        # Get the list of image paths in the selected subfolder
-        image_paths = sorted(glob.glob(os.path.join(self.subfolders[idx], '*.png')))
-
-        # Ensure there are at least 16 images in the subfolder
-        if len(image_paths) < 16:
-            raise ValueError(f"Found a subfolder with less than 16 images: {self.subfolders[idx]}")
-
-        # Select a random start index for the sequence of 16 frames
-        start_idx = torch.randint(0, len(image_paths) - 15, (1,)).item()
-
-        # Load 16 consecutive images starting from the selected index and apply the transform
-        images = [self.transform(Image.open(image_paths[i])) for i in range(start_idx, start_idx + 16)]
-
-        # Stack the images into a tensor of shape [1, 3, 16, 224, 224]
-        images = torch.stack(images)
-        images = images.unsqueeze(0)
-        images = images.permute(0, 2, 1, 3, 4)
-        
-        label_list = torch.Tensor([0]) # For backwards compatability with Kinetics-like datasets
-
-        return images, label_list
-
 def get_image_transforms():
     return transforms.Compose([
         transforms.RandomResizedCrop(224, scale=(0.2, 1.0), interpolation=3),  # 3 is bicubic
