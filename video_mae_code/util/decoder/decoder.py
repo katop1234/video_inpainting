@@ -225,6 +225,15 @@ def decode(
         # Convert bytes to a readable buffer and open it with PyAV
         container_buffer = io_module.BytesIO(container_bytes)
         container = av.open(container_buffer)
+        
+        # Print size of the video in MB
+        size_MB = len(container_bytes) / (1024 * 1024)
+        print(f'Size of the video: {size_MB} MB')
+
+        # Print duration of the video in seconds
+        video_stream = container.streams.video[0]
+        video_duration_sec = video_stream.duration * float(video_stream.time_base)
+        print(f'Duration of the video: {video_duration_sec} seconds')
 
         decode_all_video = True
         video_start_pts, video_end_pts = 0, -1
@@ -240,15 +249,39 @@ def decode(
             video_meta["has_video"] = True  # Assuming the container has a video stream
             video_meta["video_duration"] = video_stream.duration * time_base
             video_meta["video_fps"] = fps
-        
+
         fps = video_meta["video_fps"]
+
+        # Determine total frames in video
+        total_frames = video_stream.frames
+
+        # If less than 120 frames, raise an exception (or handle it as you see fit)
+        print(total_frames)
+        if total_frames < 16:
+            raise ValueError("Video must contain at least 16 frames")
+        
+        frame_max = min(total_frames, 64)
+
+        # Select starting point
+        start_frame = np.random.randint(0, total_frames - frame_max)
 
         # PyAV decoding
         frames_list = []
+        frame_count = 0
+
+        print("decoding video")
+        print("start frame: ", start_frame)
+        count = 0
         for frame in container.decode(video=0):
-            img = frame.to_image()
-            img_array = np.array(img)
-            frames_list.append(img_array)
+            if frame_count >= start_frame and frame_count < start_frame + frame_max:
+                img = frame.to_image()
+                img_array = np.array(img)
+                frames_list.append(img_array)
+                print(f'frame {frame_count} appended')
+            frame_count += 1
+            if frame_count >= start_frame + frame_max:
+                break
+            count += 1
 
         v_frames = torch.from_numpy(np.stack(frames_list))
 
@@ -260,6 +293,7 @@ def decode(
     if v_frames is None or v_frames.size(0) == 0:
         return None, fps, decode_all_video
     return v_frames, fps, decode_all_video
+
 
 # decode_with_pyav first attempt
 def decode_with_pyav(
