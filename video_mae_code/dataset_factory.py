@@ -108,7 +108,7 @@ def get_dataset(name, root_path, ds_type):
         elif name == "Objectron":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron")
         elif name == "CrossTask":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask")
+            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids")
         elif name == 'atari':
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s/")
         elif name == "SSV2":
