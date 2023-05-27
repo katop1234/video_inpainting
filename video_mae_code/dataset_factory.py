@@ -50,24 +50,24 @@ def get_image_transforms():
 def get_dataset(name, root_path, ds_type):
     if ds_type == 'image':
         transforms_train = get_image_transforms()
-        if name == 'imagenet':
-            dataset_train = datasets.ImageFolder(os.path.join(root_path, 'ilsvrc/train'), 
-                                                 transform=transforms_train)
-        elif name == 'cvf':
+        if name == 'cvf':
             dataset_train = datasets.ImageFolder(os.path.join(root_path, 'arxiv_resized_train_val_split/train/'),
+                                                 transform=transforms_train)
+        elif name == 'imagenet':
+            dataset_train = datasets.ImageFolder(os.path.join(root_path, 'ilsvrc/train'), 
                                                  transform=transforms_train)
         else:
             raise ValueError("Wrong dataset name.")
 
     elif ds_type == 'video':
-        if name == "kinetics":
+        if name == 'atari':
+            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s/")
+        elif name == "CrossTask":
+            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids")
+        elif name == "kinetics":
             dataset_train = VideoDataset(path_to_data_dir=os.path.join(root_path, 'kinetics/train_256/'))
         elif name == "Objectron":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron")
-        elif name == "CrossTask":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids")
-        elif name == 'atari':
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s/")
         elif name == "SSV2":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos/") 
         else:
