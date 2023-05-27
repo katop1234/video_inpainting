@@ -32,7 +32,7 @@ class MaskedAutoencoderViT(nn.Module):
         depth=24,
         num_heads=16,
         decoder_embed_dim=512,
-        decoder_depth=4, # TODO Made 8 from 4 because of Amir's suggestion
+        decoder_depth=4,
         decoder_num_heads=16,
         mlp_ratio=4.0,
         norm_layer=nn.LayerNorm,
@@ -648,13 +648,9 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False):
         self.vae.eval()
-        print("set self vae to eval")
         latent, mask, ids_restore, offsets = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_spatiotemporal, test_temporal, test_image)
-        print("forward encoder done")
         pred = self.forward_decoder(latent, ids_restore, offsets, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
-        print("forward decoder done")
         loss = self.forward_loss(imgs, pred, mask)
-        print("loss done", loss)
         return loss, pred, mask
 
 def mae_vit_base_patch16(**kwargs):
