@@ -228,12 +228,10 @@ def decode(
         
         # Print size of the video in MB
         size_MB = len(container_bytes) / (1024 * 1024)
-        print(f'Size of the video: {size_MB} MB')
 
         # Print duration of the video in seconds
         video_stream = container.streams.video[0]
         video_duration_sec = video_stream.duration * float(video_stream.time_base)
-        print(f'Duration of the video: {video_duration_sec} seconds')
 
         decode_all_video = True
         video_start_pts, video_end_pts = 0, -1
@@ -256,7 +254,6 @@ def decode(
         total_frames = video_stream.frames
 
         # If less than 120 frames, raise an exception (or handle it as you see fit)
-        print(total_frames)
         if total_frames < 16:
             raise ValueError("Video must contain at least 16 frames")
         
@@ -269,15 +266,12 @@ def decode(
         frames_list = []
         frame_count = 0
 
-        print("decoding video")
-        print("start frame: ", start_frame)
         count = 0
         for frame in container.decode(video=0):
             if frame_count >= start_frame and frame_count < start_frame + frame_max:
                 img = frame.to_image()
                 img_array = np.array(img)
                 frames_list.append(img_array)
-                print(f'frame {frame_count} appended')
             frame_count += 1
             if frame_count >= start_frame + frame_max:
                 break
