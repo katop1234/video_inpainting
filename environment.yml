@@ -132,4 +132,5 @@ dependencies:
       - torch==2.0.0
       - torchvision==0.15.1
       - wandb==0.15.0
+      - youtube-dl==2021.12.17
 prefix: /home/katop1234/miniconda3/envs/vip

@@ -9,15 +9,13 @@ import torch
 import torch.utils.data
 
 from iopath.common.file_io import g_pathmgr as pathmgr
-from util.decoder.decoder import get_start_end_idx, temporal_sampling
+from video_mae_code.util.decoder.decoder import get_start_end_idx, temporal_sampling
 from torchvision import transforms
 
 from .decoder import decoder as decoder, utils as utils, video_container as container
 from .decoder.random_erasing import RandomErasing
 from .decoder.transform import create_random_augment
 from pathlib import Path
-
-
 
 class Kinetics(torch.utils.data.Dataset):
     """
