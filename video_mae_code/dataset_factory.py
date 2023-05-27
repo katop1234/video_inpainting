@@ -95,7 +95,6 @@ class MergedDataset(torch.utils.data.Dataset):
         self.conf = conf
 
     def __len__(self):
-        # return 16 # For testing purposes
         return 79000
 
     def __getitem__(self, index: int):
@@ -114,7 +113,3 @@ if __name__ == '__main__':
     image_pct = 0.5
     ds = MergedDataset(root_path, image_dataset_list, image_dataset_conf, video_dataset_list, video_dataset_conf,
                        image_pct)
-
-    for i in range(100):
-        x, y = ds[i]
-        print(x.shape, y)
