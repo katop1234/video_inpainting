@@ -220,7 +220,7 @@ def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
     model.train()
 
 @torch.no_grad()
-def visualize_image_prompting(model, input_image_viz_dir):     
+def visualize_image_prompting(model, input_image_viz_dir):  
     ## Test on images
     for i, img_file in enumerate(os.listdir(input_image_viz_dir)):
         img_file = os.path.join(input_image_viz_dir, img_file)
