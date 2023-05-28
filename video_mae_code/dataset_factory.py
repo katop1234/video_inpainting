@@ -2,8 +2,8 @@ import os
 from PIL import Image
 from torch.utils.data import Dataset
 from torchvision.transforms import Resize, ToTensor
-from video_mae_code.util.decoder import constants
-from video_mae_code.util.kinetics import Kinetics
+from util.decoder import constants
+from util.kinetics import Kinetics
 from torchvision import datasets
 from torchvision.transforms import transforms
 from torchvision.transforms import Compose, Resize, ToTensor
@@ -46,7 +46,7 @@ def get_image_transforms():
         transforms.RandomHorizontalFlip(),
         transforms.ToTensor(),
         transforms.Normalize(mean=constants.mean, std=constants.std)])
-
+ 
 def get_dataset(name, root_path, ds_type):
     if ds_type == 'image':
         transforms_train = get_image_transforms()
@@ -63,11 +63,11 @@ def get_dataset(name, root_path, ds_type):
         if name == 'atari':
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s/")
         elif name == "CrossTask":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids")
+            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids/")
         elif name == "kinetics":
             dataset_train = VideoDataset(path_to_data_dir=os.path.join(root_path, 'kinetics/train_256/'))
         elif name == "Objectron":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron")
+            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron/")
         elif name == "SSV2":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos/") 
         else:
