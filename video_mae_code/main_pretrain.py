@@ -122,7 +122,7 @@ def get_args_parser():
 
     parser.add_argument(
         "--video_prompts_dir",
-        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/final_temporal_videos/",
+        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/random_masked_videos/",
         help="Folder containing video visualization examples.",
     )
 

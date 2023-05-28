@@ -10,6 +10,7 @@ import random
 import torch.nn.functional as F
 from torchvision import transforms
 import util.decoder.constants as constants
+import random
 
 def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     '''
@@ -144,16 +145,8 @@ def get_test_model_input(file: str = None, data_dir: str = None):
             return image_tensor.cuda()
         raise NotImplementedError
 
-    # TODO also feed in "test_cases/final_spatiotemporal_videos/"
-    if check_folder_equality(data_dir, "test_cases/final_temporal_videos/"):
-        random_mp4 = get_random_file(data_dir)
-        return get_test_model_input(file=random_mp4)
-
-    elif check_folder_equality(data_dir, "test_cases/visual_prompting_images/"):
-        random_png = get_random_file(data_dir)
-        return get_test_model_input(file=random_png)
-
-    raise NotImplementedError
+    random_file_from_data_dir = get_random_file(data_dir)
+    return get_test_model_input(file=random_file_from_data_dir)
 
 def spatial_sample_test_video(test_model_input):
     spatial_idx = 1
@@ -214,10 +207,16 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
 
 @torch.no_grad()
 def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
+    test_cases_folder = "/shared/katop1234/video_inpainting/video_inpainting/test_cases/"
+    test_types = ["random_masked_videos/", "temporally_masked_videos/", "spatiotemporally_masked_videos/", "spatiotemporally_masked_2_videos/",  "view_videos/"]
+    random_type = random.choice(test_types)
+    input_video_viz_dir = os.path.join(test_cases_folder, random_type)
+    
     model.eval()
-    visualize_image_prompting(model, input_image_viz_dir)
+    visualize_image_prompting(model, os.path.join(test_cases_folder, "test_images/"))
     visualize_video_prompting(model, input_video_viz_dir)
     model.train()
+
 
 @torch.no_grad()
 def visualize_image_prompting(model, input_image_viz_dir):  
@@ -243,7 +242,7 @@ def visualize_image_prompting(model, input_image_viz_dir):
         wandb.log({output_img_name: image})
 
 @torch.no_grad()
-def visualize_video_prompting(model, input_video_viz_dir="test_cases/final_temporal_videos/"):
+def visualize_video_prompting(model, input_video_viz_dir="test_cases/random_masked_videos/"):
     test_model_input = get_test_model_input(data_dir=input_video_viz_dir)
     test_model_input = spatial_sample_test_video(test_model_input)
 
