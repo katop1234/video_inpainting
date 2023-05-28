@@ -408,7 +408,7 @@ class MaskedAutoencoderViT(nn.Module):
         mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it
 
         pretraining_mode = True
-        if test_spatiotemporal or test_temporal or test_image or test_view:
+        if test_image or test_temporal or test_spatiotemporal or test_view:
             pretraining_mode = False
 
         # x .shape ==  (B, C, T, H, W). For image T == 1, for video T > 1
@@ -421,12 +421,12 @@ class MaskedAutoencoderViT(nn.Module):
         
         elif test_image:
             x, mask, ids_restore, ids_keep = self.mask_test_image(x)
+        
+        elif test_temporal:
+            x, mask, ids_restore, ids_keep = self.mask_temporal(x)
             
         elif test_spatiotemporal:
             x, mask, ids_restore, ids_keep = self.mask_spatiotemporal(x)
-
-        elif test_temporal:
-            x, mask, ids_restore, ids_keep = self.mask_temporal(x)
 
         elif test_view:
             raise NotImplementedError
