@@ -431,7 +431,7 @@ class MaskedAutoencoderViT(nn.Module):
         elif test_view:
             raise NotImplementedError
         else:
-            raise NotImplementedError("Invalid mode. Either have pretraining, test temporal, or test spatiotemporal")
+            raise NotImplementedError("Invalid mode.")
             
         # Check if output is for a video tensor (torch.Size([4, 3136, 1024]))
         # 3136 = 14 ** 2 * 16

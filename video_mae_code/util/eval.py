@@ -7,6 +7,7 @@ import cv2
 from PIL import Image
 from util.decoder import utils
 import random
+from scipy import ndimage
 import torch.nn.functional as F
 from torchvision import transforms
 import util.decoder.constants as constants
@@ -281,6 +282,9 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
 
     im_paste = im_paste.permute((0, 1, 4, 2, 3)).squeeze(0).permute(1, 0, 3, 2).unsqueeze(0)
     im_paste = im_paste.cpu().numpy().astype(np.uint8)
+
+    # Rotate the video by 90 degrees
+    im_paste = np.rot90(im_paste, -1, axes=(3, 4))
 
     wandb_video_object = wandb.Video(
         data_or_path=im_paste,
