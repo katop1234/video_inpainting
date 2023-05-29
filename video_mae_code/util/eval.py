@@ -11,6 +11,7 @@ from scipy import ndimage
 import torch.nn.functional as F
 from torchvision import transforms
 import util.decoder.constants as constants
+import random
 
 def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     '''
@@ -209,6 +210,7 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     return im_paste, mask, orig_image
 
 @torch.no_grad()
+
 def visualize_prompting(model, epoch):
     test_cases_folder = "/shared/katop1234/video_inpainting/video_inpainting/test_cases/"
     
@@ -219,9 +221,10 @@ def visualize_prompting(model, epoch):
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"))
     # visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "view_videos/")) # TODO
-    model.train()
+
 
 @torch.no_grad()
+
 def visualize_image_prompting(model, epoch, input_image_viz_dir):
     ### Test on images
     
@@ -278,19 +281,26 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
         
     num_patches = 14
     y = test_model_output.argmax(dim=-1)
-    im_paste, mask, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+    im_paste, _, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
 
-    im_paste = im_paste.permute((0, 1, 4, 2, 3)).squeeze(0).permute(1, 0, 3, 2).unsqueeze(0)
-    im_paste = im_paste.cpu().numpy().astype(np.uint8)
-
-    # Rotate the video by 90 degrees
-    im_paste = np.rot90(im_paste, -1, axes=(3, 4))
-
+    im_paste = im_paste.permute((0, 1, 4, 2, 3))
+    orig_image = orig_image.permute((0, 1, 4, 2, 3))
+    im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+    orig_image = (orig_image.cpu().numpy()).astype(np.uint8)
+    
     wandb_video_object = wandb.Video(
-        data_or_path=im_paste,
-        fps=4,
+        data_or_path=orig_image,
+        fps=4, 
         format="mp4"
     )
+    wandb.log({"input_video": wandb_video_object})
+    
+    wandb_video_object = wandb.Video(
+        data_or_path=im_paste,
+        fps=4, 
+        format="mp4"
+    )
+    wandb.log({"output_video": wandb_video_object}) 
 
     folder_name = os.path.basename(os.path.normpath(input_video_viz_dir))
     video_title = "Epoch_" + str(epoch) + "_" + folder_name

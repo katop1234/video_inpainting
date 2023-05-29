@@ -9,8 +9,12 @@ import importlib
 import torch
 from omegaconf import OmegaConf
 import os
+<<<<<<< HEAD
 from viz_utils import imagenet_std, imagenet_mean
 
+=======
+import util.decoder.constants as constants
+>>>>>>> origin/image_video_train
 cwd = os.path.dirname(os.path.abspath(__file__))
 
 ## Code borrowed from VQGAN
@@ -1282,8 +1286,8 @@ class VQModel(pl.LightningModule):
     def map_pixels(self, x: torch.Tensor) -> torch.Tensor:
         if x.dtype != torch.float:
             raise ValueError('expected input to have type float')
-        x = 2. * (x * torch.tensor(imagenet_std[None, :, None, None]).to(x.device) + torch.tensor(
-            imagenet_mean[None, :, None, None]).to(x.device)) - 1.
+        x = 2. * (x * torch.tensor(constants.np_std[None, :, None, None]).to(x.device) + torch.tensor(
+            constants.np_mean[None, :, None, None]).to(x.device)) - 1.
         return x.float()
 
 
