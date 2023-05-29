@@ -9,12 +9,9 @@ import importlib
 import torch
 from omegaconf import OmegaConf
 import os
-<<<<<<< HEAD
 from viz_utils import imagenet_std, imagenet_mean
-
-=======
 import util.decoder.constants as constants
->>>>>>> origin/image_video_train
+
 cwd = os.path.dirname(os.path.abspath(__file__))
 
 ## Code borrowed from VQGAN

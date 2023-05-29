@@ -281,27 +281,30 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
         
     num_patches = 14
     y = test_model_output.argmax(dim=-1)
-    im_paste, _, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+    im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
 
     im_paste = im_paste.permute((0, 1, 4, 2, 3))
-    orig_image = orig_image.permute((0, 1, 4, 2, 3))
+    orig_video = orig_video.permute((0, 1, 4, 2, 3))
     im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
-    orig_image = (orig_image.cpu().numpy()).astype(np.uint8)
+    orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
     
     wandb_video_object = wandb.Video(
-        data_or_path=orig_image,
+        data_or_path=orig_video,
         fps=4, 
         format="mp4"
     )
-    wandb.log({"input_video": wandb_video_object})
+    
+    folder_name = os.path.basename(os.path.normpath(input_video_viz_dir))
+    video_title = "Epoch_" + str(epoch) + "_" + folder_name
+    
+    input_video_title = "input_" + video_title
+    wandb.log({input_video_title: wandb_video_object})
     
     wandb_video_object = wandb.Video(
         data_or_path=im_paste,
         fps=4, 
         format="mp4"
     )
-    wandb.log({"output_video": wandb_video_object}) 
 
-    folder_name = os.path.basename(os.path.normpath(input_video_viz_dir))
-    video_title = "Epoch_" + str(epoch) + "_" + folder_name
-    wandb.log({video_title: wandb_video_object})
+    output_video_title = "output_" + video_title
+    wandb.log({output_video_title: wandb_video_object})

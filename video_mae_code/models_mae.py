@@ -470,6 +470,26 @@ class MaskedAutoencoderViT(nn.Module):
                 )
 
             pos_embed = pos_embed.expand(x.shape[0], -1, -1) # copies along batch dimension to match x
+            
+            if ids_keep.shape[1] == (1 - mask_ratio_image) * 196 or test_image:
+                '''
+                Basically, for images, the ids to keep ranges from 0->195, so we need to add 0->15 * 196 to each row of ids_keep
+                as if it came from any of the frames
+                '''
+                offsets = torch.randint(0, 16, (N,), device=x.device) * 196
+                offsets = offsets.view(N, 1)
+                
+                ids_keep = ids_keep + offsets
+
+            elif ids_keep.shape[1] == (1 - mask_ratio_video) * 3136 or test_temporal or test_spatiotemporal:
+                # video, so no need to add offsets
+                offsets = torch.zeros((N, 1), device=x.device)
+                pass
+            else:
+                raise ValueError("got ids_keep shape not supported, probably an unsupported masking ratio or"
+                      + "tried video spatiotemporal inference which isn't supported. got ids keep shape", ids_keep.shape)
+                exit()
+            
             pos_embed = torch.gather(
                 pos_embed,
                 dim=1,
@@ -517,9 +537,9 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             x = x[:, :, :]
 
-        return x, mask, ids_restore
+        return x, mask, ids_restore, offsets
 
-    def forward_decoder(self, x, ids_restore, mask_ratio_image=0.75, mask_ratio_video=0.9):
+    def forward_decoder(self, x, ids_restore, offsets: torch.tensor, mask_ratio_image=0.75, mask_ratio_video=0.9):
 
         mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2) # quantizes it 
         mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it 
@@ -588,6 +608,25 @@ class MaskedAutoencoderViT(nn.Module):
             # Create a range tensor for indexing
             index_range = torch.arange(0, 197, device=x.device).view(1, -1)
             x[:, :197] = x[:, :197] + decoder_pos_embed[:, index_range]
+        elif x.shape[1] == 1 + (14 ** 2) * 16: # video
+            x = x + decoder_pos_embed
+        else:
+            print("got bad x shape when adding decoder pos emb", x.shape)
+            raise NotImplementedError 
+    
+        if x.shape[1] == 1 + 14 ** 2: # image
+            # Create a range tensor for indexing
+            index_range = torch.arange(0, 196, device=x.device).view(1, -1)
+
+            # Calculate the indices to select from decoder_pos_emb
+            indices = offsets + index_range + 1
+
+            # Update x with the CLS token and offset-based positions
+            x[:, 0] = x[:, 0] + decoder_pos_embed[:, 0]
+
+            # Update rest of x with the offset-based positions (196 * k -> 196 * (k+1) for k in [0, 15])
+            x[:, 1:] = x[:, 1:] + decoder_pos_embed[:, indices]
+
         elif x.shape[1] == 1 + (14 ** 2) * 16: # video
             x = x + decoder_pos_embed
         else:
