@@ -6,7 +6,7 @@ import logging
 import os
 import random
 import time
-import video_mae_code.util.decoder.constants as constants
+import util.decoder.constants as constants
 from collections import defaultdict
 
 import cv2

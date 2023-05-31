@@ -1,13 +1,9 @@
 import os
-from PIL import Image
 from torch.utils.data import Dataset
-from torchvision.transforms import Resize, ToTensor
-from video_mae_code.util.decoder import constants
-from video_mae_code.util.kinetics import Kinetics
+from util.decoder import constants
+from util.kinetics import Kinetics
 from torchvision import datasets
 from torchvision.transforms import transforms
-from torchvision.transforms import Compose, Resize, ToTensor
-import glob
 import numpy as np
 import torch
 
@@ -21,24 +17,6 @@ class VideoDataset(Kinetics):
                          repeat_aug=1,
                          jitter_aspect_relative=[0.75, 1.3333],
                          jitter_scales_relative=[0.5, 1.0])
-
-    def _construct_loader(self):
-        """
-        Overwrite kinetics loader variables
-        """
-        self._path_to_videos = []
-        self._labels = []
-        self._spatial_temporal_idx = []
-
-        # List all video files in the path_to_data_dir
-        for filename in os.listdir(self._path_to_data_dir):
-            if filename.endswith(".mp4"):  # assuming the videos are mp4 format
-                self._path_to_videos.append(os.path.join(self._path_to_data_dir, filename))
-                self._labels.append(0)  # append 0 as label for all videos
-                self._spatial_temporal_idx.append(0)  # append 0 as spatial_temporal_idx for all videos
-        
-        for i in range(len(self._path_to_videos)):
-            self._video_meta[i] = {}
 
 def get_image_transforms():
     return transforms.Compose([
@@ -77,21 +55,46 @@ def get_dataset(name, root_path, ds_type):
 
     return dataset_train
 
+
+def combined_gen(image_gen, video_gen, accum_iter_img, accum_iter_vid, image_video_ratio, num_iter):
+    i = 0
+    while i <= num_iter:
+        if np.random.random() > image_video_ratio:
+            gen = image_gen
+            accum_iter = accum_iter_img
+        else:
+            gen = video_gen
+            accum_iter = accum_iter_vid
+
+        while accum_iter >= 1 and i <= num_iter:
+            sample = next(gen)
+            yield sample, accum_iter
+            accum_iter -= 1
+            i += 1
+    return
+
+
+class CombinedGen:
+    def __init__(self, image_gen, video_gen, accum_iter_img, accum_iter_vid, image_video_ratio):
+        self.image_gen = iter(image_gen)
+        self.video_gen = iter(video_gen)
+        self.accum_iter_img = accum_iter_img
+        self.accum_iter_vid = accum_iter_vid
+        self.image_video_ratio = image_video_ratio
+
+    def __iter__(self):
+        return combined_gen(self.image_gen, self.video_gen, self.accum_iter_img, self.accum_iter_vid, self.image_video_ratio, len(self))
+
+    def __len__(self):
+        return len(self.image_gen) # assuming we use image len for now
+
+
 class MergedDataset(torch.utils.data.Dataset):
-    def __init__(self, root_path, image_dataset_list, image_dataset_conf, video_dataset_list, video_dataset_conf,
-                 image_pct):
-        
-        image_pct = float(image_pct)
+    def __init__(self, root_path, image_dataset_list, image_dataset_conf, ds_type):
         image_dataset_conf = [float(x) for x in image_dataset_conf]
-        video_dataset_conf = [float(x) for x in video_dataset_conf]
-        
-        image_datasets = [get_dataset(ds_name, root_path, 'image') for ds_name in image_dataset_list]
-        video_datasets = [get_dataset(ds_name, root_path, 'video') for ds_name in video_dataset_list]
-        datasets = image_datasets + video_datasets
- 
-        conf = list(image_pct * np.array(image_dataset_conf)) + list((1 - image_pct) * np.array(video_dataset_conf))
-        conf = [i / sum(conf) for i in conf]
-        self.datasets = datasets
+        image_datasets = [get_dataset(ds_name, root_path, ds_type) for ds_name in image_dataset_list]
+        conf = [i / sum(image_dataset_conf) for i in image_dataset_conf]
+        self.datasets = image_datasets
         self.conf = conf
 
     def __len__(self):
@@ -103,13 +106,3 @@ class MergedDataset(torch.utils.data.Dataset):
         output_index = np.random.randint(0, len(ds))
         output = ds[output_index]
         return output
-
-if __name__ == '__main__':
-    root_path = ''
-    image_dataset_list = ['imagenet', 'cvf']
-    image_dataset_conf = [0.5, 0.5]
-    video_dataset_list = ['kinetics400', 'cityscapes']
-    video_dataset_conf = [1]
-    image_pct = 0.5
-    ds = MergedDataset(root_path, image_dataset_list, image_dataset_conf, video_dataset_list, video_dataset_conf,
-                       image_pct)

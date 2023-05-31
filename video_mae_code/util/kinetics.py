@@ -9,7 +9,7 @@ import torch
 import torch.utils.data
 
 from iopath.common.file_io import g_pathmgr as pathmgr
-from video_mae_code.util.decoder.decoder import get_start_end_idx, temporal_sampling
+from util.decoder.decoder import get_start_end_idx, temporal_sampling
 from torchvision import transforms
 
 from .decoder import decoder as decoder, utils as utils, video_container as container
@@ -207,7 +207,7 @@ class Kinetics(torch.utils.data.Dataset):
                 index of the video replacement that can be decoded.
         """
         
-        print("self mode is ", self.mode, "in kinetics, getting item at index", index)
+        # print("self mode is ", self.mode, "in kinetics, getting item at index", index)
         
         if self.mode in ["pretrain", "finetune", "val"]:
             # -1 indicates random sampling.
@@ -244,14 +244,14 @@ class Kinetics(torch.utils.data.Dataset):
         for i_try in range(self._num_retries):
             video_container = None
             
-            print('entering the try loop', "i_try is", i_try)
+            # print('entering the try loop', "i_try is", i_try)
             try:
                 video_container = container.get_video_container(
                     self._path_to_videos[index],
                     self._enable_multi_thread_decode,
                 )
                 
-                print("got video container")
+                # print("got video container")
             except Exception as e:
                 print(
                     "Failed to load video from {} with error {}".format(
@@ -273,7 +273,7 @@ class Kinetics(torch.utils.data.Dataset):
 
             # Decode video. Meta info is used to perform selective decoding.
             
-            print("about to decode video")
+            # print("about to decode video")
             
             try:
                 frames, fps, decode_all_video = decoder.decode(

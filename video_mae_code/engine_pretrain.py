@@ -18,7 +18,6 @@ import torch
 def train_one_epoch(
     model: torch.nn.Module,
     data_loader: Iterable,
-    accum_iter_determined_from_batch_size,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     epoch: int,
@@ -47,21 +46,14 @@ def train_one_epoch(
     )
     header = "Epoch: [{}]".format(epoch)
     print_freq = 20
-
-    accum_iter = accum_iter_determined_from_batch_size # calculated from batch_size
-
     optimizer.zero_grad()
 
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
     
-    print(len(data_loader), data_loader)
-
-    for data_iter_step, (samples, _) in enumerate(
+    for data_iter_step, ((samples, _), accum_iter) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):  
-        
-        print("Training epoch on data_iter_step: {}".format(data_iter_step))
         
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:

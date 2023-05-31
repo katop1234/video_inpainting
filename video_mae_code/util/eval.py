@@ -230,7 +230,7 @@ def visualize_image_prompting(model, input_image_viz_dir):
         im_paste = im_paste.squeeze()
         im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
 
-        output_img_name = 'test_model_output_img' + str(i) + "epoch" + str(epoch) + '.png'
+        output_img_name = 'test_model_output_img' + str(i) + '.png'
         image = wandb.Image(im_paste)
         wandb.log({output_img_name: image})
 
