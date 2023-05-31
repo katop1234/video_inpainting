@@ -122,7 +122,7 @@ def get_args_parser():
 
     parser.add_argument(
         "--video_prompts_dir",
-        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/final_temporal_videos/",
+        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/random_masked_videos/",
         help="Folder containing video visualization examples.",
     )
 
@@ -319,7 +319,7 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            find_unused_parameters=True,
+            find_unused_parameters=True, #True
         )
         model_without_ddp = model.module
 

@@ -234,7 +234,9 @@ def tensor_normalize(tensor):
     mean = constants.mean.to(tensor.device)
     std = constants.std.to(tensor.device)
 
-    tensor = tensor / 255.0
+    #Checking whether the tensor is in [0, 1] or in [0, 255]
+    if torch.max(tensor) > 1.:
+        tensor = tensor / 255.0
 
     # Get the position of the color channel dimension
     color_dim = tensor.shape.index(3)

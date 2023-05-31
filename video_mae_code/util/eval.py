@@ -2,14 +2,13 @@ import torch
 import wandb
 import os
 import numpy as np
-import models_mae
 import cv2
 from PIL import Image
 from util.decoder import utils
-import random
 import torch.nn.functional as F
 from torchvision import transforms
 import util.decoder.constants as constants
+import random
 
 def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     '''
@@ -144,16 +143,8 @@ def get_test_model_input(file: str = None, data_dir: str = None):
             return image_tensor.cuda()
         raise NotImplementedError
 
-    # TODO also feed in "test_cases/final_spatiotemporal_videos/"
-    if check_folder_equality(data_dir, "test_cases/final_temporal_videos/"):
-        random_mp4 = get_random_file(data_dir)
-        return get_test_model_input(file=random_mp4)
-
-    elif check_folder_equality(data_dir, "test_cases/visual_prompting_images/"):
-        random_png = get_random_file(data_dir)
-        return get_test_model_input(file=random_png)
-
-    raise NotImplementedError
+    random_file_from_data_dir = get_random_file(data_dir)
+    return get_test_model_input(file=random_file_from_data_dir)
 
 def spatial_sample_test_video(test_model_input):
     spatial_idx = 1
@@ -213,14 +204,15 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
 
 
 @torch.no_grad()
-def visualize_prompting(model, epoch, input_image_viz_dir, input_video_viz_dir):
+def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
     model.eval()
-    visualize_image_prompting(model, epoch, input_image_viz_dir)
-    visualize_video_prompting(model, epoch, input_video_viz_dir)
+    visualize_image_prompting(model, input_image_viz_dir)
+    visualize_video_prompting(model, input_video_viz_dir)
     model.train()
 
+
 @torch.no_grad()
-def visualize_image_prompting(model, epoch, input_image_viz_dir):
+def visualize_image_prompting(model, input_image_viz_dir):
     ### Test on images
     for i, img_file in enumerate(os.listdir(input_image_viz_dir)):
         img_file = os.path.join(input_image_viz_dir, img_file)
@@ -243,7 +235,7 @@ def visualize_image_prompting(model, epoch, input_image_viz_dir):
         wandb.log({output_img_name: image})
 
 @torch.no_grad()
-def visualize_video_prompting(model, epoch, input_video_viz_dir="test_cases/final_temporal_videos/"):
+def visualize_video_prompting(model, input_video_viz_dir="test_cases/random_masked_videos/"):
     test_model_input = get_test_model_input(data_dir=input_video_viz_dir)
     test_model_input = spatial_sample_test_video(test_model_input)
 
@@ -255,15 +247,24 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir="test_cases/fina
 
     num_patches = 14
     y = test_model_output.argmax(dim=-1)
-    im_paste, mask, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
-    
-    im_paste = im_paste.permute((0, 1, 4, 2, 3)).squeeze(0).permute(1, 0, 3, 2).unsqueeze(0)
-    im_paste = im_paste.cpu().numpy().astype(np.uint8)
+    im_paste, _, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+
+    im_paste = im_paste.permute((0, 1, 4, 2, 3))
+    orig_image = orig_image.permute((0, 1, 4, 2, 3))
+    im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+    orig_image = (orig_image.cpu().numpy()).astype(np.uint8)
+
+    wandb_video_object = wandb.Video(
+        data_or_path=orig_image,
+        fps=4,
+        format="mp4"
+    )
+    wandb.log({"input_video": wandb_video_object})
 
     wandb_video_object = wandb.Video(
         data_or_path=im_paste,
         fps=4,
         format="mp4"
     )
-    video_title = "output_video" + "_epoch_" + str(epoch)
-    wandb.log({video_title: wandb_video_object})
+    wandb.log({"output_video": wandb_video_object})
+
