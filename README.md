@@ -15,7 +15,7 @@ Download pretrained VQGAN codebook checkpoint and config [vqgan_imagenet_f16_102
 
 ## Setup for Automatic Evaluation using DAVIS
 Clone the [davis2017-evaluation](https://github.com/davisvideochallenge/davis2017-evaluation) repo
-Reccomended to change the default values in ../video_inpainting/video_mae_code/iou_eval.py to your own proper paths.
+Reccomended to change the default values in ../video_inpainting/video_mae_code/iou_eval.py to your own proper paths. Run iou_eval.py for evaluation.
 The metrics are displayed in the terminal and in csv file found in ../davis2017-evaluation/results/unsupervised/eval_run, where eval_run is the chosen name for the evaluation. 
 
 ## Setup up a datasets folder and create soft links to the datasets
