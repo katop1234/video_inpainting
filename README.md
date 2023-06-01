@@ -13,6 +13,11 @@ Installing additional dependencies for VQGAN.
 ## Setup for VQGAN
 Download pretrained VQGAN codebook checkpoint and config [vqgan_imagenet_f16_1024](https://heibox.uni-heidelberg.de/d/8088892a516d4e3baf92/?p=%2F), place both last.ckpt and model.yaml on the repository root (should be .../video_mae_code/)
 
+## Setup for Automatic Evaluation using DAVIS
+Clone the [davis2017-evaluation](https://github.com/davisvideochallenge/davis2017-evaluation) repo
+Reccomended to change the default values in ../video_inpainting/video_mae_code/iou_eval.py to your own proper paths.
+The metrics are displayed in the terminal and in csv file found in ../davis2017-evaluation/results/unsupervised/eval_run, where eval_run is the chosen name for the evaluation. 
+
 ## Setup up a datasets folder and create soft links to the datasets
 ```
 mkdir -p ~/Datasets
