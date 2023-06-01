@@ -214,7 +214,8 @@ def get_args_parser():
     parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
     parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
     parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
-    parser.add_argument('--image_video_ratio', default=0.5, type=float, help='default means equally mixed between the two')
+    parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
+    parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
 
     return parser
 
@@ -358,7 +359,7 @@ def main(args):
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
 
-    combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_video_ratio)
+    combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
 
     for epoch in range(args.start_epoch, args.epochs):
 

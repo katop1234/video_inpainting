@@ -55,38 +55,41 @@ def get_dataset(name, root_path, ds_type):
 
     return dataset_train
 
-
-def combined_gen(image_gen, video_gen, accum_iter_img, accum_iter_vid, image_video_ratio, num_iter):
+def combined_gen(image_gen, video_gen, accum_iter_img, accum_iter_vid, image_itr, video_itr, num_iter):
     i = 0
-    while i <= num_iter:
-        if np.random.random() > image_video_ratio:
-            gen = image_gen
-            accum_iter = accum_iter_img
-        else:
-            gen = video_gen
-            accum_iter = accum_iter_vid
-
-        while accum_iter >= 1 and i <= num_iter:
-            sample = next(gen)
-            yield sample, accum_iter
-            accum_iter -= 1
-            i += 1
+    while i < num_iter:
+        i = yield from iter_gen(accum_iter_img, i, image_gen, image_itr) # i is updated within each generator
+        i = yield from iter_gen(accum_iter_vid, i, video_gen, video_itr)
     return
 
 
+def iter_gen(accum_iter_vid, i, video_gen, video_itr):
+    for j in range(video_itr):
+        accum_iter = accum_iter_vid
+        while accum_iter >= 1:  # allow to exceed epoch to satisfy accum_iter
+            sample = next(video_gen)
+            yield sample, accum_iter
+            accum_iter -= 1
+            i += 1
+    return i
+
+
 class CombinedGen:
-    def __init__(self, image_gen, video_gen, accum_iter_img, accum_iter_vid, image_video_ratio):
+    def __init__(self, image_gen, video_gen, accum_iter_img, accum_iter_vid, image_itr, video_itr):
         self.image_gen = iter(image_gen)
         self.video_gen = iter(video_gen)
         self.accum_iter_img = accum_iter_img
         self.accum_iter_vid = accum_iter_vid
-        self.image_video_ratio = image_video_ratio
+        self.image_itr = image_itr
+        self.video_itr = video_itr
+        self.num_iter_per_epoch = 3*(accum_iter_img*image_itr + accum_iter_vid*video_itr)
+
 
     def __iter__(self):
-        return combined_gen(self.image_gen, self.video_gen, self.accum_iter_img, self.accum_iter_vid, self.image_video_ratio, len(self))
+        return combined_gen(self.image_gen, self.video_gen, self.accum_iter_img, self.accum_iter_vid, self.image_itr, self.video_itr, len(self))
 
     def __len__(self):
-        return len(self.image_gen) # assuming we use image len for now
+        return self.num_iter_per_epoch # carefuly computed to avoid accum_iter updates here
 
 
 class MergedDataset(torch.utils.data.Dataset):
