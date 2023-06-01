@@ -160,7 +160,7 @@ def get_args_parser():
     parser.add_argument("--decoder_num_heads", default=16, type=int)
     parser.add_argument("--t_patch_size", default=1, type=int)
     parser.add_argument("--num_frames", default=16, type=int)
-    parser.add_argument("--checkpoint_period", default=20, type=int) # save every epoch for safety
+    parser.add_argument("--checkpoint_period", default=20, type=int)
     parser.add_argument("--sampling_rate", default=4, type=int)
     parser.add_argument("--distributed", action="store_true")
     parser.add_argument("--repeat_aug", default=1, type=int, help="We set this to 2 by default in dataset_factory.get_dataset for Kinetics.")
