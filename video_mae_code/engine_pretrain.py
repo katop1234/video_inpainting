@@ -14,7 +14,7 @@ from typing import Iterable
 import util.lr_sched as lr_sched
 import util.misc as misc
 import torch
-
+import numpy as np
 def train_one_epoch(
     model: torch.nn.Module,
     data_loader: Iterable,
@@ -80,6 +80,7 @@ def train_one_epoch(
             
 
         loss_value = loss.item()
+        assert not np.isnan(loss), 'loss is nan'
 
         loss /= accum_iter
         loss_scaler(
