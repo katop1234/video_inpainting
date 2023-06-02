@@ -30,6 +30,8 @@ from engine_pretrain import train_one_epoch
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from torch.utils.tensorboard import SummaryWriter
 import util.decoder.utils as utils
+from iou_eval import generate_segmentations, run_evaluation_method
+from pathlib import Path
 
 def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
@@ -122,7 +124,7 @@ def get_args_parser():
 
     parser.add_argument(
         "--video_prompts_dir",
-        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/random_masked_videos/",
+        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases",
         help="Folder containing video visualization examples.",
     )
 
@@ -231,6 +233,12 @@ def get_args_parser():
     parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
     parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
+    
+    parser.add_argument('--davis_eval_freq', default=50, help='frequency of computing davis eval metrics')
+    parser.add_argument('--davis_eval_path', default="/shared/dannyt123/davis2017-evaluation", help='path to davis2017-evaluation')
+    parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
+                                                   'ImageSets, Annotations_unsupervised folders',
+                    default='/shared/dannyt123/Datasets/DAVIS_trainval')
 
     return parser
 
@@ -397,6 +405,24 @@ def main(args):
                 **{f"train_{k}": v for k, v in train_stats.items()},
                 "epoch": epoch,
             }
+            
+            if epoch % args.davis_eval_freq == 0:
+                model.eval()
+                store_path = os.path.join(args.output_dir, "davis_segs")
+                if not os.path.exists(store_path):
+                    os.mkdir(store_path)
+                eval_name = "model_mae_{epoch}".format(epoch=epoch)
+                parent = Path(__file__).parent.absolute()
+                prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
+                davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
+                davis_eval_path = args.davis_eval_path
+                davis_path = args.davis_path
+                
+                generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
+                print("Finished Saving Davis Eval Segmentations")
+                single_mean, all_mean = run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path)
+                log_stats["Davis_single_object"] = single_mean
+                log_stats["Davis_all_cases"] = all_mean
 
             if args.output_dir and misc.is_main_process():
                 if log_writer is not None:

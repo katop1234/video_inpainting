@@ -17,10 +17,12 @@ parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder con
 parser.add_argument('--davis_eval_path', type=str, help='Path to the davis2017-evaluation folder',
                     default='/shared/dannyt123/davis2017-evaluation')
 parser.add_argument('--davis_prompts_path', type=str, help='Path to the folder containing all the DAVIS video prompts',
-                    default='/shared/dannyt123/video_inpainting/test_videos/Davis_Prompt')
+                    default='/shared/dannyt123/video_inpainting/test_videos/davis_prompt')
+parser.add_argument('--store_path', type=str, help='Path of where the segmentations are saved for each run',
+                    default='/shared/dannyt123/davis2017-evaluation/results/unsupervised')
 parser.add_argument('--eval_name', type=str, help='Name for the evaluation computation',
                     default='model_mae')
-parser.add_argument('--prompt_csv', type=str, help='Path to the csv file containing the information about the DAVIS prompts',
+parser.add_argument('--prompt_csv', type=str, help='Path to CSV for the Davis Prompts',
                     default='/shared/dannyt123/video_inpainting/video_mae_code/datasets/davis_prompt.csv')
 
 #Constants
@@ -70,7 +72,7 @@ def save_segmentations(frames, val, path, end_idx, orig_height, orig_width):
     
     j = 0
     for i in range(end_idx + 1):
-        if i in indices and val in single_object_cases:
+        if i in indices and val in single_object_cases: #Temporarily for single object cases
             seg = frames[j]
             seg = create_segmentation(seg) #For temporarily while the model is still not very good
             j += 1
@@ -82,23 +84,48 @@ def save_segmentations(frames, val, path, end_idx, orig_height, orig_width):
         seg_image.putpalette(palette)
         curr_path = os.path.join(path, f'{i:05}.png')
         seg_image.save(curr_path)
+        
+def single_object_mean(per_sequence_csv):
+    sum_mean = 0
+    with open(per_sequence_csv, 'r') as file:
+        csvreader = csv.reader(file)
+        for row in csvreader:
+            sequence_name = row[0][:-2]
+            if sequence_name in single_object_cases:
+                J_Mean = float(row[1])
+                F_Mean = float(row[2])
+                mean = (J_Mean + F_Mean) / 2.0
+                sum_mean += mean
+    return sum_mean / len(single_object_cases)
+            
+def global_mean(global_csv):
+    with open(global_csv, 'r') as file:
+        csvreader = csv.reader(file)
+        for row in csvreader:
+            if row[0] != 'J&F-Mean':
+                mean = row[0]
+    return float(mean)
+
+def load_model(model_path):
+    model = MaskedAutoencoderViT()
+    model.load_state_dict(torch.load(model_path)['model'])
+    model.eval()
+    model = model.to('cuda')
+    return model  
+
+def get_results_path(store_path, eval_name):
+    results_path = os.path.join(store_path, eval_name)
+    return results_path  
+
+def generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path):
+    if type(model) is torch.nn.parallel.DistributedDataParallel:
+        model = model.module
     
-def main():
-    args = parser.parse_known_args()[0]
-    
-    #Creating results_path
-    unsupervised_path = os.path.join(args.davis_eval_path, "results/unsupervised")
-    results_path = os.path.join(unsupervised_path, args.eval_name)
+    results_path = get_results_path(store_path, eval_name)
     if not os.path.exists(results_path):
         os.mkdir(results_path)
     
-    #Loading Model
-    model = MaskedAutoencoderViT()
-    model.load_state_dict(torch.load(args.model_path)['model'])
-    model.eval()
-    model = model.to('cuda')
-
-    with open(args.prompt_csv, 'r') as file:
+    with open(prompt_csv, 'r') as file:
         csvreader = csv.reader(file)
         prompt_num = 0
         for row in csvreader:
@@ -110,7 +137,7 @@ def main():
                 
                 curr_prompt = "DAVIS_{prompt_num}.mp4".format(prompt_num=prompt_num)
                 prompt_num += 1
-                prompt_path = os.path.join(args.davis_prompts_path, curr_prompt)
+                prompt_path = os.path.join(davis_prompts_path, curr_prompt)
                 
                 test_model_input = get_test_model_input(file=prompt_path)
                 test_model_input = spatial_sample_test_video(test_model_input)
@@ -128,11 +155,31 @@ def main():
                     os.mkdir(seg_save_path)
 
                 save_segmentations(frames, val, seg_save_path, val_end_idx, val_height, val_width)
-                print("Saved segmentations at {seg_save_path}".format(seg_save_path=seg_save_path))
                 
-    run_path = os.path.join(args.davis_eval_path, "evaluation_method.py")
-    run_command = "python3 {run_path} --davis_path {davis_path} --task unsupervised --results_path {results_path}".format(run_path=run_path, davis_path=args.davis_path, results_path=results_path)
+def run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path):
+    results_path = get_results_path(store_path, eval_name)
+    run_path = os.path.join(davis_eval_path, "evaluation_method.py")
+    run_command = "python3 {run_path} --davis_path {davis_path} --task unsupervised --results_path {results_path}".format(run_path=run_path, davis_path=davis_path, results_path=results_path)
+    
+    #Deletes existing csv files if they exist
+    sequence_csv = os.path.join(results_path, "per-sequence_results-val.csv") 
+    global_csv = os.path.join(results_path, "global_results-val.csv")
+    if os.path.exists(sequence_csv):
+        os.remove(sequence_csv)
+    if os.path.exists(global_csv):
+        os.remove(global_csv)
+
     os.system(run_command)
+    single_mean = single_object_mean(sequence_csv)
+    all_mean = global_mean(global_csv)
+    return single_mean, all_mean
+    
+def main():
+    args = parser.parse_known_args()[0]
+    
+    model = load_model(args.model_path)
+    generate_segmentations(model, args.store_path, args.eval_name, args.prompt_csv, args.davis_prompts_path)
+    single_mean, all_mean = run_evaluation_method(args.davis_eval_path, args.store_path, args.eval_name, args.davis_path)
                 
 if __name__ == "__main__":
     main()
