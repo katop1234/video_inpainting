@@ -420,9 +420,11 @@ def main(args):
                 
                 generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
                 print("Finished Saving Davis Eval Segmentations")
-                single_mean, all_mean = run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path)
-                log_stats["Davis_single_object"] = single_mean
-                log_stats["Davis_all_mean"] = all_mean
+                
+                if misc.is_main_process():
+                    single_mean, all_mean = run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path)
+                    log_stats["Davis_single_object"] = single_mean
+                    log_stats["Davis_all_mean"] = all_mean
 
             if args.output_dir and misc.is_main_process():
                 if log_writer is not None:
