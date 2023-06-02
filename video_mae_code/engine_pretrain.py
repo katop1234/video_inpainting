@@ -80,7 +80,7 @@ def train_one_epoch(
             
 
         loss_value = loss.item()
-        assert not np.isnan(loss), 'loss is nan'
+        assert not np.isnan(loss_value), 'loss is nan'
 
         loss /= accum_iter
         loss_scaler(
