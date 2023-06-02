@@ -422,7 +422,6 @@ def main(args):
                 print("Finished Saving Davis Eval Segmentations")
                 single_mean, all_mean = run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path)
                 log_stats["Davis_single_object"] = single_mean
-                log_stats["Davis_all_cases"] = all_mean
 
             if args.output_dir and misc.is_main_process():
                 if log_writer is not None:
