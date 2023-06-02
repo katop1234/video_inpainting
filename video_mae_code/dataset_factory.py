@@ -55,34 +55,61 @@ def get_dataset(name, root_path, ds_type):
 
     return dataset_train
 
-def combined_gen(image_gen, video_gen, accum_iter_img, accum_iter_vid, image_itr, video_itr, num_iter):
+def combined_gen(image_itr_cls, video_itr_cls, accum_iter_img, accum_iter_vid, image_itr, video_itr, num_iter):
     i = 0
+    image_gen = iter(image_itr_cls)
+    video_gen = iter(video_itr_cls)
+
     while i < num_iter:
-        i = yield from iter_gen(accum_iter_img, i, image_gen, image_itr) # i is updated within each generator
-        i = yield from iter_gen(accum_iter_vid, i, video_gen, video_itr)
-    return
 
+        for j in range(image_itr):
+            accum_iter = accum_iter_img
+            while accum_iter >= 1:  # allow to exceed epoch to satisfy accum_iter
+                try:
+                    sample = next(image_gen)
+                except StopIteration as e:
+                    image_gen = iter(image_itr_cls)
+                    sample = next(image_gen)
+                yield sample, accum_iter
+                accum_iter -= 1
+                i += 1
 
-def iter_gen(accum_iter_vid, i, video_gen, video_itr):
-    for j in range(video_itr):
-        accum_iter = accum_iter_vid
+        for j in range(video_itr):
+            accum_iter = accum_iter_vid
+            while accum_iter >= 1:  # allow to exceed epoch to satisfy accum_iter
+                try:
+                    sample = next(video_gen)
+                except StopIteration as e:
+                    video_gen = iter(video_itr_cls)
+                    sample = next(video_gen)
+                yield sample, accum_iter
+                accum_iter -= 1
+                i += 1
+
+def iter_gen(accum_iter, i, gen, it_cls, n):
+    for j in range(n):
+        accum_iter = accum_iter
         while accum_iter >= 1:  # allow to exceed epoch to satisfy accum_iter
-            sample = next(video_gen)
+            try:
+                sample = next(gen)
+            except StopIteration as e:
+                gen = iter(it_cls)
+                sample = next(gen)
             yield sample, accum_iter
             accum_iter -= 1
             i += 1
-    return i
+    return i, gen
 
 
 class CombinedGen:
-    def __init__(self, image_gen, video_gen, accum_iter_img, accum_iter_vid, image_itr, video_itr):
-        self.image_gen = iter(image_gen)
-        self.video_gen = iter(video_gen)
+    def __init__(self, image_gen_cls, video_gen_cls, accum_iter_img, accum_iter_vid, image_itr, video_itr):
+        self.image_gen = image_gen_cls
+        self.video_gen = video_gen_cls
         self.accum_iter_img = accum_iter_img
         self.accum_iter_vid = accum_iter_vid
         self.image_itr = image_itr
         self.video_itr = video_itr
-        self.num_iter_per_epoch = 3*(accum_iter_img*image_itr + accum_iter_vid*video_itr)
+        self.num_iter_per_epoch = 24*(accum_iter_img*image_itr + accum_iter_vid*video_itr)
 
 
     def __iter__(self):
