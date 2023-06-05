@@ -351,7 +351,7 @@ class MaskedAutoencoderViT(nn.Module):
             for col in range(W):
                 if row >= (H * 0.5) and col >= (W * 0.5):
                     mask[:, row * W + col] = 1
-
+        
         # Apply the mask to the input tensor
         x_masked = x[mask == 0].view(N, -1, D)
         
@@ -625,9 +625,14 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_spatiotemporal=False, test_temporal=False, test_image=False):
         self.vae.eval()
+        print("\n", 'setting vae to eval', "\n")
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_spatiotemporal, test_temporal, test_image)
+        print("\n", 'ran forward encoder', "\n")
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
+        print("\n", 'ran forward decoder', "\n")
         loss = self.forward_loss(imgs, pred, mask)
+        print("\n", 'ran forward loss', "\n")
+  
         return loss, pred, mask
 
 def mae_vit_base_patch16(**kwargs):

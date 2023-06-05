@@ -78,7 +78,6 @@ def train_one_epoch(
                 mask_ratio_video=args.mask_ratio_video
             )
             
-
         loss_value = loss.item()
         assert not np.isnan(loss_value), 'loss is nan'
 
@@ -90,7 +89,7 @@ def train_one_epoch(
             update_grad=(data_iter_step + 1) % accum_iter == 0, # updates grad every accum_iter
             clip_grad=args.clip_grad,
         )
-
+        
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad() # zeroes out grad every accum iter
 

@@ -24,6 +24,7 @@ import numpy as np
 import timm  # do not uncomment
 import torch
 import torch.backends.cudnn as cudnn
+import traceback
 from iopath.common.file_io import g_pathmgr as pathmgr
 import models_mae
 from engine_pretrain import train_one_epoch
@@ -291,11 +292,15 @@ def main(args):
 
     try:
         model.to(device)
-    except:
-        print("bugged out moving model to gpu")
-        print(torch.cuda.current_device())
-        print(torch.cuda.get_device_name(torch.cuda.current_device()))
+    except Exception as e:
+        print(f"Exception occurred: {e}")
+        traceback.print_exc()
+
+        print(f"Current CUDA device: {torch.cuda.current_device()}")
+        print(f"Device name: {torch.cuda.get_device_name(torch.cuda.current_device())}")
+        
         exit()
+
 
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
