@@ -8,15 +8,52 @@ import numpy as np
 import torch
 
 class VideoDataset(Kinetics):
-    def __init__(self, path_to_data_dir):
-        super().__init__(path_to_data_dir=path_to_data_dir,
-                         mode="pretrain",
-                         sampling_rate=4,
-                         num_frames=16,
-                         train_jitter_scales=(256, 320),
-                         repeat_aug=1,
-                         jitter_aspect_relative=[0.75, 1.3333],
-                         jitter_scales_relative=[0.5, 1.0])
+    '''
+    Inherit Kinetics class and overwrite the loader variables in _construct_loader function
+    since we aren't concerned with classification
+    '''
+    def __init__(
+        self,
+        path_to_data_dir,
+        train_jitter_scales=(256, 320),
+        train_crop_size=224,
+        repeat_aug=1,
+        jitter_aspect_relative=[0.75, 1.3333],
+        jitter_scales_relative=[0.5, 1.0],
+        train_random_horizontal_flip=False,
+        pretrain_rand_flip=False,
+        pretrain_rand_erase_prob=0,
+        rand_aug=False,
+    ):
+        super().__init__(
+            path_to_data_dir=path_to_data_dir,
+            mode="pretrain",
+            train_jitter_scales=train_jitter_scales,
+            train_crop_size=train_crop_size,
+            repeat_aug=repeat_aug,
+            jitter_aspect_relative=jitter_aspect_relative,
+            jitter_scales_relative=jitter_scales_relative,
+            train_random_horizontal_flip=train_random_horizontal_flip,
+            pretrain_rand_flip=pretrain_rand_flip,
+            pretrain_rand_erase_prob=pretrain_rand_erase_prob,
+            rand_aug=rand_aug
+        )
+
+    def _construct_loader(self):
+        self._path_to_videos = []
+        self._labels = []
+        self._spatial_temporal_idx = []
+
+        # List all video files in the path_to_data_dir
+        for filename in os.listdir(self._path_to_data_dir):
+            if filename.endswith(".mp4"):  # assuming the videos are mp4 format
+                self._path_to_videos.append(os.path.join(self._path_to_data_dir, filename))
+                self._labels.append(0)  # append 0 as label for all videos
+                self._spatial_temporal_idx.append(0)  # append 0 as spatial_temporal_idx for all videos
+
+        for i in range(len(self._path_to_videos)):
+            self._video_meta[i] = {}
+
 
 def get_image_transforms():
     return transforms.Compose([
@@ -39,7 +76,16 @@ def get_dataset(name, root_path, ds_type):
 
     elif ds_type == 'video':
         if name == 'atari':
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s_120fps/")
+            # The video is (210, 160) and we crop the top (160, 160) deterministically
+            dataset_train =  VideoDataset(
+                path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s_120fps/",
+                train_jitter_scales=(160, 160),
+                train_crop_size = 160,
+                train_random_horizontal_flip=False,
+                pretrain_rand_flip=False,
+                pretrain_rand_erase_prob=0,
+                rand_aug=False,
+            )
         elif name == "CrossTask":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids/")
         elif name == "kinetics":

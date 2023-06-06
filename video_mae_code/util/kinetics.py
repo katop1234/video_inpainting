@@ -215,6 +215,10 @@ class Kinetics(torch.utils.data.Dataset):
             spatial_sample_index = -1
             min_scale, max_scale = self._train_jitter_scales
             crop_size = self._train_crop_size
+            
+            if "atari" in self._path_to_data_dir:
+                spatial_sample_index = 0 # top crop only, no random cropping
+        
         elif self.mode in ["test"]:
             temporal_sample_index = (
                 self._spatial_temporal_idx[index] // self._test_num_spatial_crops
@@ -227,6 +231,7 @@ class Kinetics(torch.utils.data.Dataset):
                 if self._test_num_spatial_crops > 1
                 else 1
             )
+            
             min_scale, max_scale, crop_size = (
                 [self._test_crop_size] * 3
                 if self._test_num_spatial_crops > 1
