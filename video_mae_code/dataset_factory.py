@@ -39,7 +39,7 @@ def get_dataset(name, root_path, ds_type):
 
     elif ds_type == 'video':
         if name == 'atari':
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s/")
+            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s_120fps/")
         elif name == "CrossTask":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids")
         elif name == "kinetics":
@@ -136,3 +136,6 @@ class MergedDataset(torch.utils.data.Dataset):
         output_index = np.random.randint(0, len(ds))
         output = ds[output_index]
         return output
+    
+def visualize_input_from_dataset():
+    raise NotImplementedError()
