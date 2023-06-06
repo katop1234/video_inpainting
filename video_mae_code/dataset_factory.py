@@ -1,4 +1,3 @@
-import cv2
 import os
 from torch.utils.data import Dataset
 from util.decoder import constants
@@ -8,15 +7,14 @@ from torchvision.transforms import transforms
 import numpy as np
 import torch
 
-
 class VideoDataset(Kinetics):
     '''
     Inherit Kinetics class and overwrite the loader variables in _construct_loader function
     since we aren't concerned with classification
     '''
     def __init__(
-        self, 
-        path_to_data_dir, 
+        self,
+        path_to_data_dir,
         train_jitter_scales=(256, 320),
         train_crop_size=224,
         repeat_aug=1,
@@ -26,7 +24,7 @@ class VideoDataset(Kinetics):
         pretrain_rand_flip=False,
         pretrain_rand_erase_prob=0,
         rand_aug=False,
-    ):                      
+    ):
         super().__init__(
             path_to_data_dir=path_to_data_dir,
             mode="pretrain",
@@ -52,7 +50,7 @@ class VideoDataset(Kinetics):
                 self._path_to_videos.append(os.path.join(self._path_to_data_dir, filename))
                 self._labels.append(0)  # append 0 as label for all videos
                 self._spatial_temporal_idx.append(0)  # append 0 as spatial_temporal_idx for all videos
-        
+
         for i in range(len(self._path_to_videos)):
             self._video_meta[i] = {}
 
@@ -81,15 +79,15 @@ def get_dataset(name, root_path, ds_type):
             # The video is (210, 160) and we crop the top (160, 160) deterministically
             dataset_train =  VideoDataset(
                 path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s_120fps/",
-                train_jitter_scales=(160, 160), 
+                train_jitter_scales=(160, 160),
                 train_crop_size = 160,
                 train_random_horizontal_flip=False,
-                pretrain_rand_flip=False,  
-                pretrain_rand_erase_prob=0, 
+                pretrain_rand_flip=False,
+                pretrain_rand_erase_prob=0,
                 rand_aug=False,
             )
         elif name == "CrossTask":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids")
+            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids/")
         elif name == "kinetics":
             dataset_train = VideoDataset(path_to_data_dir=os.path.join(root_path, 'kinetics/train_256/'))
         elif name == "Objectron":
@@ -184,5 +182,13 @@ class MergedDataset(torch.utils.data.Dataset):
         output_index = np.random.randint(0, len(ds))
         output = ds[output_index]
         return output
-    
-    
+
+def visualize_input_from_dataset(name, root_path, ds_type, index=-1):
+    dataset = get_dataset(name, root_path, ds_type)
+
+    if index == -1:
+        index = np.random.randint(0, len(dataset))
+
+    input = dataset[index][0]
+    print(input.shape)
+    exit()

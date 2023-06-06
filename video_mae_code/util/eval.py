@@ -53,7 +53,12 @@ def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
     total_frames = int(video.get(cv2.CAP_PROP_FRAME_COUNT))
 
     # Calculate the sampling rate to get the target number of frames
+
     sampling_rate = total_frames // num_frames
+
+    if sampling_rate == 0:
+        print("Got total frames: ", total_frames, "for video", video_path, "which causes division by 0 for sampling rate.")
+        exit()
 
     # Initialize an empty list to store the resized frames
     resized_frames = []
@@ -129,7 +134,6 @@ def normalized_to_uint8(tensor):
     output = torch.round(output)
     return output
 
-
 def get_test_model_input(file: str = None, data_dir: str = None):
     # First check if direct file exists
     if file:
@@ -202,27 +206,33 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     im_paste = orig_image * (1 - mask) + y * mask
     return im_paste, mask, orig_image
 
+@torch.no_grad()
+def visualize_prompting(model, epoch, test_cases_folder):
+    visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "test_images/"))
+    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "random_masked_videos/"))
+    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "temporally_masked_videos/"))
+    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_videos/"))
+    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"))
+    # visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "view_videos/")) # TODO
 
 @torch.no_grad()
-def visualize_prompting(model, input_image_viz_dir, input_video_viz_dir):
-    model.eval()
-    visualize_image_prompting(model, input_image_viz_dir)
-    visualize_video_prompting(model, input_video_viz_dir)
-    model.train()
 
-
-@torch.no_grad()
-def visualize_image_prompting(model, input_image_viz_dir):
+def visualize_image_prompting(model, epoch, input_image_viz_dir):
     ### Test on images
+
+    '''
+    Masks out the bottom right quadrant of an image and inpaint it.
+    '''
+
     for i, img_file in enumerate(os.listdir(input_image_viz_dir)):
         img_file = os.path.join(input_image_viz_dir, img_file)
         test_model_input = get_test_model_input(file=img_file)
         test_model_input = test_model_input.cuda()
 
-        with torch.no_grad():
-            if type(model) is torch.nn.parallel.DistributedDataParallel:
-                model = model.module
-            _, test_model_output, mask = model(test_model_input, test_image=True)
+        if type(model) is torch.nn.parallel.DistributedDataParallel:
+            model = model.module
+
+        _, test_model_output, mask = model(test_model_input, test_image=True)
 
         num_patches = 14
         y = test_model_output.argmax(dim=-1)
@@ -230,41 +240,74 @@ def visualize_image_prompting(model, input_image_viz_dir):
         im_paste = im_paste.squeeze()
         im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
 
-        output_img_name = 'test_model_output_img' + str(i) + '.png'
+        img_file = os.path.basename(os.path.normpath(img_file))
+        img_file = os.path.basename(os.path.normpath(img_file))
+        output_img_name = 'Epoch_' + str(epoch) + '_' + str(img_file)
+
         image = wandb.Image(im_paste)
         wandb.log({output_img_name: image})
 
 @torch.no_grad()
-def visualize_video_prompting(model, input_video_viz_dir="test_cases/random_masked_videos/"):
+def visualize_video_prompting(model, epoch, input_video_viz_dir):
+
+    if type(model) is torch.nn.parallel.DistributedDataParallel:
+        model = model.module
+
     test_model_input = get_test_model_input(data_dir=input_video_viz_dir)
     test_model_input = spatial_sample_test_video(test_model_input)
 
-    with torch.no_grad():
-        # TODO change test_temporal to True later when it works
-        if type(model) is torch.nn.parallel.DistributedDataParallel:
-            model = model.module
+    print("prompting video with", input_video_viz_dir)
+
+    if "random_masked_videos" in input_video_viz_dir:
         _, test_model_output, mask = model(test_model_input)
+    elif "temporally_masked_videos" in input_video_viz_dir:
+        _, test_model_output, mask = model(test_model_input, test_temporal=True)
+    elif "spatiotemporally_masked_videos" in input_video_viz_dir:
+        _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
+    elif "spatiotemporally_masked_2_videos" in input_video_viz_dir:
+        _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
+    elif "view_videos" in input_video_viz_dir:
+        _, test_model_output, mask = model(test_model_input, test_view=True)
+    else:
+        raise ValueError("Invalid input_video_viz_dir")
 
     num_patches = 14
     y = test_model_output.argmax(dim=-1)
-    im_paste, _, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
-
-    im_paste = im_paste.permute((0, 1, 4, 2, 3))
-    orig_image = orig_image.permute((0, 1, 4, 2, 3))
-    im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
-    orig_image = (orig_image.cpu().numpy()).astype(np.uint8)
-
-    wandb_video_object = wandb.Video(
-        data_or_path=orig_image,
-        fps=4,
-        format="mp4"
-    )
-    wandb.log({"input_video": wandb_video_object})
+    im_paste, mask, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+    
+    im_paste = im_paste.permute((0, 1, 4, 2, 3)).squeeze(0).permute(1, 0, 3, 2).unsqueeze(0)
+    im_paste = im_paste.cpu().numpy().astype(np.uint8)
 
     wandb_video_object = wandb.Video(
         data_or_path=im_paste,
         fps=4,
         format="mp4"
     )
-    wandb.log({"output_video": wandb_video_object})
+    video_title = "output_video" + "_epoch_" + str(epoch)
+    wandb.log({video_title: wandb_video_object})
+    im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+    im_paste = im_paste.permute((0, 1, 4, 2, 3))
+    orig_video = orig_video.permute((0, 1, 4, 2, 3))
+    im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+    orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
 
+    wandb_video_object = wandb.Video(
+        data_or_path=orig_video,
+        fps=4,
+        format="mp4"
+    )
+
+    folder_name = os.path.basename(os.path.normpath(input_video_viz_dir))
+    video_title = "Epoch_" + str(epoch) + "_" + folder_name
+
+    input_video_title = "input_" + video_title
+    wandb.log({input_video_title: wandb_video_object})
+
+    wandb_video_object = wandb.Video(
+        data_or_path=im_paste,
+        fps=4,
+        format="mp4"
+    )
+
+    output_video_title = "output_" + video_title
+    wandb.log({output_video_title: wandb_video_object})

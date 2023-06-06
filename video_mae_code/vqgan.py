@@ -10,6 +10,7 @@ import torch
 from omegaconf import OmegaConf
 import os
 import util.decoder.constants as constants
+
 cwd = os.path.dirname(os.path.abspath(__file__))
 
 ## Code borrowed from VQGAN
