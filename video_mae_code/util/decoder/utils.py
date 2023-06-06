@@ -6,7 +6,7 @@ import logging
 import os
 import random
 import time
-import util.decoder.constants as constants
+from util.decoder import constants
 from collections import defaultdict
 
 import cv2

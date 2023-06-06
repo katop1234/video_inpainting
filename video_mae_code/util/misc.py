@@ -301,8 +301,10 @@ class NativeScalerWithGradNormCount:
         parameters=None,
         create_graph=False,
         update_grad=True,
-    ):
+    ):  
+        
         self._scaler.scale(loss).backward(create_graph=create_graph)
+
         if update_grad:
             if clip_grad is not None:
                 assert parameters is not None
