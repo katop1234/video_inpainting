@@ -8,6 +8,21 @@ import torch
 import cv2
 from datetime import datetime
 
+'''
+Generates sample input videos for each dataset to visualize and logs them to wandb.
+Specify how many videos to generate for each dataset in the dictionary below.
+'''
+
+### Change here
+dataset_counts = {
+    "atari": 20,
+    "SSV2": 5,
+    "CrossTask": 5,
+    "Objectron": 5,
+    "kinetics": 5,
+}
+###
+
 def visualize_input_from_dataset(dataset_name):  
     
     dataset = get_dataset(name=dataset_name, root_path="/shared/katop1234/Datasets/", ds_type="video")
@@ -36,8 +51,7 @@ def visualize_input_from_dataset(dataset_name):
 
 wandb.init()
 
-dataset_names = ["atari", "SSV2", "CrossTask", "Objectron"]
-dataset_names = [name for name in dataset_names for _ in range(5)]
-
-for dataset_name in dataset_names:
-    visualize_input_from_dataset(dataset_name)
+for dataset in dataset_counts.keys():
+    for _ in range(dataset_counts[dataset]):
+        visualize_input_from_dataset(dataset)
+        
