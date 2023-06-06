@@ -326,12 +326,11 @@ def main(args):
 
         exit()
 
-
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
 
     # We compute effective batch size based on images
-    eff_batch_size = args.batch_size_image * args.accum_iter_image * misc.get_world_size() # TODO change this to be based on video also
+    eff_batch_size = args.batch_size_image * args.accum_iter_image * misc.get_world_size()
 
     if args.lr is None:
         args.lr = args.blr * eff_batch_size / 256
