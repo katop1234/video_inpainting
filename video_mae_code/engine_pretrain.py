@@ -14,11 +14,10 @@ from typing import Iterable
 import util.lr_sched as lr_sched
 import util.misc as misc
 import torch
-
+import numpy as np
 def train_one_epoch(
     model: torch.nn.Module,
     data_loader: Iterable,
-    accum_iter_determined_from_batch_size,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
     epoch: int,
@@ -47,21 +46,14 @@ def train_one_epoch(
     )
     header = "Epoch: [{}]".format(epoch)
     print_freq = 20
-
-    accum_iter = accum_iter_determined_from_batch_size # calculated from batch_size
-
     optimizer.zero_grad()
 
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
     
-    print(len(data_loader), data_loader)
-
-    for data_iter_step, (samples, _) in enumerate(
+    for data_iter_step, ((samples, _), accum_iter) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):  
-        
-        print("Training epoch on data_iter_step: {}".format(data_iter_step))
         
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
@@ -86,9 +78,8 @@ def train_one_epoch(
                 mask_ratio_video=args.mask_ratio_video
             )
             
-        print("got the loss in engine_pretrain", loss.item())
-
         loss_value = loss.item()
+        assert not np.isnan(loss_value), 'loss is nan'
 
         loss /= accum_iter
         loss_scaler(
@@ -98,13 +89,11 @@ def train_one_epoch(
             update_grad=(data_iter_step + 1) % accum_iter == 0, # updates grad every accum_iter
             clip_grad=args.clip_grad,
         )
-
+        
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad() # zeroes out grad every accum iter
 
-        print("before sync got all stuff", loss_value)
         torch.cuda.synchronize()
-        print("synced")
 
         metric_logger.update(loss=loss_value)
         metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
@@ -130,7 +119,6 @@ def train_one_epoch(
         if data_iter_step % 1000 == 0:
             print("Epoch: {}, Iter: {}, Loss: {}".format(epoch, data_iter_step, loss_value_reduce))
             
-        print("Done with collecting stats for data_iter_step: {}".format(data_iter_step))
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()

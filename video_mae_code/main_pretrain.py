@@ -16,7 +16,7 @@ import datetime
 import wandb
 import os
 import time
-from dataset_factory import MergedDataset
+from dataset_factory import MergedDataset, CombinedGen
 from util.eval import visualize_prompting
 import util.env  # do not uncomment
 import util.misc as misc
@@ -24,36 +24,21 @@ import numpy as np
 import timm  # do not uncomment
 import torch
 import torch.backends.cudnn as cudnn
+import traceback
 from iopath.common.file_io import g_pathmgr as pathmgr
 import models_mae
 from engine_pretrain import train_one_epoch
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from torch.utils.tensorboard import SummaryWriter
-import util.decoder.utils as utils
 
 def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
-
-    parser.add_argument(
-    "--test_mode",
-    action="store_true",
-    help="If provided, skips training and only runs inference on the test set, then exits",
-    )
-
-    parser.add_argument(
-        "--batch_size",
-        default=64,
-        type=int,
-        help="Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus",
-    )
-
+    parser.add_argument("--test_mode", action="store_true", help="If provided, skips training then exits")
+    parser.add_argument("--batch_size_image", default=64, type=int, help="Image batch size per GPU")
+    parser.add_argument("--batch_size_video", default=1, type=int, help="Video batch size per GPU")
     parser.add_argument("--epochs", default=4000, type=int)
-    parser.add_argument(
-        "--accum_iter",
-        default=1,
-        type=int,
-        help="*We calculate this automatically to match effective batch size*. Accumulate gradient iterations (for increasing the effective batch size under memory constraints).",
-    )
+    parser.add_argument("--accum_iter_image", default=1, type=int, help="accum iteration for image")
+    parser.add_argument("--accum_iter_video", default=64, type=int, help="accum iteration for video")
 
     # Model parameters
     parser.add_argument(
@@ -176,7 +161,7 @@ def get_args_parser():
     parser.add_argument("--decoder_num_heads", default=16, type=int)
     parser.add_argument("--t_patch_size", default=1, type=int)
     parser.add_argument("--num_frames", default=16, type=int)
-    parser.add_argument("--checkpoint_period", default=1, type=int) # save every epoch for safety
+    parser.add_argument("--checkpoint_period", default=20, type=int)
     parser.add_argument("--sampling_rate", default=4, type=int)
     parser.add_argument("--distributed", action="store_true")
     parser.add_argument("--repeat_aug", default=1, type=int, help="We set this to 2 by default in dataset_factory.get_dataset for Kinetics.")
@@ -230,7 +215,8 @@ def get_args_parser():
     parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
     parser.add_argument('--video_dataset_list', nargs='+', default=['kinetics'])
     parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
-    parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
+    parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
+    parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
 
     return parser
 
@@ -240,7 +226,6 @@ def main(args):
     print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(", ", ",\n"))
 
-    # I added this line because it's needed in new torch update
     device = torch.device(args.device)
 
     # fix the seed for reproducibility
@@ -251,21 +236,22 @@ def main(args):
     cudnn.benchmark = True
 
     # Dataset combining image and video data
-    dataset_train = MergedDataset(args.dataset_root, 
-                                  args.image_dataset_list, 
-                                  args.image_dataset_conf, 
-                                  args.video_dataset_list,
-                                  args.video_dataset_conf, 
-                                  args.image_video_ratio)
+    dataset_image_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, 'image')
+    dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video')
 
     num_tasks = misc.get_world_size()  # 8 gpus
     global_rank = misc.get_rank()
     
-    sampler_train = torch.utils.data.DistributedSampler(
-        dataset_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+    sampler_image_train = torch.utils.data.DistributedSampler(
+        dataset_image_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
     )
 
-    print("Sampler_train = %s" % str(sampler_train))
+    sampler_video_train = torch.utils.data.DistributedSampler(
+        dataset_video_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+    )
+
+
+    print("Sampler_train = %s" % str(sampler_image_train))
 
     if global_rank == 0 and args.log_dir is not None:
         try:
@@ -276,18 +262,28 @@ def main(args):
     else:
         log_writer = None
 
-    print("Batch size is", args.batch_size)
-    print("Accumulate iterations is", args.accum_iter)
+    print("Batch size image is", args.batch_size_image)
+    print("Batch size video is", args.batch_size_video)
     print("Num GPUs is", misc.get_world_size())
 
-    data_loader_train = torch.utils.data.DataLoader(
-        dataset_train,
-        sampler=sampler_train,
-        batch_size=args.batch_size,
+    data_loader_image_train = torch.utils.data.DataLoader(
+        dataset_image_train,
+        sampler=sampler_image_train,
+        batch_size=args.batch_size_image,
         num_workers=args.num_workers,
         pin_memory=args.pin_mem,
         drop_last=True,
     )
+
+    data_loader_video_train = torch.utils.data.DataLoader(
+        dataset_video_train,
+        sampler=sampler_video_train,
+        batch_size=args.batch_size_video,
+        num_workers=args.num_workers,
+        pin_memory=args.pin_mem,
+        drop_last=True,
+    )
+
 
     # define the model
     model = models_mae.__dict__[args.model](
@@ -296,16 +292,21 @@ def main(args):
 
     try:
         model.to(device)
-    except:
-        print("bugged out moving model to gpu")
-        print(torch.cuda.current_device())
-        print(torch.cuda.get_device_name(torch.cuda.current_device()))
+    except Exception as e:
+        print(f"Exception occurred: {e}")
+        traceback.print_exc()
+
+        print(f"Current CUDA device: {torch.cuda.current_device()}")
+        print(f"Device name: {torch.cuda.get_device_name(torch.cuda.current_device())}")
+
         exit()
+
 
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
 
-    eff_batch_size = args.batch_size * args.accum_iter * misc.get_world_size()
+    # We compute effective batch size based on images
+    eff_batch_size = args.batch_size_image * args.accum_iter_image * misc.get_world_size()
 
     if args.lr is None:
         args.lr = args.blr * eff_batch_size / 256
@@ -313,7 +314,8 @@ def main(args):
     print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
     print("actual lr: %.2e" % args.lr)
 
-    print("accumulate grad iterations: %d" % args.accum_iter)
+    print("accumulate grad iterations images: %d" % args.accum_iter_image)
+    print("accumulate grad iterations videos: %d" % args.accum_iter_video)
     print("effective batch size: %d" % eff_batch_size)
 
     if args.distributed:
@@ -343,7 +345,7 @@ def main(args):
     loss_scaler = NativeScaler(fp32=args.fp32)
 
     print("loading model")
-    resume = misc.load_model(
+    _ = misc.load_model(
         args=args,
         model_without_ddp=model_without_ddp,
         optimizer=optimizer,
@@ -361,19 +363,19 @@ def main(args):
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
+
+    combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
+
     for epoch in range(args.start_epoch, args.epochs):
 
         if args.distributed:
-            data_loader_train.sampler.set_epoch(epoch)
+            data_loader_image_train.sampler.set_epoch(epoch)
+            data_loader_video_train.sampler.set_epoch(epoch)
 
-        # TODO delete
-        print("repeat_aug", args.repeat_aug, "accum_iter", args.accum_iter, "batch_size", args.batch_size, "eff_batch_size", eff_batch_size)
-        
         if not args.test_mode:
             train_stats = train_one_epoch(
                 model,
-                data_loader_train,
-                args.accum_iter,
+                combined_dataloader,
                 optimizer,
                 device,
                 epoch,
