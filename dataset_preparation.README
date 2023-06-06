@@ -23,7 +23,7 @@ Location: `/shared/katop1234/Datasets/atari_mp4s/`
 
 Data source: [Atari Dataset](https://omnomnom.vision.rwth-aachen.de/data/atari_v1_release/full.tar.gz)
 
-The dataset includes screenshots for five games: Space Invaders, Q*bert, Ms. Pacman, Video Pinball, Montezuma's Revenge. Each game had multiple subfolders of different runs, each with thousands of PNGs. We sampled blocks of 240 frames from each of the subsubfolders and then wrote them to a 240 frame 60FPS video in `/shared/katop1234/Datasets/atari_mp4s/`.
+The dataset includes screenshots for five games: Space Invaders, Q*bert, Ms. Pacman, Video Pinball, Montezuma's Revenge. Each game had multiple subfolders of different runs, each with thousands of PNGs. We sampled blocks of 240 frames from each of the subsubfolders and then wrote them to a 240 frame 120FPS video in `/shared/katop1234/Datasets/atari_mp4s/`.
 
 ## CrossTask
 
