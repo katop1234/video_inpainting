@@ -10,6 +10,10 @@ import torch
 
 
 class VideoDataset(Kinetics):
+    '''
+    Inherit Kinetics class and overwrite the loader variables in _construct_loader function
+    since we aren't concerned with classification
+    '''
     def __init__(
         self, 
         path_to_data_dir, 
@@ -38,9 +42,6 @@ class VideoDataset(Kinetics):
         )
 
     def _construct_loader(self):
-        """
-        Overwrite kinetics loader variables
-        """
         self._path_to_videos = []
         self._labels = []
         self._spatial_temporal_idx = []
@@ -77,14 +78,15 @@ def get_dataset(name, root_path, ds_type):
 
     elif ds_type == 'video':
         if name == 'atari':
+            # The video is (210, 160) and we crop the top (160, 160) deterministically
             dataset_train =  VideoDataset(
                 path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s_120fps/",
-                train_jitter_scales=(160, 160),  # set these to the same value
+                train_jitter_scales=(160, 160), 
                 train_crop_size = 160,
-                train_random_horizontal_flip=False,  # disable random flip
-                pretrain_rand_flip=False,  # disable random flip in pretraining
-                pretrain_rand_erase_prob=0,  # disable random erase in pretraining
-                rand_aug=False,  # disable random augmentations
+                train_random_horizontal_flip=False,
+                pretrain_rand_flip=False,  
+                pretrain_rand_erase_prob=0, 
+                rand_aug=False,
             )
         elif name == "CrossTask":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids")
