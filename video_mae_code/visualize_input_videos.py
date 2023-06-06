@@ -29,21 +29,15 @@ def visualize_input_from_dataset(dataset_name):
     # Prepare video name with seconds and milliseconds
     folder_name = dataset_name
     current_time = datetime.now().strftime('%M%S%f')[:-3]  # Include milliseconds
-    video_name = f"{folder_name}_{current_time}_sample_input.mp4"
+    video_name = f"{folder_name}_sample_input_{current_time}.mp4"
 
     # Log the video name and video object with wandb
     wandb.log({video_name: wandb_video_object})
 
 wandb.init()
 
-dataset_names = [
-    "atari",
-    "SSV2",
-    "CrossTask",
-    "Objectron",
-    ]
-    
-dataset_names += ["atari"] * 10
+dataset_names = ["atari", "SSV2", "CrossTask", "Objectron"]
+dataset_names = [name for name in dataset_names for _ in range(5)]
 
 for dataset_name in dataset_names:
     visualize_input_from_dataset(dataset_name)
