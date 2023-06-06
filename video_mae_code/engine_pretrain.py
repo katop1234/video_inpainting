@@ -54,7 +54,7 @@ def train_one_epoch(
     for data_iter_step, ((samples, _), accum_iter) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):  
-        
+
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(
@@ -77,7 +77,7 @@ def train_one_epoch(
                 mask_ratio_image=args.mask_ratio_image, 
                 mask_ratio_video=args.mask_ratio_video
             )
-            
+
         loss_value = loss.item()
         assert not np.isnan(loss_value), 'loss is nan'
 
@@ -89,7 +89,7 @@ def train_one_epoch(
             update_grad=(data_iter_step + 1) % accum_iter == 0, # updates grad every accum_iter
             clip_grad=args.clip_grad,
         )
-        
+
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad() # zeroes out grad every accum iter
 
@@ -118,7 +118,7 @@ def train_one_epoch(
         
         if data_iter_step % 1000 == 0:
             print("Epoch: {}, Iter: {}, Loss: {}".format(epoch, data_iter_step, loss_value_reduce))
-            
+
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
