@@ -13,10 +13,6 @@ def visualize_input_from_dataset(dataset_name):
     dataset = get_dataset(name=dataset_name, root_path="/shared/katop1234/Datasets/", ds_type="video")
     
     index = np.random.randint(0, len(dataset))
-    
-    # test_model_input = get_test_model_input(data_dir=input_video_viz_dir)
-    # test_model_input = spatial_sample_test_video(test_model_input)
-    
     test_model_input = dataset[index][0]
 
     test_model_input = test_model_input.permute(0, 2, 1, 3, 4)

@@ -14,6 +14,7 @@ class VideoDataset(Kinetics):
         self, 
         path_to_data_dir, 
         train_jitter_scales=(256, 320),
+        train_crop_size=224,
         repeat_aug=1,
         jitter_aspect_relative=[0.75, 1.3333],
         jitter_scales_relative=[0.5, 1.0],
@@ -26,6 +27,7 @@ class VideoDataset(Kinetics):
             path_to_data_dir=path_to_data_dir,
             mode="pretrain",
             train_jitter_scales=train_jitter_scales,
+            train_crop_size=train_crop_size,
             repeat_aug=repeat_aug,
             jitter_aspect_relative=jitter_aspect_relative,
             jitter_scales_relative=jitter_scales_relative,
@@ -77,7 +79,8 @@ def get_dataset(name, root_path, ds_type):
         if name == 'atari':
             dataset_train =  VideoDataset(
                 path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s_120fps/",
-                train_jitter_scales=(256, 256),  # set these to the same value
+                train_jitter_scales=(160, 160),  # set these to the same value
+                train_crop_size = 160,
                 train_random_horizontal_flip=False,  # disable random flip
                 pretrain_rand_flip=False,  # disable random flip in pretraining
                 pretrain_rand_erase_prob=0,  # disable random erase in pretraining
