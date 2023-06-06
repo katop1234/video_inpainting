@@ -207,18 +207,13 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     return im_paste, mask, orig_image
 
 @torch.no_grad()
-
-def visualize_prompting(model, epoch):
-    test_cases_folder = "/shared/katop1234/video_inpainting/video_inpainting/test_cases/"
-    
-    model.eval()
+def visualize_prompting(model, epoch, test_cases_folder):
     visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "test_images/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "random_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "temporally_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"))
     # visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "view_videos/")) # TODO
-
 
 @torch.no_grad()
 
