@@ -107,7 +107,7 @@ def get_args_parser():
 
     parser.add_argument(
         "--video_prompts_dir",
-        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/random_masked_videos/",
+        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/",
         help="Folder containing video visualization examples.",
     )
 
@@ -412,8 +412,9 @@ def main(args):
         if misc.is_main_process():
             if not args.test_mode:
                 wandb.log(log_stats)
-            visualize_prompting(model, epoch)
-
+            model.eval()
+            visualize_prompting(model, epoch, args.video_prompts_dir)
+            model.train()
         print("Done loop on epoch {}".format(epoch))
 
         if args.test_mode:
