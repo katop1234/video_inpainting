@@ -1,7 +1,7 @@
 import os
 from torch.utils.data import Dataset
-from util.decoder import constants
-from util.kinetics import Kinetics
+from .util.decoder import constants
+from .util.kinetics import Kinetics
 from torchvision import datasets
 from torchvision.transforms import transforms
 import numpy as np
@@ -137,5 +137,13 @@ class MergedDataset(torch.utils.data.Dataset):
         output = ds[output_index]
         return output
     
-def visualize_input_from_dataset():
-    raise NotImplementedError()
+def visualize_input_from_dataset(name, root_path, ds_type, index=-1):
+    dataset = get_dataset(name, root_path, ds_type)
+    
+    if index == -1:
+        index = np.random.randint(0, len(dataset))
+    
+    input = dataset[index][0]
+    print(input.shape)
+    exit()
+    
