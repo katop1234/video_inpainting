@@ -43,7 +43,7 @@ def visualize_input_from_dataset(dataset_name):
     
     # Prepare video name with seconds and milliseconds
     folder_name = dataset_name
-    current_time = datetime.now().strftime('%M%S%f')[:-3]  # Include milliseconds
+    current_time = datetime.now().strftime('%M%S%f')[:-3]  # Include milliseconds to differentiate videos from same dataset
     video_name = f"{folder_name}_sample_input_{current_time}.mp4"
 
     # Log the video name and video object with wandb
