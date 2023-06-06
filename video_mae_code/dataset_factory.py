@@ -1,22 +1,58 @@
+import cv2
 import os
 from torch.utils.data import Dataset
-from .util.decoder import constants
-from .util.kinetics import Kinetics
+from util.decoder import constants
+from util.kinetics import Kinetics
 from torchvision import datasets
 from torchvision.transforms import transforms
 import numpy as np
 import torch
 
+
 class VideoDataset(Kinetics):
-    def __init__(self, path_to_data_dir):
-        super().__init__(path_to_data_dir=path_to_data_dir,
-                         mode="pretrain",
-                         sampling_rate=4,
-                         num_frames=16,
-                         train_jitter_scales=(256, 320),
-                         repeat_aug=1,
-                         jitter_aspect_relative=[0.75, 1.3333],
-                         jitter_scales_relative=[0.5, 1.0])
+    def __init__(
+        self, 
+        path_to_data_dir, 
+        train_jitter_scales=(256, 320),
+        repeat_aug=1,
+        jitter_aspect_relative=[0.75, 1.3333],
+        jitter_scales_relative=[0.5, 1.0],
+        train_random_horizontal_flip=False,
+        pretrain_rand_flip=False,
+        pretrain_rand_erase_prob=0,
+        rand_aug=False,
+    ):                      
+        super().__init__(
+            path_to_data_dir=path_to_data_dir,
+            mode="pretrain",
+            train_jitter_scales=train_jitter_scales,
+            repeat_aug=repeat_aug,
+            jitter_aspect_relative=jitter_aspect_relative,
+            jitter_scales_relative=jitter_scales_relative,
+            train_random_horizontal_flip=train_random_horizontal_flip,
+            pretrain_rand_flip=pretrain_rand_flip,
+            pretrain_rand_erase_prob=pretrain_rand_erase_prob,
+            rand_aug=rand_aug
+        )
+
+    def _construct_loader(self):
+        """
+        Overwrite kinetics loader variables
+        """
+        self._path_to_videos = []
+        self._labels = []
+        self._spatial_temporal_idx = []
+
+        # List all video files in the path_to_data_dir
+        for filename in os.listdir(self._path_to_data_dir):
+            if filename.endswith(".mp4"):  # assuming the videos are mp4 format
+                self._path_to_videos.append(os.path.join(self._path_to_data_dir, filename))
+                self._labels.append(0)  # append 0 as label for all videos
+                self._spatial_temporal_idx.append(0)  # append 0 as spatial_temporal_idx for all videos
+        
+        for i in range(len(self._path_to_videos)):
+            self._video_meta[i] = {}
+
 
 def get_image_transforms():
     return transforms.Compose([
@@ -39,13 +75,20 @@ def get_dataset(name, root_path, ds_type):
 
     elif ds_type == 'video':
         if name == 'atari':
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s_120fps/")
+            dataset_train =  VideoDataset(
+                path_to_data_dir="/shared/katop1234/Datasets/atari_mp4s_120fps/",
+                train_jitter_scales=(256, 256),  # set these to the same value
+                train_random_horizontal_flip=False,  # disable random flip
+                pretrain_rand_flip=False,  # disable random flip in pretraining
+                pretrain_rand_erase_prob=0,  # disable random erase in pretraining
+                rand_aug=False,  # disable random augmentations
+            )
         elif name == "CrossTask":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids")
         elif name == "kinetics":
             dataset_train = VideoDataset(path_to_data_dir=os.path.join(root_path, 'kinetics/train_256/'))
         elif name == "Objectron":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron")
+            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron/")
         elif name == "SSV2":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos/") 
         else:
@@ -137,13 +180,4 @@ class MergedDataset(torch.utils.data.Dataset):
         output = ds[output_index]
         return output
     
-def visualize_input_from_dataset(name, root_path, ds_type, index=-1):
-    dataset = get_dataset(name, root_path, ds_type)
-    
-    if index == -1:
-        index = np.random.randint(0, len(dataset))
-    
-    input = dataset[index][0]
-    print(input.shape)
-    exit()
     
