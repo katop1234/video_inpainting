@@ -252,15 +252,17 @@ def decode(
 
         # Determine total frames in video
         total_frames = video_stream.frames
+        
+        frame_window_size = int(64 / 30 * fps) + 1 # 64 frames at 30 fps, variable depending on fps
 
         # If less than 120 frames, raise an exception (or handle it as you see fit)
         if total_frames < 16:
             raise ValueError("Video must contain at least 16 frames")
-        
-        frame_max = min(total_frames, 64)
+        if total_frames < frame_window_size:
+            raise ValueError("Video must contain at least {} frames".format(frame_window_size) + "for fps {}".format(fps))
 
         # Select starting point
-        start_frame = np.random.randint(0, total_frames - frame_max)
+        start_frame = np.random.randint(0, total_frames - frame_window_size)
 
         # PyAV decoding
         frames_list = []
@@ -268,12 +270,12 @@ def decode(
 
         count = 0
         for frame in container.decode(video=0):
-            if frame_count >= start_frame and frame_count < start_frame + frame_max:
+            if frame_count >= start_frame and frame_count < start_frame + frame_window_size:
                 img = frame.to_image()
                 img_array = np.array(img)
                 frames_list.append(img_array)
             frame_count += 1
-            if frame_count >= start_frame + frame_max:
+            if frame_count >= start_frame + frame_window_size:
                 break
             count += 1
 
