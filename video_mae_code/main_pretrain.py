@@ -223,7 +223,7 @@ def get_args_parser():
     # parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
-    parser.add_argument('--davis_eval_freq', default=50, help='frequency of computing davis eval metrics')
+    parser.add_argument('--davis_eval_freq', default=25, help='frequency of computing davis eval metrics')
     parser.add_argument('--davis_eval_path', default="/shared/dannyt123/davis2017-evaluation", help='path to davis2017-evaluation')
     parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
                                                    'ImageSets, Annotations_unsupervised folders',
