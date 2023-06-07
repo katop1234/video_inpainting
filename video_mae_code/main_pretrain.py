@@ -37,26 +37,12 @@ from pathlib import Path
 def get_args_parser():
     parser = argparse.ArgumentParser("MAE pre-training", add_help=False)
 
-    parser.add_argument(
-    "--test_mode",
-    action="store_true",
-    help="If provided, skips training and only runs inference on the test set, then exits",
-    )
-
-    parser.add_argument(
-        "--batch_size",
-        default=64,
-        type=int,
-        help="Batch size per GPU (effective batch size is batch_size * accum_iter * # gpus",
-    )
-
+    parser.add_argument("--test_mode", action="store_true", help="If provided, skips training then exits")
+    parser.add_argument("--batch_size_image", default=64, type=int, help="Image batch size per GPU")
+    parser.add_argument("--batch_size_video", default=1, type=int, help="Video batch size per GPU")
     parser.add_argument("--epochs", default=4000, type=int)
-    parser.add_argument(
-        "--accum_iter",
-        default=1,
-        type=int,
-        help="*We calculate this automatically to match effective batch size*. Accumulate gradient iterations (for increasing the effective batch size under memory constraints).",
-    )
+    parser.add_argument("--accum_iter_image", default=1, type=int, help="accum iteration for image")
+    parser.add_argument("--accum_iter_video", default=64, type=int, help="accum iteration for video")
 
     # Model parameters
     parser.add_argument(
@@ -274,7 +260,6 @@ def main(args):
     sampler_video_train = torch.utils.data.DistributedSampler(
         dataset_video_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
     )
-
 
     print("Sampler_train = %s" % str(sampler_image_train))
 

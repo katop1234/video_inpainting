@@ -89,7 +89,7 @@ def get_dataset(name, root_path, ds_type):
         elif name == "CrossTask":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids/")
         elif name == "kinetics":
-            dataset_train = VideoDataset(path_to_data_dir=os.path.join(root_path, 'kinetics/train_256/'))
+            dataset_train = VideoDataset(path_to_data_dir="/shared/group/kinetics/")
         elif name == "Objectron":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron/")
         elif name == "SSV2":
