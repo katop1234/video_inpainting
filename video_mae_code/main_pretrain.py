@@ -247,19 +247,32 @@ def main(args):
     cudnn.benchmark = True
 
     # Dataset combining image and video data
-    dataset_image_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, 'image')
-    dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video')
+    if args.image_itr > 0:
+        dataset_image_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, 'image')
+    else:
+        dataset_image_train = None
+    
+    if args.video_itr > 0:
+        dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video')
+    else:
+        dataset_video_train = None
 
     num_tasks = misc.get_world_size()  # 8 gpus
     global_rank = misc.get_rank()
     
-    sampler_image_train = torch.utils.data.DistributedSampler(
-        dataset_image_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-    )
+    if args.image_itr > 0:
+        sampler_image_train = torch.utils.data.DistributedSampler(
+            dataset_image_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+        )
+    else:
+        sampler_image_train = None
 
-    sampler_video_train = torch.utils.data.DistributedSampler(
-        dataset_video_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-    )
+    if args.video_itr > 0:
+        sampler_video_train = torch.utils.data.DistributedSampler(
+            dataset_video_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+        )
+    else: 
+        sampler_video_train = None
 
     print("Sampler_train = %s" % str(sampler_image_train))
 
@@ -276,23 +289,29 @@ def main(args):
     print("Batch size video is", args.batch_size_video)
     print("Num GPUs is", misc.get_world_size())
 
-    data_loader_image_train = torch.utils.data.DataLoader(
-        dataset_image_train,
-        sampler=sampler_image_train,
-        batch_size=args.batch_size_image,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=True,
-    )
+    if args.image_itr > 0:
+        data_loader_image_train = torch.utils.data.DataLoader(
+            dataset_image_train,
+            sampler=sampler_image_train,
+            batch_size=args.batch_size_image,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            drop_last=True,
+        )
+    else:
+        data_loader_image_train = None
 
-    data_loader_video_train = torch.utils.data.DataLoader(
-        dataset_video_train,
-        sampler=sampler_video_train,
-        batch_size=args.batch_size_video,
-        num_workers=args.num_workers,
-        pin_memory=args.pin_mem,
-        drop_last=True,
-    )
+    if args.video_itr > 0: 
+        data_loader_video_train = torch.utils.data.DataLoader(
+            dataset_video_train,
+            sampler=sampler_video_train,
+            batch_size=args.batch_size_video,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            drop_last=True,
+        )
+    else:
+        data_loader_video_train = None
 
 
     # define the model
