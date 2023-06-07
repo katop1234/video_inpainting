@@ -270,44 +270,31 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
         _, test_model_output, mask = model(test_model_input, test_view=True)
     else:
         raise ValueError("Invalid input_video_viz_dir")
-
+    
     num_patches = 14
     y = test_model_output.argmax(dim=-1)
-    im_paste, mask, orig_image = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
-    
-    im_paste = im_paste.permute((0, 1, 4, 2, 3)).squeeze(0).permute(1, 0, 3, 2).unsqueeze(0)
-    im_paste = im_paste.cpu().numpy().astype(np.uint8)
-
-    wandb_video_object = wandb.Video(
-        data_or_path=im_paste,
-        fps=4,
-        format="mp4"
-    )
-    video_title = "output_video" + "_epoch_" + str(epoch)
-    wandb.log({video_title: wandb_video_object})
     im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+
     im_paste = im_paste.permute((0, 1, 4, 2, 3))
     orig_video = orig_video.permute((0, 1, 4, 2, 3))
     im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
     orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
 
+    folder_name = os.path.basename(os.path.normpath(input_video_viz_dir))
+    video_title = "{type}_epoch_{epoch}_{folder_name}"
+    input_video_title = video_title.format(type="input", epoch=epoch, folder_name=folder_name)
+    output_video_title = input_video_title = video_title.format(type="output", epoch=epoch, folder_name=folder_name)
+    
     wandb_video_object = wandb.Video(
         data_or_path=orig_video,
-        fps=4,
+        fps=4, 
         format="mp4"
     )
-
-    folder_name = os.path.basename(os.path.normpath(input_video_viz_dir))
-    video_title = "Epoch_" + str(epoch) + "_" + folder_name
-
-    input_video_title = "input_" + video_title
-    wandb.log({input_video_title: wandb_video_object})
-
+    wandb.log({output_video_title: wandb_video_object}) 
+    
     wandb_video_object = wandb.Video(
         data_or_path=im_paste,
-        fps=4,
+        fps=4, 
         format="mp4"
     )
-
-    output_video_title = "output_" + video_title
-    wandb.log({output_video_title: wandb_video_object})
+    wandb.log({input_video_title: wandb_video_object})

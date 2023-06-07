@@ -413,25 +413,26 @@ def main(args):
             }
 
             if epoch % args.davis_eval_freq == 0:
-                model.eval()
-                store_path = os.path.join(args.output_dir, "davis_segs")
-                if not os.path.exists(store_path):
-                    os.mkdir(store_path)
-                eval_name = "model_mae_{epoch}".format(epoch=epoch)
-                parent = Path(__file__).parent.absolute()
-                prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
-                davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                davis_eval_path = args.davis_eval_path
-                davis_path = args.davis_path
-
-                generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
-                print("Finished Saving Davis Eval Segmentations")
-
                 if misc.is_main_process():
-                    single_mean, all_mean = run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path)
-                    log_stats["Davis_single_object"] = single_mean
-                    log_stats["Davis_all_mean"] = all_mean
-                model.train()
+                    with torch.no_grad():
+                        model.eval()
+                        store_path = os.path.join(args.output_dir, "davis_segs")
+                        if not os.path.exists(store_path):
+                            os.mkdir(store_path)
+                        eval_name = "model_mae_{epoch}".format(epoch=epoch)
+                        parent = Path(__file__).parent.absolute()
+                        prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
+                        davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
+                        davis_eval_path = args.davis_eval_path
+                        davis_path = args.davis_path
+
+                        generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
+                        print("Finished Saving Davis Eval Segmentations")
+
+                        single_mean, all_mean = run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path)
+                        log_stats["Davis_single_object"] = single_mean
+                        log_stats["Davis_all_mean"] = all_mean
+                        model.train()
 
             if args.output_dir and misc.is_main_process():
                 if log_writer is not None:
