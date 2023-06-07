@@ -6,14 +6,19 @@ import tarfile
 import shutil
 from moviepy.editor import ImageSequenceClip
 
-download_dir = "data/atari/" # Can specify this path
+# Base directory for your operations
+base_dir = os.path.join(os.getcwd(), "get_data/")
+
+# Modify this path to be relative to your get_data directory
+download_dir = os.path.join(base_dir, "data/atari/") 
 
 # Create download_dir if it doesn't exist
 os.makedirs(download_dir, exist_ok=True)
 
 # Download and extract the tar.gz file
 url = "https://omnomnom.vision.rwth-aachen.de/data/atari_v1_release/full.tar.gz"
-filename = wget.download(url, out=download_dir)
+filename = wget.download(url, out=os.path.join(download_dir, "full.tar.gz"))
+
 tar = tarfile.open(filename, "r:gz")
 tar.extractall(path=download_dir)
 tar.close()
@@ -55,8 +60,10 @@ for subdir in get_subdirs(base_path):
 
         output_file = os.path.join(output_path, f"{os.path.basename(os.path.dirname(subdir))}_{os.path.basename(subdir)}_{i//300}.mp4")
 
-        clip.write_videofile(output_file, fps=120)
-        print("wrote", output_file)
+        # Create an absolute path to the output file
+        abs_output_file = os.path.abspath(output_file)
+        clip.write_videofile(abs_output_file, fps=120)
+        print("wrote", abs_output_file)
 
 # Clear temp files needed to get mp4
 atari_dir = os.path.join(download_dir, 'atari_v1')
