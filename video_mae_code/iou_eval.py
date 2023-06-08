@@ -5,6 +5,7 @@ import numpy as np
 import PIL
 from PIL import Image
 import os
+import subprocess
 import torch
 from util.eval import *
 
@@ -159,7 +160,6 @@ def generate_segmentations(model, store_path, eval_name, prompt_csv, davis_promp
 def run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path):
     results_path = get_results_path(store_path, eval_name)
     run_path = os.path.join(davis_eval_path, "evaluation_method.py")
-    run_command = "python3 {run_path} --davis_path {davis_path} --task unsupervised --results_path {results_path}".format(run_path=run_path, davis_path=davis_path, results_path=results_path)
     
     #Deletes existing csv files if they exist
     sequence_csv = os.path.join(results_path, "per-sequence_results-val.csv") 
@@ -169,7 +169,8 @@ def run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path):
     if os.path.exists(global_csv):
         os.remove(global_csv)
 
-    os.system(run_command)
+    subprocess.call(["python", run_path, "--davis_path", davis_path, "--task", "semi-supervised", "--results_path", results_path])
+    
     single_mean = single_object_mean(sequence_csv)
     all_mean = global_mean(global_csv)
     return single_mean, all_mean
@@ -180,6 +181,7 @@ def main():
     model = load_model(args.model_path)
     generate_segmentations(model, args.store_path, args.eval_name, args.prompt_csv, args.davis_prompts_path)
     single_mean, all_mean = run_evaluation_method(args.davis_eval_path, args.store_path, args.eval_name, args.davis_path)
+    return single_mean, all_mean
                 
 if __name__ == "__main__":
     main()

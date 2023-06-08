@@ -225,7 +225,7 @@ def get_args_parser():
     parser.add_argument('--davis_eval_path', default="/shared/dannyt123/davis2017-evaluation", help='path to davis2017-evaluation')
     parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
                                                    'ImageSets, Annotations_unsupervised folders',
-                    default='/shared/dannyt123/Datasets/DAVIS_trainval')
+                    default='/shared/dannyt123/Datasets/DAVIS_trainval_ss')
     parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
 
@@ -398,8 +398,10 @@ def main(args):
     for epoch in range(args.start_epoch, args.epochs):
 
         if args.distributed:
-            data_loader_image_train.sampler.set_epoch(epoch)
-            data_loader_video_train.sampler.set_epoch(epoch)
+            if data_loader_image_train:
+                data_loader_image_train.sampler.set_epoch(epoch)
+            if data_loader_video_train:
+                data_loader_video_train.sampler.set_epoch(epoch)
 
         if not args.test_mode:
             train_stats = train_one_epoch(
@@ -430,22 +432,21 @@ def main(args):
             }
 
             if epoch % args.davis_eval_freq == 0:
-                if misc.is_main_process():
-                    with torch.no_grad():
-                        model.eval()
-                        store_path = os.path.join(args.output_dir, "davis_segs")
-                        if not os.path.exists(store_path):
-                            os.mkdir(store_path)
-                        eval_name = "model_mae_{epoch}".format(epoch=epoch)
-                        parent = Path(__file__).parent.absolute()
-                        prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
-                        davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                        davis_eval_path = args.davis_eval_path
-                        davis_path = args.davis_path
-
-                        generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
-                        print("Finished Saving Davis Eval Segmentations")
-
+                with torch.no_grad():
+                    model.eval()
+                    store_path = os.path.join(args.output_dir, "davis_segs")
+                    if not os.path.exists(store_path):
+                        os.mkdir(store_path)
+                    eval_name = "model_mae_{epoch}".format(epoch=epoch)
+                    parent = Path(__file__).parent.absolute()
+                    prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
+                    davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
+                    davis_eval_path = args.davis_eval_path
+                    davis_path = args.davis_path
+                    generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
+                    print("Finished Saving Davis Eval Segmentations")
+                    
+                    if misc.is_main_process():
                         single_mean, all_mean = run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path)
                         log_stats["Davis_single_object"] = single_mean
                         log_stats["Davis_all_mean"] = all_mean

@@ -120,7 +120,8 @@ class CombinedGen:
         self.accum_iter_vid = accum_iter_vid
         self.image_itr = image_itr
         self.video_itr = video_itr
-        self.num_iter_per_epoch = 24*(accum_iter_img*image_itr + accum_iter_vid*video_itr)
+        # self.num_iter_per_epoch = 24*(accum_iter_img*image_itr + accum_iter_vid*video_itr)
+        self.num_iter_per_epoch = 5
 
 
     def __iter__(self):
