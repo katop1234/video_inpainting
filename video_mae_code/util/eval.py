@@ -242,7 +242,7 @@ def visualize_image_prompting(model, epoch, input_image_viz_dir):
 
         img_file = os.path.basename(os.path.normpath(img_file))
         img_file = os.path.basename(os.path.normpath(img_file))
-        output_img_name = 'Epoch_' + str(epoch) + '_' + str(img_file)
+        output_img_name = str(img_file)
 
         image = wandb.Image(im_paste)
         wandb.log({output_img_name: image})
@@ -281,9 +281,9 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
     orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
 
     folder_name = os.path.basename(os.path.normpath(input_video_viz_dir))
-    video_title = "{type}_epoch_{epoch}_{folder_name}"
-    input_video_title = video_title.format(type="input", epoch=epoch, folder_name=folder_name)
-    output_video_title = input_video_title = video_title.format(type="output", epoch=epoch, folder_name=folder_name)
+    video_title = "{type}_{folder_name}"
+    input_video_title = video_title.format(type="input", folder_name=folder_name)
+    output_video_title = video_title.format(type="output", folder_name=folder_name)
     
     wandb_video_object = wandb.Video(
         data_or_path=orig_video,

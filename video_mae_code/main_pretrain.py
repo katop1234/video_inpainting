@@ -165,7 +165,7 @@ def get_args_parser():
     parser.add_argument("--decoder_num_heads", default=16, type=int)
     parser.add_argument("--t_patch_size", default=1, type=int)
     parser.add_argument("--num_frames", default=16, type=int)
-    parser.add_argument("--checkpoint_period", default=20, type=int)
+    parser.add_argument("--checkpoint_period", default=5, type=int)
     parser.add_argument("--sampling_rate", default=4, type=int)
     parser.add_argument("--distributed", action="store_true")
     parser.add_argument("--repeat_aug", default=1, type=int, help="We set this to 2 by default in dataset_factory.get_dataset for Kinetics.")
@@ -221,11 +221,10 @@ def get_args_parser():
     parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
-    parser.add_argument('--davis_eval_freq', default=25, help='frequency of computing davis eval metrics')
-    parser.add_argument('--davis_eval_path', default="/shared/dannyt123/davis2017-evaluation", help='path to davis2017-evaluation')
+    parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
     parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
                                                    'ImageSets, Annotations_unsupervised folders',
-                    default='/shared/dannyt123/Datasets/DAVIS_trainval_ss')
+                    default='/shared/dannyt123/Datasets/DAVIS')
     parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
 
@@ -431,26 +430,23 @@ def main(args):
                 "epoch": epoch,
             }
 
-            if epoch % args.davis_eval_freq == 0:
+            if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
                 with torch.no_grad():
                     model.eval()
                     store_path = os.path.join(args.output_dir, "davis_segs")
                     if not os.path.exists(store_path):
                         os.mkdir(store_path)
-                    eval_name = "model_mae_{epoch}".format(epoch=epoch)
+                    eval_name = "model_mae"
                     parent = Path(__file__).parent.absolute()
                     prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
                     davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                    davis_eval_path = args.davis_eval_path
                     davis_path = args.davis_path
                     generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
                     print("Finished Saving Davis Eval Segmentations")
                     
-                    if misc.is_main_process():
-                        single_mean, all_mean = run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path)
-                        log_stats["Davis_single_object"] = single_mean
-                        log_stats["Davis_all_mean"] = all_mean
-                        model.train()
+                    single_mean = run_evaluation_method(store_path, eval_name, davis_path)
+                    log_stats["Davis_single_mean"] = single_mean
+                    model.train()
 
             if args.output_dir and misc.is_main_process():
                 if log_writer is not None:
@@ -465,7 +461,10 @@ def main(args):
             if not args.test_mode:
                 wandb.log(log_stats)
             model.eval()
-            visualize_prompting(model, epoch, args.video_prompts_dir)
+            try:
+                visualize_prompting(model, epoch, args.video_prompts_dir)
+            except:
+                print("Error loading video.")
             model.train()
         print("Done loop on epoch {}".format(epoch))
 

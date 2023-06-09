@@ -6,28 +6,15 @@ import PIL
 from PIL import Image
 import os
 import subprocess
+import sys
 import torch
 from util.eval import *
 
-parser = argparse.ArgumentParser()
-parser.add_argument('--model_path', type=str, help='Path to model for evaluation.',
-                    default='/shared/dannyt123/video_inpainting/output_dir/kinetics_cvf/checkpoint-00052.pth')
-parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
-                                                   'ImageSets, Annotations_unsupervised folders',
-                    default='/shared/dannyt123/Datasets/DAVIS_trainval')
-parser.add_argument('--davis_eval_path', type=str, help='Path to the davis2017-evaluation folder',
-                    default='/shared/dannyt123/davis2017-evaluation')
-parser.add_argument('--davis_prompts_path', type=str, help='Path to the folder containing all the DAVIS video prompts',
-                    default='/shared/dannyt123/video_inpainting/test_videos/davis_prompt')
-parser.add_argument('--store_path', type=str, help='Path of where the segmentations are saved for each run',
-                    default='/shared/dannyt123/davis2017-evaluation/results/unsupervised')
-parser.add_argument('--eval_name', type=str, help='Name for the evaluation computation',
-                    default='model_mae')
-parser.add_argument('--prompt_csv', type=str, help='Path to CSV for the Davis Prompts',
-                    default='/shared/dannyt123/video_inpainting/video_mae_code/datasets/davis_prompt.csv')
+sys.path.append('/shared/dannyt123/davis2017-evaluation')
+import evaluate
 
 #Constants
-palette = [
+color_palette = [
     0,   0,   0,    # Index 0: Black
     128, 0,   0,    # Index 1: Red
 ]
@@ -77,14 +64,11 @@ def save_segmentations(frames, val, path, end_idx, orig_height, orig_width):
             seg = frames[j]
             seg = create_segmentation(seg) #For temporarily while the model is still not very good
             j += 1
-        else:
-            seg = black_seg(orig_height, orig_width)
-        
-        seg_image = PIL.Image.fromarray(seg)
-        seg_image = seg_image.convert('P')
-        seg_image.putpalette(palette)
-        curr_path = os.path.join(path, f'{i:05}.png')
-        seg_image.save(curr_path)
+            seg_image = PIL.Image.fromarray(seg)
+            seg_image = seg_image.convert('P')
+            seg_image.putpalette(color_palette)
+            curr_path = os.path.join(path, f'{i:05}.png')
+            seg_image.save(curr_path)
         
 def single_object_mean(per_sequence_csv):
     sum_mean = 0
@@ -157,31 +141,7 @@ def generate_segmentations(model, store_path, eval_name, prompt_csv, davis_promp
 
                 save_segmentations(frames, val, seg_save_path, val_end_idx, val_height, val_width)
                 
-def run_evaluation_method(davis_eval_path, store_path, eval_name, davis_path):
+def run_evaluation_method(store_path, eval_name, davis_path):
     results_path = get_results_path(store_path, eval_name)
-    run_path = os.path.join(davis_eval_path, "evaluation_method.py")
-    
-    #Deletes existing csv files if they exist
-    sequence_csv = os.path.join(results_path, "per-sequence_results-val.csv") 
-    global_csv = os.path.join(results_path, "global_results-val.csv")
-    if os.path.exists(sequence_csv):
-        os.remove(sequence_csv)
-    if os.path.exists(global_csv):
-        os.remove(global_csv)
-
-    subprocess.call(["python", run_path, "--davis_path", davis_path, "--task", "semi-supervised", "--results_path", results_path])
-    
-    single_mean = single_object_mean(sequence_csv)
-    all_mean = global_mean(global_csv)
-    return single_mean, all_mean
-    
-def main():
-    args = parser.parse_known_args()[0]
-    
-    model = load_model(args.model_path)
-    generate_segmentations(model, args.store_path, args.eval_name, args.prompt_csv, args.davis_prompts_path)
-    single_mean, all_mean = run_evaluation_method(args.davis_eval_path, args.store_path, args.eval_name, args.davis_path)
-    return single_mean, all_mean
-                
-if __name__ == "__main__":
-    main()
+    single_mean = evaluate.evaluation(results_path, davis_path)
+    return single_mean
