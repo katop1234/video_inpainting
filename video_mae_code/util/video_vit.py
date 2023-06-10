@@ -51,7 +51,7 @@ class PatchEmbed(nn.Module):
 
         self.grid_size = img_size[0] // patch_size[0]
         self.t_grid_size = frames // t_patch_size
-        
+
         self.embed_dim = embed_dim
 
         kernel_size = [t_patch_size] + list(patch_size) # 1, 16, 16
@@ -170,3 +170,65 @@ class Block(nn.Module):
         x = x + self.drop_path(self.attn(self.norm1(x)))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
+    
+### RIN Implementation below ###
+import util.rin as rin
+
+class RINBlockVIP(nn.Module):
+    def __init__(
+        self,
+        dim,
+        latent_self_attn_depth,
+        dim_latent = None,
+        final_norm = True,
+        **attn_kwargs
+    ):
+        super().__init__()
+        dim_latent = rin.default(dim_latent, dim)
+
+        self.latents_attend_to_patches = rin.CrossAttention(dim_latent, dim_context = dim, norm = True, norm_context = True, **attn_kwargs)
+        self.latents_cross_attn_ff = rin.FeedForward(dim_latent)
+
+        self.latent_self_attns = nn.ModuleList([])
+        for _ in range(latent_self_attn_depth):
+            self.latent_self_attns.append(nn.ModuleList([
+                rin.CrossAttention(dim_latent, norm = True, **attn_kwargs),
+                rin.FeedForward(dim_latent)
+            ]))
+
+        self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
+
+        self.patches_peg = rin.PEG(dim)
+        self.patches_self_attn = rin.SelfAttention(dim, norm = True, **attn_kwargs)
+        self.patches_self_attn_ff = rin.FeedForward(dim)
+
+        self.patches_attend_to_latents = rin.CrossAttention(dim, dim_context = dim_latent, norm = True, norm_context = True, **attn_kwargs)
+        self.patches_cross_attn_ff = rin.FeedForward(dim)
+
+    def forward(self, patches, latents):
+        patches = self.patches_peg(patches) + patches
+
+        # latents extract or cluster information from the patches
+        latents = self.latents_attend_to_patches(latents, patches) + latents
+        latents = self.latents_cross_attn_ff(latents) + latents
+
+        # latent self attention
+
+        for attn, ff in self.latent_self_attns:
+            latents = attn(latents) + latents
+            latents = ff(latents) + latents
+
+        # additional patches self attention with linear attention
+
+        patches = self.patches_self_attn(patches) + patches
+        patches = self.patches_self_attn_ff(patches) + patches
+
+        # patches attend to the latents
+
+        patches = self.patches_attend_to_latents(patches, latents) + patches
+
+        patches = self.patches_cross_attn_ff(patches) + patches
+
+        latents = self.latent_final_norm(latents)
+        return patches, latents
+    

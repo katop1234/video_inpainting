@@ -101,6 +101,7 @@ class MaskedAutoencoderViT(nn.Module):
                 torch.zeros(1, _num_patches, embed_dim),
             )
 
+        # ViT Implementation 
         self.blocks = nn.ModuleList(
             [
                 video_vit.Block(
@@ -506,11 +507,62 @@ class MaskedAutoencoderViT(nn.Module):
 
         x = x.view([N, -1, C]) + pos_embed
 
-        # apply Transformer blocks
-        for blk in self.blocks:
-            x = blk(x)
-        x = self.norm(x)
+        # # apply Transformer blocks
+        # for blk in self.blocks:
+        #     x = blk(x)
+        # x = self.norm(x)
+        
+        ### RIN Implementation ###
+        ### Hyperparameters
+        dim = 1024 # dimension of the input feature space (embed_dim)
+        dim_latent = 512 # can just keep it same as dim
+        num_latents = 256 # input has 256 * 3 * 16 = 12288 patches. Masking brings it down.
+        latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
+        depth = 6 # Num of RIN blocks
+        ### Hyperparameters
+        
+        # Initialize latents for RIN Blocks
+        
+        from util import rin
+        
+        self.latents = nn.Parameter(torch.randn(num_latents, dim_latent))
+        nn.init.normal_(self.latents, std = 0.02)
 
+        self.init_self_cond_latents = nn.Sequential(
+            rin.FeedForward(dim_latent),
+            rin.LayerNorm(dim_latent)
+        )
+
+        nn.init.zeros_(self.init_self_cond_latents[-1].gamma)
+        
+        batch = x.shape[0]
+
+        x_self_cond = rin.default(x_self_cond, lambda: torch.zeros_like(x)) # make this a class variable so it's not reinitialized every time
+
+        x = torch.cat((x_self_cond, x), dim = 1)
+
+        # prepare latents
+
+        latents = rin.repeat(self.latents, 'n d -> b n d', b = batch)
+
+        # the warm starting of latents as in the paper
+        
+        latent_self_cond = None # TODO what do we do with this?
+
+        if rin.exists(latent_self_cond):
+            latents = latents + self.init_self_cond_latents(latent_self_cond)
+            
+        # Apply RIN Blocks
+        from util.video_vit import RINBlockVIP as RINBlockVIP
+        
+        self.blocks = nn.ModuleList([RINBlockVIP(dim, dim_latent = dim_latent, latent_self_attn_depth = latent_self_attn_depth) for _ in range(depth)])
+        
+        # Apply RIN Blocks
+        for blk in self.blocks:
+            x, latents = blk(x, latents)
+        x = self.norm(x)
+        
+        # TODO we may need to remove cls token for RIN (if not already)
         if self.cls_embed:
             # remove cls token
             x = x[:, 1:, :]
