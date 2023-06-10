@@ -449,7 +449,7 @@ class MaskedAutoencoderViT(nn.Module):
                 raise ValueError("The output tensor shapes do not match expected shapes for video or image tensors.")
 
         x = x.view(N, -1, C)
-
+        
         # append cls token
         if self.cls_embed:
             cls_token = self.cls_token
@@ -519,6 +519,7 @@ class MaskedAutoencoderViT(nn.Module):
         num_latents = 256 # input has 256 * 3 * 16 = 12288 patches. Masking brings it down.
         latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
         depth = 6 # Num of RIN blocks
+        x_self_cond = None
         ### Hyperparameters
         
         # Initialize latents for RIN Blocks
@@ -555,12 +556,17 @@ class MaskedAutoencoderViT(nn.Module):
         # Apply RIN Blocks
         from util.video_vit import RINBlockVIP as RINBlockVIP
         
-        self.blocks = nn.ModuleList([RINBlockVIP(dim, dim_latent = dim_latent, latent_self_attn_depth = latent_self_attn_depth) for _ in range(depth)])
+        self.blocks = nn.ModuleList([RINBlockVIP(dim, dim_latent = dim_latent, latent_self_attn_depth = latent_self_attn_depth).cuda() for _ in range(depth)])
+        
+        x, latents = x.cuda(), latents.cuda()
         
         # Apply RIN Blocks
         for blk in self.blocks:
             x, latents = blk(x, latents)
+            
         x = self.norm(x)
+        
+        x = x[:, x.shape[1]//2:] # remove x_self_cond to get actual x
         
         # TODO we may need to remove cls token for RIN (if not already)
         if self.cls_embed:
@@ -568,7 +574,7 @@ class MaskedAutoencoderViT(nn.Module):
             x = x[:, 1:, :]
         else:
             x = x[:, :, :]
-
+        
         return x, mask, ids_restore
 
     def forward_decoder(self, x, ids_restore, mask_ratio_image=0.75, mask_ratio_video=0.9):
@@ -650,10 +656,14 @@ class MaskedAutoencoderViT(nn.Module):
         requires_t_shape = hasattr(attn, "requires_t_shape") and attn.requires_t_shape
         if requires_t_shape:
             x = x.view([N, T, H * W, C])
+            
+            
 
         # apply Transformer blocks
         for blk in self.decoder_blocks:
             x = blk(x)
+            
+            
         
         x = self.decoder_norm(x)
 
@@ -705,7 +715,6 @@ class MaskedAutoencoderViT(nn.Module):
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
-
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
         self.vae.eval()
