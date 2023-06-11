@@ -652,18 +652,95 @@ class MaskedAutoencoderViT(nn.Module):
             print("got bad x shape when adding decoder pos emb", x.shape)
             raise NotImplementedError 
     
-        attn = self.decoder_blocks[0].attn
-        requires_t_shape = hasattr(attn, "requires_t_shape") and attn.requires_t_shape
+        # attn = self.decoder_blocks[0].attn
+        # requires_t_shape = hasattr(attn, "requires_t_shape") and attn.requires_t_shape
+        requires_t_shape = False # We use RIN attention instead of Transformer
         if requires_t_shape:
             x = x.view([N, T, H * W, C])
-            
-            
 
-        # apply Transformer blocks
+        # # apply Transformer blocks
+        # for blk in self.decoder_blocks:
+        #     x = blk(x)
+        
+        ### RIN Implementation below
+        # # apply Transformer blocks
+        # for blk in self.blocks:
+        #     x = blk(x)
+        # x = self.norm(x)
+        
+        ### RIN Implementation ###
+        ### Hyperparameters
+        dim = 512 # dimension of the input feature space (embed_dim)
+        dim_latent = 512 # can just keep it same as dim
+        num_latents = 256
+        latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
+        depth = 6 # Num of RIN blocks
+        x_self_cond = None
+        ### Hyperparameters
+        
+        # Initialize latents for RIN Blocks
+        
+        from util import rin
+        import numpy as np
+        
+        self.latents = nn.Parameter(torch.randn(num_latents, dim_latent))
+        nn.init.normal_(self.latents, std = 0.02)
+
+        self.init_self_cond_latents = nn.Sequential(
+            rin.FeedForward(dim_latent),
+            rin.LayerNorm(dim_latent)
+        )
+
+        nn.init.zeros_(self.init_self_cond_latents[-1].gamma)
+        
+        batch = x.shape[0]
+
+        x_self_cond = rin.default(x_self_cond, lambda: torch.zeros_like(x)) # TODO make this a class variable so it's not reinitialized every time
+
+        # Calculate the next square number after doubling the number of columns
+        next_square = int(np.ceil(np.sqrt(2 * x.shape[1]))) ** 2
+
+        # Calculate the difference, which is the number of columns to add
+        num_to_add = next_square - 2 * x.shape[1]
+
+        # If num_to_add is positive, add columns to x_self_cond
+        if num_to_add > 0:
+            # Create a tensor of zeros with the same number of rows and depth as x,
+            # and num_to_add columns
+            zeros_to_add = torch.zeros((x.shape[0], num_to_add, x.shape[2]), device=x.device)
+            x_self_cond = torch.cat([x, zeros_to_add], dim=1)
+        else:
+            x_self_cond = x
+
+        # Concatenate x and x_self_cond
+        x = torch.cat((x_self_cond, x), dim = 1)
+
+        # prepare latents
+
+        latents = rin.repeat(self.latents, 'n d -> b n d', b = batch)
+
+        # the warm starting of latents as in the paper
+        
+        latent_self_cond = None # TODO what do we do with this?
+
+        if rin.exists(latent_self_cond):
+            latents = latents + self.init_self_cond_latents(latent_self_cond)
+        
+        # Apply RIN Blocks
+        from util.video_vit import RINBlockVIP as RINBlockVIP
+        
+        self.decoder_blocks = nn.ModuleList([RINBlockVIP(dim, dim_latent = dim_latent, latent_self_attn_depth = latent_self_attn_depth).cuda() for _ in range(depth)])
+        
+        x, latents = x.cuda(), latents.cuda()
+        
+        # Apply RIN Blocks
+        import time
         for blk in self.decoder_blocks:
-            x = blk(x)
-            
-            
+            x, latents = blk(x, latents)
+        
+        x = x[:, x_self_cond.shape[1]:] # remove x_self_cond to get actual x
+        
+        ### RIN Implementation above
         
         x = self.decoder_norm(x)
 
@@ -672,7 +749,7 @@ class MaskedAutoencoderViT(nn.Module):
         
         if requires_t_shape:
             x = x.view([N, T * H * W, -1])
-
+        
         if self.cls_embed:
             # remove cls token
             x = x[:, 1:, :]
