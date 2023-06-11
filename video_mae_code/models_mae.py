@@ -20,6 +20,10 @@ from util.logging import master_print as print
 from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
 
+from util.video_vit import RINBlockVIP as RINBlockVIP
+from util import rin
+import numpy as np
+
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
 
@@ -102,7 +106,7 @@ class MaskedAutoencoderViT(nn.Module):
             )
 
         # ViT Implementation 
-        self.blocks = nn.ModuleList(
+        self.encoder_blocks = nn.ModuleList(
             [
                 video_vit.Block(
                     embed_dim,
@@ -169,6 +173,17 @@ class MaskedAutoencoderViT(nn.Module):
         self.norm_pix_loss = norm_pix_loss
 
         self.initialize_weights()
+        
+        ### RIN Hyperparameters
+        self.encoder_dim = 1024 # dimension of the input feature space (embed_dim)
+        self.encoder_dim_latent = 512 # can just keep it same as dim
+        self.encoder_num_latents = 256 # input has 256 * 3 * 16 = 12288 patches. Masking brings it down.
+        self.encoder_latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
+        self.encoder_depth = 6 # Num of RIN blocks
+        self.encoder_x_self_cond = None
+        
+        self.encoder_blocks = nn.ModuleList([RINBlockVIP(self.encoder_dim, dim_latent = self.encoder_dim_latent, latent_self_attn_depth = self.encoder_latent_self_attn_depth).cuda() for _ in range(self.encoder_depth)])
+        
 
         print("model initialized new code")
 
@@ -513,34 +528,23 @@ class MaskedAutoencoderViT(nn.Module):
         # x = self.norm(x)
         
         ### RIN Implementation ###
-        ### Hyperparameters
-        dim = 1024 # dimension of the input feature space (embed_dim)
-        dim_latent = 512 # can just keep it same as dim
-        num_latents = 256 # input has 256 * 3 * 16 = 12288 patches. Masking brings it down.
-        latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
-        depth = 6 # Num of RIN blocks
-        x_self_cond = None
-        ### Hyperparameters
         
         # Initialize latents for RIN Blocks
-        
-        from util import rin
-        
-        self.latents = nn.Parameter(torch.randn(num_latents, dim_latent))
+        self.latents = nn.Parameter(torch.randn(self.encoder_num_latents, self.encoder_dim_latent))
         nn.init.normal_(self.latents, std = 0.02)
 
         self.init_self_cond_latents = nn.Sequential(
-            rin.FeedForward(dim_latent),
-            rin.LayerNorm(dim_latent)
+            rin.FeedForward(self.encoder_dim_latent),
+            rin.LayerNorm(self.encoder_dim_latent)
         )
 
         nn.init.zeros_(self.init_self_cond_latents[-1].gamma)
         
         batch = x.shape[0]
 
-        x_self_cond = rin.default(x_self_cond, lambda: torch.zeros_like(x)) # make this a class variable so it's not reinitialized every time
+        self.encoder_x_self_cond = rin.default(self.encoder_x_self_cond, lambda: torch.zeros_like(x)) # make this a class variable so it's not reinitialized every time
 
-        x = torch.cat((x_self_cond, x), dim = 1)
+        x = torch.cat((self.encoder_x_self_cond, x), dim = 1)
 
         # prepare latents
 
@@ -554,19 +558,16 @@ class MaskedAutoencoderViT(nn.Module):
             latents = latents + self.init_self_cond_latents(latent_self_cond)
             
         # Apply RIN Blocks
-        from util.video_vit import RINBlockVIP as RINBlockVIP
-        
-        self.blocks = nn.ModuleList([RINBlockVIP(dim, dim_latent = dim_latent, latent_self_attn_depth = latent_self_attn_depth).cuda() for _ in range(depth)])
-        
         x, latents = x.cuda(), latents.cuda()
         
         # Apply RIN Blocks
-        for blk in self.blocks:
+        for blk in self.encoder_blocks:
             x, latents = blk(x, latents)
             
         x = self.norm(x)
         
-        x = x[:, x.shape[1]//2:] # remove x_self_cond to get actual x
+        # TODO fix indexing on this
+        x, self.encoder_x_self_cond = x[:, x.shape[1]//2:], x[:, :x.shape[1]//2] # remove x_self_cond to get actual x
         
         # TODO we may need to remove cls token for RIN (if not already)
         if self.cls_embed:
@@ -680,9 +681,6 @@ class MaskedAutoencoderViT(nn.Module):
         
         # Initialize latents for RIN Blocks
         
-        from util import rin
-        import numpy as np
-        
         self.latents = nn.Parameter(torch.randn(num_latents, dim_latent))
         nn.init.normal_(self.latents, std = 0.02)
 
@@ -727,14 +725,12 @@ class MaskedAutoencoderViT(nn.Module):
             latents = latents + self.init_self_cond_latents(latent_self_cond)
         
         # Apply RIN Blocks
-        from util.video_vit import RINBlockVIP as RINBlockVIP
         
         self.decoder_blocks = nn.ModuleList([RINBlockVIP(dim, dim_latent = dim_latent, latent_self_attn_depth = latent_self_attn_depth).cuda() for _ in range(depth)])
         
         x, latents = x.cuda(), latents.cuda()
         
         # Apply RIN Blocks
-        import time
         for blk in self.decoder_blocks:
             x, latents = blk(x, latents)
         
