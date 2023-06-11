@@ -196,7 +196,22 @@ class MaskedAutoencoderViT(nn.Module):
         nn.init.zeros_(self.init_self_cond_latents[-1].gamma)
         
         # Decoder
+        self.decoder_dim = 512 # dimension of the input feature space (embed_dim)
+        self.decoder_dim_latent = 512 # can just keep it same as dim
+        self.decoder_num_latents = 256
+        self.decoder_latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
+        self.decoder_depth = 6 # Num of RIN blocks
         
+        self.decoder_blocks = nn.ModuleList([RINBlockVIP(self.decoder_dim, dim_latent = self.decoder_dim_latent, latent_self_attn_depth = self.decoder_latent_self_attn_depth).cuda() for _ in range(self.decoder_depth)])
+        
+        self.decoder_latents = nn.Parameter(torch.randn(self.decoder_num_latents, self.decoder_dim_latent))
+        nn.init.normal_(self.decoder_latents, std = 0.02)
+
+        self.decoder_init_self_cond_latents = nn.Sequential(
+            rin.FeedForward(self.decoder_dim_latent),
+            rin.LayerNorm(self.decoder_dim_latent)
+        )
+        nn.init.zeros_(self.decoder_init_self_cond_latents[-1].gamma)
         
         print("model initialized new code")
 
@@ -662,74 +677,27 @@ class MaskedAutoencoderViT(nn.Module):
         # x = self.norm(x)
         
         ### RIN Implementation ###
-        ### Hyperparameters
-        dim = 512 # dimension of the input feature space (embed_dim)
-        dim_latent = 512 # can just keep it same as dim
-        num_latents = 256
-        latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
-        depth = 6 # Num of RIN blocks
-        x_self_cond = None
-        ### Hyperparameters
         
         # Initialize latents for RIN Blocks
-        
-        self.encoder_latents = nn.Parameter(torch.randn(num_latents, dim_latent))
-        nn.init.normal_(self.encoder_latents, std = 0.02)
-
-        self.init_self_cond_latents = nn.Sequential(
-            rin.FeedForward(dim_latent),
-            rin.LayerNorm(dim_latent)
-        )
-
-        nn.init.zeros_(self.init_self_cond_latents[-1].gamma)
-        
         batch = x.shape[0]
 
-        x_self_cond = rin.default(x_self_cond, lambda: torch.zeros_like(x)) # TODO make this a class variable so it's not reinitialized every time
-
-        # Calculate the next square number after doubling the number of columns
-        next_square = int(np.ceil(np.sqrt(2 * x.shape[1]))) ** 2
-
-        # Calculate the difference, which is the number of columns to add
-        num_to_add = next_square - 2 * x.shape[1]
-
-        # If num_to_add is positive, add columns to x_self_cond
-        if num_to_add > 0:
-            # Create a tensor of zeros with the same number of rows and depth as x,
-            # and num_to_add columns
-            zeros_to_add = torch.zeros((x.shape[0], num_to_add, x.shape[2]), device=x.device)
-            x_self_cond = torch.cat([x, zeros_to_add], dim=1)
-        else:
-            x_self_cond = x
-
-        # Concatenate x and x_self_cond
-        x = torch.cat((x_self_cond, x), dim = 1)
-
         # prepare latents
-
-        latents = rin.repeat(self.encoder_latents, 'n d -> b n d', b = batch)
+        latents = rin.repeat(self.decoder_latents, 'n d -> b n d', b = batch)
 
         # the warm starting of latents as in the paper
-        
         latent_self_cond = None # TODO what do we do with this?
 
         if rin.exists(latent_self_cond):
-            latents = latents + self.init_self_cond_latents(latent_self_cond)
+            latents = latents + self.decoder_init_self_cond_latents(latent_self_cond)
         
-        # Apply RIN Blocks
-        
-        self.decoder_blocks = nn.ModuleList([RINBlockVIP(dim, dim_latent = dim_latent, latent_self_attn_depth = latent_self_attn_depth).cuda() for _ in range(depth)])
-        
+        # Apply RIN Blocks decoder
         x, latents = x.cuda(), latents.cuda()
         
         # Apply RIN Blocks
         for blk in self.decoder_blocks:
             x, latents = blk(x, latents)
         
-        x = x[:, x_self_cond.shape[1]:] # remove x_self_cond to get actual x
-        
         ### RIN Implementation above
-        
         x = self.decoder_norm(x)
 
         # predictor projection
