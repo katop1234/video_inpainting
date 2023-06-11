@@ -175,6 +175,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.initialize_weights()
         
         ### RIN Hyperparameters
+        # Encoder
         self.encoder_dim = 1024 # dimension of the input feature space (embed_dim)
         self.encoder_dim_latent = 512 # can just keep it same as dim
         self.encoder_num_latents = 256 # input has 256 * 3 * 16 = 12288 patches. Masking brings it down.
@@ -184,7 +185,19 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.encoder_blocks = nn.ModuleList([RINBlockVIP(self.encoder_dim, dim_latent = self.encoder_dim_latent, latent_self_attn_depth = self.encoder_latent_self_attn_depth).cuda() for _ in range(self.encoder_depth)])
         
+        # Initialize latents for RIN Blocks
+        self.encoder_latents = nn.Parameter(torch.randn(self.encoder_num_latents, self.encoder_dim_latent))
+        nn.init.normal_(self.encoder_latents, std = 0.02)
 
+        self.init_self_cond_latents = nn.Sequential(
+            rin.FeedForward(self.encoder_dim_latent),
+            rin.LayerNorm(self.encoder_dim_latent)
+        )
+        nn.init.zeros_(self.init_self_cond_latents[-1].gamma)
+        
+        # Decoder
+        
+        
         print("model initialized new code")
 
     def initialize_weights(self):
@@ -529,29 +542,12 @@ class MaskedAutoencoderViT(nn.Module):
         
         ### RIN Implementation ###
         
-        # Initialize latents for RIN Blocks
-        self.latents = nn.Parameter(torch.randn(self.encoder_num_latents, self.encoder_dim_latent))
-        nn.init.normal_(self.latents, std = 0.02)
-
-        self.init_self_cond_latents = nn.Sequential(
-            rin.FeedForward(self.encoder_dim_latent),
-            rin.LayerNorm(self.encoder_dim_latent)
-        )
-
-        nn.init.zeros_(self.init_self_cond_latents[-1].gamma)
-        
         batch = x.shape[0]
 
-        self.encoder_x_self_cond = rin.default(self.encoder_x_self_cond, lambda: torch.zeros_like(x)) # make this a class variable so it's not reinitialized every time
-
-        x = torch.cat((self.encoder_x_self_cond, x), dim = 1)
-
         # prepare latents
-
-        latents = rin.repeat(self.latents, 'n d -> b n d', b = batch)
+        latents = rin.repeat(self.encoder_latents, 'n d -> b n d', b = batch)
 
         # the warm starting of latents as in the paper
-        
         latent_self_cond = None # TODO what do we do with this?
 
         if rin.exists(latent_self_cond):
@@ -565,11 +561,7 @@ class MaskedAutoencoderViT(nn.Module):
             x, latents = blk(x, latents)
             
         x = self.norm(x)
-        
-        # TODO fix indexing on this
-        x, self.encoder_x_self_cond = x[:, x.shape[1]//2:], x[:, :x.shape[1]//2] # remove x_self_cond to get actual x
-        
-        # TODO we may need to remove cls token for RIN (if not already)
+         
         if self.cls_embed:
             # remove cls token
             x = x[:, 1:, :]
@@ -681,8 +673,8 @@ class MaskedAutoencoderViT(nn.Module):
         
         # Initialize latents for RIN Blocks
         
-        self.latents = nn.Parameter(torch.randn(num_latents, dim_latent))
-        nn.init.normal_(self.latents, std = 0.02)
+        self.encoder_latents = nn.Parameter(torch.randn(num_latents, dim_latent))
+        nn.init.normal_(self.encoder_latents, std = 0.02)
 
         self.init_self_cond_latents = nn.Sequential(
             rin.FeedForward(dim_latent),
@@ -715,7 +707,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         # prepare latents
 
-        latents = rin.repeat(self.latents, 'n d -> b n d', b = batch)
+        latents = rin.repeat(self.encoder_latents, 'n d -> b n d', b = batch)
 
         # the warm starting of latents as in the paper
         
