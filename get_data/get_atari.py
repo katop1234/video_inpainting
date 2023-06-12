@@ -68,3 +68,6 @@ for subdir in get_subdirs(base_path):
 # Clear temp files needed to get mp4
 atari_dir = os.path.join(download_dir, 'atari_v1')
 shutil.rmtree(atari_dir)
+
+# Delete the tar.gz file named full.tar.gz
+os.remove(os.path.join(download_dir, "full.tar.gz"))
