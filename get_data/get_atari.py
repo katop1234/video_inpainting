@@ -6,6 +6,8 @@ import tarfile
 import shutil
 from moviepy.editor import ImageSequenceClip
 
+### WARNING call python get_data/get_atari.py or cwd will be wrong
+
 # Base directory for your operations
 base_dir = os.path.join(os.getcwd(), "get_data/")
 
