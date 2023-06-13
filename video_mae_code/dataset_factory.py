@@ -135,7 +135,7 @@ class MergedDataset(torch.utils.data.Dataset):
     def __init__(self, root_path, dataset_list, dataset_conf, ds_type):
         dataset_conf = [float(x) for x in dataset_conf]
         datasets = [get_dataset(ds_name, root_path, ds_type) for ds_name in dataset_list]
-        conf = [i / (sum(dataset_conf)+1e-10) for i in dataset_conf]
+        conf = [i / sum(dataset_conf) for i in dataset_conf]
         self.datasets = datasets
         self.conf = conf
 
