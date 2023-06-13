@@ -152,19 +152,19 @@ class MaskedAutoencoderViT(nn.Module):
                 torch.zeros(1, _num_patches, decoder_embed_dim),
             )
         
-        self.decoder_blocks = nn.ModuleList(
-            [
-                video_vit.Block(
-                    decoder_embed_dim,
-                    decoder_num_heads,
-                    mlp_ratio,
-                    qkv_bias=not no_qkv_bias,
-                    qk_scale=None,
-                    norm_layer=norm_layer,
-                )
-                for i in range(decoder_depth)
-            ]
-        )
+        # self.decoder_blocks = nn.ModuleList(
+        #     [
+        #         video_vit.Block(
+        #             decoder_embed_dim,
+        #             decoder_num_heads,
+        #             mlp_ratio,
+        #             qkv_bias=not no_qkv_bias,
+        #             qk_scale=None,
+        #             norm_layer=norm_layer,
+        #         )
+        #         for i in range(decoder_depth)
+        #     ]
+        # )
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
@@ -176,29 +176,29 @@ class MaskedAutoencoderViT(nn.Module):
         
         ### RIN Hyperparameters
         # Encoder
-        self.encoder_dim = 1024 # dimension of the input feature space (embed_dim)
-        self.encoder_dim_latent = 512 # can just keep it same as dim
-        self.encoder_num_latents = 256 # input has 256 * 3 * 16 = 12288 patches. Masking brings it down.
-        self.encoder_latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
-        self.encoder_depth = 6 # Num of RIN blocks
-        self.encoder_x_self_cond = None
+        # self.encoder_dim = 1024 # dimension of the input feature space (embed_dim)
+        # self.encoder_dim_latent = 512 # can just keep it same as dim
+        # self.encoder_num_latents = 256 # input has 256 * 3 * 16 = 12288 patches. Masking brings it down.
+        # self.encoder_latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
+        # self.encoder_depth = 6 # Num of RIN blocks
+        # self.encoder_x_self_cond = None
         
-        self.encoder_blocks = nn.ModuleList([RINBlockVIP(self.encoder_dim, dim_latent = self.encoder_dim_latent, latent_self_attn_depth = self.encoder_latent_self_attn_depth).cuda() for _ in range(self.encoder_depth)])
+        # self.encoder_blocks = nn.ModuleList([RINBlockVIP(self.encoder_dim, dim_latent = self.encoder_dim_latent, latent_self_attn_depth = self.encoder_latent_self_attn_depth).cuda() for _ in range(self.encoder_depth)])
         
-        # Initialize latents for RIN Blocks
-        self.encoder_latents = nn.Parameter(torch.randn(self.encoder_num_latents, self.encoder_dim_latent))
-        nn.init.normal_(self.encoder_latents, std = 0.02)
+        # # Initialize latents for RIN Blocks
+        # self.encoder_latents = nn.Parameter(torch.randn(self.encoder_num_latents, self.encoder_dim_latent))
+        # nn.init.normal_(self.encoder_latents, std = 0.02)
 
-        self.init_self_cond_latents = nn.Sequential(
-            rin.FeedForward(self.encoder_dim_latent),
-            rin.LayerNorm(self.encoder_dim_latent)
-        )
-        nn.init.zeros_(self.init_self_cond_latents[-1].gamma)
+        # self.init_self_cond_latents = nn.Sequential(
+        #     rin.FeedForward(self.encoder_dim_latent),
+        #     rin.LayerNorm(self.encoder_dim_latent)
+        # )
+        # nn.init.zeros_(self.init_self_cond_latents[-1].gamma)
         
         # Decoder
         self.decoder_dim = 512 # dimension of the input feature space (embed_dim)
         self.decoder_dim_latent = 512 # can just keep it same as dim
-        self.decoder_num_latents = 256
+        self.decoder_num_latents = int((16 * 14 * 14) ** 0.5)
         self.decoder_latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
         self.decoder_depth = 6 # Num of RIN blocks
         
@@ -679,14 +679,8 @@ class MaskedAutoencoderViT(nn.Module):
         # Initialize latents for RIN Blocks
         batch = x.shape[0]
 
-        # prepare latents
+        # prepare latents across batches
         latents = rin.repeat(self.decoder_latents, 'n d -> b n d', b = batch)
-
-        # the warm starting of latents as in the paper
-        latent_self_cond = None # TODO what do we do with this?
-
-        if rin.exists(latent_self_cond):
-            latents = latents + self.decoder_init_self_cond_latents(latent_self_cond)
         
         # Apply RIN Blocks decoder
         x, latents = x.cuda(), latents.cuda()
