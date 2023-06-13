@@ -63,6 +63,7 @@ def get_image_transforms():
         transforms.Normalize(mean=constants.mean, std=constants.std)])
 
 def get_dataset(name, root_path, ds_type):
+    # TODO make this compatible with where the automated scripts download all the files
     if ds_type == 'image':
         transforms_train = get_image_transforms()
         if name == 'cvf':
