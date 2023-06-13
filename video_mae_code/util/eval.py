@@ -290,11 +290,12 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
         fps=4, 
         format="mp4"
     )
-    wandb.log({output_video_title: wandb_video_object}) 
+    wandb.log({input_video_title: wandb_video_object}) 
     
     wandb_video_object = wandb.Video(
         data_or_path=im_paste,
         fps=4, 
         format="mp4"
     )
-    wandb.log({input_video_title: wandb_video_object})
+    wandb.log({output_video_title: wandb_video_object})
+    

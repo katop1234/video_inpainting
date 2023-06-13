@@ -198,7 +198,7 @@ class MaskedAutoencoderViT(nn.Module):
         # Decoder
         self.decoder_dim = 512 # dimension of the input feature space (embed_dim)
         self.decoder_dim_latent = 512 # can just keep it same as dim
-        self.decoder_num_latents = int((16 * 14 * 14) ** 0.5)
+        self.decoder_num_latents = 56 # sqrt(16 * 14 * 14) = sqrt(3136) = 56
         self.decoder_latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
         self.decoder_depth = 6 # Num of RIN blocks
         
@@ -206,12 +206,6 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.decoder_latents = nn.Parameter(torch.randn(self.decoder_num_latents, self.decoder_dim_latent))
         nn.init.normal_(self.decoder_latents, std = 0.02)
-
-        self.decoder_init_self_cond_latents = nn.Sequential(
-            rin.FeedForward(self.decoder_dim_latent),
-            rin.LayerNorm(self.decoder_dim_latent)
-        )
-        nn.init.zeros_(self.decoder_init_self_cond_latents[-1].gamma)
         
         print("model initialized new code")
 
