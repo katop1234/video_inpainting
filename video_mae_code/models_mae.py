@@ -551,32 +551,33 @@ class MaskedAutoencoderViT(nn.Module):
         x = x.view([N, -1, C]) + pos_embed
 
         # # apply Transformer blocks
-        # for blk in self.blocks:
-        #     x = blk(x)
-        # x = self.norm(x)
+        for blk in self.blocks:
+            x = blk(x)
+        x = self.norm(x)
         
         ### RIN Implementation ###
         
-        batch = x.shape[0]
+        # batch = x.shape[0]
 
-        # prepare latents
-        latents = rin.repeat(self.encoder_latents, 'n d -> b n d', b = batch)
+        # # prepare latents
+        # latents = rin.repeat(self.encoder_latents, 'n d -> b n d', b = batch)
 
-        # the warm starting of latents as in the paper
-        latent_self_cond = None # TODO what do we do with this?
+        # # the warm starting of latents as in the paper
+        # latent_self_cond = None # TODO what do we do with this?
 
-        if rin.exists(latent_self_cond):
-            latents = latents + self.init_self_cond_latents(latent_self_cond)
+        # if rin.exists(latent_self_cond):
+        #     latents = latents + self.init_self_cond_latents(latent_self_cond)
             
-        # Apply RIN Blocks
-        x, latents = x.cuda(), latents.cuda()
+        # # Apply RIN Blocks
+        # x, latents = x.cuda(), latents.cuda()
         
-        # Apply RIN Blocks
-        for blk in self.encoder_blocks:
-            x, latents = blk(x, latents)
+        # # Apply RIN Blocks
+        # for blk in self.encoder_blocks:
+        #     x, latents = blk(x, latents)
             
-        x = self.norm(x)
-         
+        # x = self.norm(x)
+        ### RIN Implementation ###
+        
         if self.cls_embed:
             # remove cls token
             x = x[:, 1:, :]
@@ -669,13 +670,10 @@ class MaskedAutoencoderViT(nn.Module):
         # # apply Transformer blocks
         # for blk in self.decoder_blocks:
         #     x = blk(x)
-        
-        ### RIN Implementation below
-        # # apply Transformer blocks
-        # for blk in self.blocks:
-        #     x = blk(x)
         # x = self.norm(x)
         
+        ### RIN Implementation below
+
         ### RIN Implementation ###
         
         # Initialize latents for RIN Blocks
