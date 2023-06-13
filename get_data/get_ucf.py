@@ -22,19 +22,19 @@ url = "https://www.crcv.ucf.edu/data/UCF101/UCF101.rar"
 filename = os.path.join(download_dir, "UCF101.rar")
 
 print("WARNING: This script will download the file without checking the SSL certificate. This operation will start in 10 seconds.")
-# time.sleep(10) # TODO uncomment this at end
+time.sleep(10)
 
 # Download the file using wget with no SSL check
-# subprocess.run(["wget", "--no-check-certificate", "-O", filename, url])
+subprocess.run(["wget", "--no-check-certificate", "-O", filename, url])
 
-# # Open the rar file
-# rar = rarfile.RarFile(filename)
+# Open the rar file
+rar = rarfile.RarFile(filename)
 
-# # Extract the rar file
-# rar.extractall(path=download_dir)
+# Extract the rar file
+rar.extractall(path=download_dir)
 
-# # Close the rar file
-# rar.close()
+# Close the rar file
+rar.close()
 
 base_path = os.path.join(download_dir, 'UCF-101/')
 output_path = download_dir
@@ -63,8 +63,8 @@ for dirpath, dirs, files in os.walk(base_path):
 for filename in os.listdir(output_path):
     if filename.endswith('.mp4'):
         video = VideoFileClip(os.path.join(output_path, filename))
-        total_frames = video.duration * video.fps[0]
-        if total_frames < 64 / 30 * video.fps[0]:
+        total_frames = video.duration * video.fps
+        if total_frames < 64 / 30 * video.fps:
             os.remove(os.path.join(output_path, filename))
 
 # Clean up non-mp4 files
