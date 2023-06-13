@@ -43,6 +43,14 @@ def get_args_parser():
     parser.add_argument("--epochs", default=4000, type=int)
     parser.add_argument("--accum_iter_image", default=1, type=int, help="accum iteration for image")
     parser.add_argument("--accum_iter_video", default=64, type=int, help="accum iteration for video")
+    
+    #Training
+    parser.add_argument(
+        "--cont_pretrain",
+        default=True,
+        type=bool,
+        help="True to continue from previous optmizer and epoch, False otherwise. ",
+    )
 
     # Model parameters
     parser.add_argument(
@@ -350,7 +358,7 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            find_unused_parameters=True, #True
+            find_unused_parameters=True,
         )
         model_without_ddp = model.module
 
@@ -429,25 +437,7 @@ def main(args):
                 **{f"train_{k}": v for k, v in train_stats.items()},
                 "epoch": epoch,
             }
-
-            if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
-                with torch.no_grad():
-                    model.eval()
-                    store_path = os.path.join(args.output_dir, "davis_segs")
-                    if not os.path.exists(store_path):
-                        os.mkdir(store_path)
-                    eval_name = "model_mae"
-                    parent = Path(__file__).parent.absolute()
-                    prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
-                    davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                    davis_path = args.davis_path
-                    generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
-                    print("Finished Saving Davis Eval Segmentations")
-                    
-                    single_mean = run_evaluation_method(store_path, eval_name, davis_path)
-                    log_stats["Davis_single_mean"] = single_mean
-                    model.train()
-
+            
             if args.output_dir and misc.is_main_process():
                 if log_writer is not None:
                     log_writer.flush()
@@ -456,6 +446,24 @@ def main(args):
                         "a",
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
+
+        if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
+            with torch.no_grad():
+                model.eval()
+                store_path = os.path.join(args.output_dir, "davis_segs")
+                if not os.path.exists(store_path):
+                    os.mkdir(store_path)
+                eval_name = "model_mae"
+                parent = Path(__file__).parent.absolute()
+                prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
+                davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
+                davis_path = args.davis_path
+                generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
+                print("Finished Saving Davis Eval Segmentations")
+                
+                single_mean = run_evaluation_method(store_path, eval_name, davis_path)
+                log_stats["Davis_single_mean"] = single_mean
+                model.train()
 
         if misc.is_main_process():
             if not args.test_mode:
