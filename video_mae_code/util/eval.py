@@ -285,6 +285,7 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
     )
     video_title = "output_video" + "_epoch_" + str(epoch)
     wandb.log({video_title: wandb_video_object})
+    
     im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
     im_paste = im_paste.permute((0, 1, 4, 2, 3))
     orig_video = orig_video.permute((0, 1, 4, 2, 3))

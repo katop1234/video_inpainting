@@ -415,8 +415,8 @@ def main(args):
             if epoch % args.davis_eval_freq == 0:
                 model.eval()
                 store_path = os.path.join(args.output_dir, "davis_segs")
-                if not os.path.exists(store_path):
-                    os.mkdir(store_path)
+                if misc.is_main_process():
+                    os.makedirs(store_path, exist_ok=True)
                 eval_name = "model_mae_{epoch}".format(epoch=epoch)
                 parent = Path(__file__).parent.absolute()
                 prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
