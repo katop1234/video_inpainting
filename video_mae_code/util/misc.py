@@ -397,12 +397,16 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
             "optimizer" in checkpoint
             and "epoch" in checkpoint
             and not (hasattr(args, "eval") and args.eval)
+            and args.cont_pretrain
         ):
             optimizer.load_state_dict(checkpoint["optimizer"])
             args.start_epoch = checkpoint["epoch"] + 1
             if "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
             print("With optim & sched!")
+        elif (not args.cont_pretrain):
+            args.start_epoch = 0
+            
     return args.resume
 
 

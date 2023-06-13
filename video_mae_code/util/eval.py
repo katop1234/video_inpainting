@@ -298,4 +298,3 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
         format="mp4"
     )
     wandb.log({output_video_title: wandb_video_object})
-    

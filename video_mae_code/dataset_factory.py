@@ -66,8 +66,10 @@ def get_dataset(name, root_path, ds_type):
 
 def combined_gen(image_itr_cls, video_itr_cls, accum_iter_img, accum_iter_vid, image_itr, video_itr, num_iter):
     i = 0
-    image_gen = iter(image_itr_cls)
-    video_gen = iter(video_itr_cls)
+    if image_itr_cls:
+        image_gen = iter(image_itr_cls)
+    if video_itr_cls:
+        video_gen = iter(video_itr_cls)
 
     while i < num_iter:
 
@@ -119,7 +121,7 @@ class CombinedGen:
         self.image_itr = image_itr
         self.video_itr = video_itr
         if video_itr == 0:
-            self.num_iter_per_epoch = 320*(accum_iter_img*image_itr)
+            self.num_iter_per_epoch = 96*(accum_iter_img*image_itr)
         else:
             self.num_iter_per_epoch = 24*(accum_iter_img*image_itr + accum_iter_vid*video_itr)
 
