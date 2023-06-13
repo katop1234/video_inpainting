@@ -551,7 +551,7 @@ class MaskedAutoencoderViT(nn.Module):
         x = x.view([N, -1, C]) + pos_embed
 
         # # apply Transformer blocks
-        for blk in self.blocks:
+        for blk in self.encoder_blocks:
             x = blk(x)
         x = self.norm(x)
         
