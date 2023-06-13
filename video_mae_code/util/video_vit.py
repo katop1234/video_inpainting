@@ -206,7 +206,7 @@ class RINBlockVIP(nn.Module):
         self.patches_cross_attn_ff = rin.FeedForward(dim)
 
     def forward(self, patches, latents):
-        patches = self.patches_peg(patches) + patches
+        # patches = self.patches_peg(patches) + patches
 
         # latents extract or cluster information from the patches
         latents = self.latents_attend_to_patches(latents, patches) + latents

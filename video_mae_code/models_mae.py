@@ -197,7 +197,7 @@ class MaskedAutoencoderViT(nn.Module):
         
         # Decoder
         self.decoder_dim = 512 # dimension of the input feature space (embed_dim)
-        self.decoder_dim_latent = 512 # can just keep it same as dim
+        self.decoder_dim_latent = 256 # can just keep it same as dim
         self.decoder_num_latents = 256
         self.decoder_latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
         self.decoder_depth = 6 # Num of RIN blocks
