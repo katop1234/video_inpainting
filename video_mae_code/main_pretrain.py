@@ -46,10 +46,9 @@ def get_args_parser():
     
     #Training
     parser.add_argument(
-        "--cont_pretrain",
-        default=True,
-        type=bool,
-        help="True to continue from previous optmizer and epoch, False otherwise. ",
+        "--no_cont_pretrain",
+        action='store_true',
+        help="Provide for restarting the optimizer and epoch count",
     )
 
     # Model parameters
@@ -225,8 +224,8 @@ def get_args_parser():
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
     parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
-    parser.add_argument('--video_dataset_list', nargs='+', default=["CrossTask", "kinetics", "Objectron", "SSV2"])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[1, 7, 1, 1])
+    parser.add_argument('--video_dataset_list', nargs='+', default=["CrossTask", "kinetics", "Objectron", "SSV2", "UCF101"])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[8, 1, 1, 1, 1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
     parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
@@ -402,6 +401,7 @@ def main(args):
 
     combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
 
+    print("args.start_epoch: ", args.start_epoch)
     for epoch in range(args.start_epoch, args.epochs):
 
         if args.distributed:
@@ -472,7 +472,7 @@ def main(args):
             try:
                 visualize_prompting(model, epoch, args.video_prompts_dir)
             except:
-                print("Error loading video.")
+                print("Error in visualization.")
             model.train()
         print("Done loop on epoch {}".format(epoch))
 
