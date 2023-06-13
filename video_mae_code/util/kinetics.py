@@ -9,15 +9,13 @@ import torch
 import torch.utils.data
 
 from iopath.common.file_io import g_pathmgr as pathmgr
-from util.decoder.decoder import get_start_end_idx, temporal_sampling
+from .decoder.decoder import get_start_end_idx, temporal_sampling
 from torchvision import transforms
 
 from .decoder import decoder as decoder, utils as utils, video_container as container
 from .decoder.random_erasing import RandomErasing
 from .decoder.transform import create_random_augment
 from pathlib import Path
-
-
 
 class Kinetics(torch.utils.data.Dataset):
     """
@@ -208,12 +206,19 @@ class Kinetics(torch.utils.data.Dataset):
                 decoded, then return the index of the video. If not, return the
                 index of the video replacement that can be decoded.
         """
+        
+        # print("self mode is ", self.mode, "in kinetics, getting item at index", index)
+        
         if self.mode in ["pretrain", "finetune", "val"]:
             # -1 indicates random sampling.
             temporal_sample_index = -1
             spatial_sample_index = -1
             min_scale, max_scale = self._train_jitter_scales
             crop_size = self._train_crop_size
+            
+            if "atari" in self._path_to_data_dir:
+                spatial_sample_index = 0 # top crop only, no random cropping
+        
         elif self.mode in ["test"]:
             temporal_sample_index = (
                 self._spatial_temporal_idx[index] // self._test_num_spatial_crops
@@ -226,6 +231,7 @@ class Kinetics(torch.utils.data.Dataset):
                 if self._test_num_spatial_crops > 1
                 else 1
             )
+            
             min_scale, max_scale, crop_size = (
                 [self._test_crop_size] * 3
                 if self._test_num_spatial_crops > 1
@@ -242,11 +248,15 @@ class Kinetics(torch.utils.data.Dataset):
         # decoded, repeatly find a random video replacement that can be decoded.
         for i_try in range(self._num_retries):
             video_container = None
+            
+            # print('entering the try loop', "i_try is", i_try)
             try:
                 video_container = container.get_video_container(
                     self._path_to_videos[index],
                     self._enable_multi_thread_decode,
                 )
+                
+                # print("got video container")
             except Exception as e:
                 print(
                     "Failed to load video from {} with error {}".format(
@@ -262,35 +272,36 @@ class Kinetics(torch.utils.data.Dataset):
                 )
                 if self.mode not in ["test"] and i_try > self._num_retries // 2:
                     # let's try another one
+                    print("trying again because failed to load video")
                     index = random.randint(0, len(self._path_to_videos) - 1)
                 continue
 
             # Decode video. Meta info is used to perform selective decoding.
-            frames, fps, decode_all_video = decoder.decode(
-                video_container,
-                sampling_rate,
-                self._num_frames,
-                temporal_sample_index,
-                self._test_num_ensemble_views,
-                video_meta=self._video_meta[index],
-                target_fps=self._target_fps,
-                max_spatial_scale=min_scale,
-                use_offset=self._use_offset_sampling,
-                rigid_decode_all_video=self.mode in ["pretrain"],
-            )
-
-            # If decoding failed (wrong format, video is too short, and etc),
-            # select another video.
-            if frames is None:
+            
+            # print("about to decode video")
+            
+            try:
+                frames, fps, decode_all_video = decoder.decode(
+                    video_container,
+                    sampling_rate,
+                    self._num_frames,
+                    temporal_sample_index,
+                    self._test_num_ensemble_views,
+                    video_meta=self._video_meta[index],
+                    target_fps=self._target_fps,
+                    max_spatial_scale=min_scale,
+                    use_offset=self._use_offset_sampling,
+                    rigid_decode_all_video=self.mode in ["pretrain"],
+                )
+                
+            except Exception as e:
                 print(
-                    "Failed to decode video idx {} from {}; trial {}".format(
-                        index, self._path_to_videos[index], i_try
+                    "Failed to decode video idx {} from {} with error {}".format(
+                        index, self._path_to_videos[index], e
                     )
                 )
-                if self.mode not in ["test"] and i_try > self._num_retries // 2:
-                    # let's try another one
-                    index = random.randint(0, len(self._path_to_videos) - 1)
-                continue
+                index = random.randint(0, len(self._path_to_videos) - 1)
+                return self.__getitem__(index)
 
             frames_list = []
             label_list = []
@@ -400,9 +411,7 @@ class Kinetics(torch.utils.data.Dataset):
         frames = frames.permute(0, 2, 3, 1)
 
         frames = utils.tensor_normalize(
-            frames,
-            (0.45, 0.45, 0.45),
-            (0.225, 0.225, 0.225),
+            frames
         )
         # T H W C -> C T H W.
         frames = frames.permute(3, 0, 1, 2)

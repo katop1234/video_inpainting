@@ -1,0 +1,36 @@
+# Datasets
+
+To automatically download the data, run `.get_data/get_all_data.sh`. All datasets will be downloaded to `data/`.
+
+In this repository, we provide details about each dataset we used along with instructions for acquiring them. Each video is in mp4 format.
+
+## Objectron
+
+Location: `/shared/katop1234/Datasets/Objectron/`
+
+We downloaded the data using the code provided on the following GitHub page: 
+[Objectron Download Data](https://github.com/google-research-datasets/Objectron/blob/master/notebooks/Download%20Data.ipynb)
+
+## Something-Something_V2
+
+Location: `/shared/katop1234/Datasets/SSV2_videos/`
+
+Data source: [Something-Something Dataset](https://developer.qualcomm.com/software/ai-datasets/something-something)
+
+We downloaded all 19 zip files individually from the above link, then unzipped them according to the instructions provided on the website.
+
+## Atari
+
+Location: `/shared/katop1234/Datasets/atari_mp4s/`
+
+Data source: [Atari Dataset](https://omnomnom.vision.rwth-aachen.de/data/atari_v1_release/full.tar.gz)
+
+The dataset includes screenshots for five games: Space Invaders, Q*bert, Ms. Pacman, Video Pinball, Montezuma's Revenge. Each game had multiple subfolders of different runs, each with thousands of PNGs. We sampled blocks of 240 frames from each of the subsubfolders and then wrote them to a 240 frame 120FPS video in `/shared/katop1234/Datasets/atari_mp4s/`.
+
+## CrossTask
+
+Location: `/shared/katop1234/Datasets/CrossTask_vids/`
+
+Data source: [Zip file]https://www.rocq.inria.fr/cluster-willow/dzhukov/missing_videos.tar.gz 
+
+Since the original videos were very long, we cropped them to be chunks of size between 240 and 480 frames
