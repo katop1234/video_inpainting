@@ -204,10 +204,18 @@ class RINBlockVIP(nn.Module):
 
         self.patches_attend_to_latents = rin.CrossAttention(dim, dim_context = dim_latent, norm = True, norm_context = True, **attn_kwargs)
         self.patches_cross_attn_ff = rin.FeedForward(dim)
+        
+        # How often to print statistics
+        self.counter = 0  # Add this line to initialize your counter
+        self.print_frequency = 100 # Change this to control how often the similarities are printed
 
     def forward(self, patches, latents):
-        # patches = self.patches_peg(patches) + patches
-
+        # patches = self.patches_peg(patches) + patches # Commented out pos emb for now
+        
+        # Store a copy of the current vectors to do dot product later with
+        latents_previous = latents.clone().detach()
+        patches_previous = patches.clone().detach()
+        
         # latents extract or cluster information from the patches
         latents = self.latents_attend_to_patches(latents, patches) + latents
         latents = self.latents_cross_attn_ff(latents) + latents
@@ -219,7 +227,7 @@ class RINBlockVIP(nn.Module):
             latents = ff(latents) + latents
 
         # additional patches self attention with linear attention
-
+        
         patches = self.patches_self_attn(patches) + patches
         patches = self.patches_self_attn_ff(patches) + patches
 
@@ -228,7 +236,14 @@ class RINBlockVIP(nn.Module):
         patches = self.patches_attend_to_latents(patches, latents) + patches
 
         patches = self.patches_cross_attn_ff(patches) + patches
-
+        
+        # Calculate and print the dot product/similarity between the current and previous patches
+        if self.counter % self.print_frequency == 0:
+            similarity = torch.sum(latents * latents_previous) / (torch.norm(latents) * torch.norm(latents_previous))
+            similarity_patches = torch.sum(patches * patches_previous) / (torch.norm(patches) * torch.norm(patches_previous))
+            print('Latent vector similarity: ', similarity.item(), 'Patch vector similarity: ', similarity_patches.item())
+        self.counter += 1
+        
         latents = self.latent_final_norm(latents)
         return patches, latents
     
