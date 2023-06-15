@@ -199,8 +199,8 @@ class RINBlockVIP(nn.Module):
         self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
 
         # self.patches_peg = rin.PEG(dim)
-        self.patches_self_attn = rin.SelfAttention(dim, norm = True, **attn_kwargs)
-        self.patches_self_attn_ff = rin.FeedForward(dim)
+        # self.patches_self_attn = rin.SelfAttention(dim, norm = True, **attn_kwargs)
+        # self.patches_self_attn_ff = rin.FeedForward(dim)
 
         self.patches_attend_to_latents = rin.CrossAttention(dim, dim_context = dim_latent, norm = True, norm_context = True, **attn_kwargs)
         self.patches_cross_attn_ff = rin.FeedForward(dim)
@@ -210,6 +210,9 @@ class RINBlockVIP(nn.Module):
         self.print_frequency = 100 # Change this to control how often the similarities are printed
 
     def forward(self, patches, latents):
+        # NOTE if you want to add back the positional embedding, you can keep it simple by having the
+        # same learned one added to the interface in each r/p/w block. that way its not that many new
+        # parameters, and it can still learn things properly.
         # patches = self.patches_peg(patches) + patches # Commented out pos emb for now
         
         # Store a copy of the current vectors to do dot product later with
@@ -228,13 +231,12 @@ class RINBlockVIP(nn.Module):
 
         # additional patches self attention with linear attention
         
-        patches = self.patches_self_attn(patches) + patches # TODO lol shouldnt this be gone
-        patches = self.patches_self_attn_ff(patches) + patches
+        # patches = self.patches_self_attn(patches) + patches # idk why RIN had this
+        # patches = self.patches_self_attn_ff(patches) + patches
 
         # patches attend to the latents
 
         patches = self.patches_attend_to_latents(patches, latents) + patches
-        
         patches = self.patches_cross_attn_ff(patches) + patches
         
         # Calculate and print the dot product/similarity between the current and previous patches
@@ -246,4 +248,3 @@ class RINBlockVIP(nn.Module):
         
         latents = self.latent_final_norm(latents)
         return patches, latents
-    

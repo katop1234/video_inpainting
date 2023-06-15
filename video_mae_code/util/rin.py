@@ -312,7 +312,6 @@ class RINBlock(nn.Module):
         # latents extract or cluster information from the patches
 
         latents = self.latents_attend_to_patches(latents, patches, time = t) + latents
-
         latents = self.latents_cross_attn_ff(latents, time = t) + latents
 
         # latent self attention
