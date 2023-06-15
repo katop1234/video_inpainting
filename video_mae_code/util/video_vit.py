@@ -198,7 +198,7 @@ class RINBlockVIP(nn.Module):
 
         self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
 
-        self.patches_peg = rin.PEG(dim)
+        # self.patches_peg = rin.PEG(dim)
         self.patches_self_attn = rin.SelfAttention(dim, norm = True, **attn_kwargs)
         self.patches_self_attn_ff = rin.FeedForward(dim)
 
@@ -228,13 +228,13 @@ class RINBlockVIP(nn.Module):
 
         # additional patches self attention with linear attention
         
-        patches = self.patches_self_attn(patches) + patches
+        patches = self.patches_self_attn(patches) + patches # TODO lol shouldnt this be gone
         patches = self.patches_self_attn_ff(patches) + patches
 
         # patches attend to the latents
 
         patches = self.patches_attend_to_latents(patches, latents) + patches
-
+        
         patches = self.patches_cross_attn_ff(patches) + patches
         
         # Calculate and print the dot product/similarity between the current and previous patches
