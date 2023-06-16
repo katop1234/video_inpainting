@@ -320,7 +320,6 @@ def main(args):
     else:
         data_loader_video_train = None
 
-
     # define the model
     model = models_mae.__dict__[args.model](
         **vars(args),

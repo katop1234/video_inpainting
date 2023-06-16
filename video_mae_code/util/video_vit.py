@@ -181,18 +181,19 @@ class RINBlockVIP(nn.Module):
         latent_self_attn_depth,
         dim_latent = None,
         final_norm = True,
+        heads = 16,
         **attn_kwargs
     ):
         super().__init__()
         dim_latent = rin.default(dim_latent, dim)
 
-        self.latents_attend_to_patches = rin.CrossAttention(dim_latent, dim_context = dim, norm = True, norm_context = True, **attn_kwargs)
+        self.latents_attend_to_patches = rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, norm_context = True, **attn_kwargs)
         self.latents_cross_attn_ff = rin.FeedForward(dim_latent)
 
         self.latent_self_attns = nn.ModuleList([])
         for _ in range(latent_self_attn_depth):
             self.latent_self_attns.append(nn.ModuleList([
-                rin.CrossAttention(dim_latent, norm = True, **attn_kwargs),
+                rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs),
                 rin.FeedForward(dim_latent)
             ]))
 
@@ -202,7 +203,7 @@ class RINBlockVIP(nn.Module):
         # self.patches_self_attn = rin.SelfAttention(dim, norm = True, **attn_kwargs)
         # self.patches_self_attn_ff = rin.FeedForward(dim)
 
-        self.patches_attend_to_latents = rin.CrossAttention(dim, dim_context = dim_latent, norm = True, norm_context = True, **attn_kwargs)
+        self.patches_attend_to_latents = rin.CrossAttention(dim, dim_context = dim_latent, heads = heads, norm = True, norm_context = True, **attn_kwargs)
         self.patches_cross_attn_ff = rin.FeedForward(dim)
         
         # How often to print statistics

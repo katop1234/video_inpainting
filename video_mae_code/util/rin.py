@@ -96,12 +96,15 @@ class SelfAttention(nn.Module):
     def __init__(
         self,
         dim,
-        heads = 4,
-        dim_head = 32,
+        heads = 16,
         norm = False,
         time_cond_dim = None
     ):
         super().__init__()
+        
+        assert dim % heads == 0
+        dim_head = dim // heads
+        
         hidden_dim = dim_head * heads
         self.scale = dim_head ** -0.5
         self.heads = heads
@@ -159,13 +162,16 @@ class CrossAttention(nn.Module):
         self,
         dim,
         dim_context = None,
-        heads = 4,
-        dim_head = 32,
+        heads = 16,
         norm = False,
         norm_context = False,
         time_cond_dim = None
     ):
         super().__init__()
+        
+        assert dim % heads == 0
+        dim_head = dim // heads
+        
         hidden_dim = dim_head * heads
         dim_context = default(dim_context, dim)
 
@@ -181,6 +187,8 @@ class CrossAttention(nn.Module):
             nn.init.zeros_(self.time_cond[-2].weight)
             nn.init.zeros_(self.time_cond[-2].bias)
 
+        dim_head
+        
         self.scale = dim_head ** -0.5
         self.heads = heads
 

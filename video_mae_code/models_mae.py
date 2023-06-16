@@ -198,11 +198,16 @@ class MaskedAutoencoderViT(nn.Module):
         # Decoder
         self.decoder_dim = 512 # dimension of the input feature space (embed_dim)
         self.decoder_dim_latent = 512 # can just keep it same as dim
-        self.decoder_num_latents = 3136 # sqrt(16 * 14 * 14) = sqrt(3136) = 56
+        self.decoder_num_latents = 1568 # sqrt(16 * 14 * 14) = sqrt(3136) = 56
         self.decoder_latent_self_attn_depth = 2 # number of self-attention layers in the latent space.
+        self.decoder_MHA_heads = 16
         self.decoder_depth = 8 # Num of RIN blocks
         
-        self.decoder_blocks = nn.ModuleList([RINBlockVIP(self.decoder_dim, dim_latent = self.decoder_dim_latent, latent_self_attn_depth = self.decoder_latent_self_attn_depth).cuda() for _ in range(self.decoder_depth)])
+        self.decoder_blocks = nn.ModuleList([RINBlockVIP(self.decoder_dim, 
+                                                         dim_latent = self.decoder_dim_latent, 
+                                                         latent_self_attn_depth = self.decoder_latent_self_attn_depth, 
+                                                         heads = self.decoder_MHA_heads
+                                                         ).cuda() for _ in range(self.decoder_depth)])
         
         self.decoder_latents = nn.Parameter(torch.randn(self.decoder_num_latents, self.decoder_dim_latent))
         nn.init.normal_(self.decoder_latents, std = 0.02)
