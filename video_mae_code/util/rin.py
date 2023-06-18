@@ -123,7 +123,7 @@ class SelfAttention(nn.Module):
 
         self.norm = LayerNorm(dim) if norm else nn.Identity()
 
-        self.to_qkv = nn.Linear(dim, hidden_dim * 3, bias = False)
+        self.to_qkv = nn.Linear(dim, hidden_dim * 3, bias = True)
 
         self.to_out = nn.Sequential(
             nn.Linear(hidden_dim, dim, bias = False),
@@ -195,8 +195,8 @@ class CrossAttention(nn.Module):
         self.norm = LayerNorm(dim) if norm else nn.Identity()
         self.norm_context = LayerNorm(dim_context) if norm_context else nn.Identity()
 
-        self.to_q = nn.Linear(dim, hidden_dim, bias = False)
-        self.to_kv = nn.Linear(dim_context, hidden_dim * 2, bias = False)
+        self.to_q = nn.Linear(dim, hidden_dim, bias = True)
+        self.to_kv = nn.Linear(dim_context, hidden_dim * 2, bias = True)
         self.to_out = nn.Linear(hidden_dim, dim, bias = False)
 
     def forward(
@@ -267,9 +267,9 @@ class FeedForward(nn.Module):
 
         inner_dim = int(dim * mult)
         self.net = nn.Sequential(
-            nn.Linear(dim, inner_dim),
+            nn.Linear(dim, inner_dim, bias = True),
             nn.GELU(),
-            nn.Linear(inner_dim, dim)
+            nn.Linear(inner_dim, dim, bias = True)
         )
 
     def forward(self, x, time = None):
