@@ -169,6 +169,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
+
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
@@ -669,6 +670,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         # # apply Transformer blocks
         # NOTE COMMENT FOR RIN
+
         for blk in self.decoder_blocks:
             x = blk(x)
         x = self.norm(x)
