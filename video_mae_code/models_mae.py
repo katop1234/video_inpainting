@@ -39,7 +39,6 @@ class MaskedAutoencoderViT(nn.Module):
         norm_pix_loss=False,
         num_frames=16,
         t_patch_size=2,
-        patch_embed_image = video_vit.PatchEmbed,
         patch_embed=video_vit.PatchEmbed,
         no_qkv_bias=False,
         sep_pos_embed=True,
@@ -66,15 +65,6 @@ class MaskedAutoencoderViT(nn.Module):
 
         # --------------------------------------------------------------------------
         # MAE encoder specifics
-        self.patch_embed_image = patch_embed(
-            img_size,  # 224
-            patch_size, # 16
-            in_chans, # 3
-            embed_dim, # 1024
-            num_frames, # 16
-            t_patch_size, # 1
-        )
-        
         self.patch_embed = patch_embed(
             img_size,  # 224
             patch_size, # 16
@@ -127,7 +117,8 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.norm = norm_layer(embed_dim)
         self.vae = get_vq_model().eval() 
-        vocab_size = 1024
+        # vocab_size = 1024
+        vocab_size = 1024 * self.patch_embed.t_patch_size 
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
@@ -173,9 +164,6 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
-        # self.decoder_pred = nn.Linear(decoder_embed_dim, 
-        #                               self.t_pred_patch_size * patch_size**2 * in_chans, 
-        #                               bias=True)
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
@@ -618,9 +606,7 @@ class MaskedAutoencoderViT(nn.Module):
         x = self.decoder_norm(x)
 
         # predictor projection
-        print("x.shape before decoder_pred: ", x.shape)
         x = self.decoder_pred(x) # Linear into correct patchified dimensions
-        print("x.shape after decoder_pred: ", x.shape)
         
         if requires_t_shape:
             x = x.view([N, T * H * W, -1])
@@ -647,8 +633,7 @@ class MaskedAutoencoderViT(nn.Module):
                 torch.linspace(
                     0,
                     imgs.shape[2] - 1,
-                    self.patch_embed.t_grid_size,
-                    # self.pred_t_dim,
+                    self.pred_t_dim,
                 )
                 .long()
                 .to(imgs.device)
@@ -664,7 +649,8 @@ class MaskedAutoencoderViT(nn.Module):
             _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
             target = self.vae.get_codebook_indices(_imgs).flatten(1)
             target = torch.reshape(target, [N, T * 196])
-
+        
+        pred = torch.reshape(pred, [N, -1, 1024])
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
@@ -672,8 +658,19 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
         self.vae.eval()
+        if imgs.shape[2] == 1: #images
+            repeat = self.patch_embed.t_patch_size
+            imgs = imgs.repeat(1, 1, repeat, 1, 1)
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
+        
+        #added
+        mask = torch.reshape(mask, [-1, 14, 14])
+        mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=0)
+        mask = torch.flatten(mask, start_dim=1)
+        mask = torch.reshape(mask, [1, -1])
+        print("mask.shape: ", mask.shape)
+        
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
 

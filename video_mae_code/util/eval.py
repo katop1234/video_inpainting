@@ -170,8 +170,8 @@ def reconstruct(mask, ground_truth, test_model_output):
 
 def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     N = orig_image.shape[0]
-    # T = orig_image.shape[2]
-    T = 8
+    T = orig_image.shape[2]
+    # T = 8
 
     y = torch.reshape(y, [N * T, 196])
 
@@ -281,6 +281,10 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
         raise ValueError("Invalid input_video_viz_dir")
     
     num_patches = 14
+    N = test_model_input.shape[0]
+    print("test_model_output.shape in decode_raw_predictoin: ", test_model_output.shape)
+    test_model_output = torch.reshape(test_model_output, [N, -1, 1024])
+    print("test_model_output.shape after reshape: ", test_model_output.shape)
     y = test_model_output.argmax(dim=-1)
     im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
 
