@@ -400,7 +400,7 @@ def main(args):
     start_time = time.time()
 
     combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
-
+    log_stats = {}
     print("args.start_epoch: ", args.start_epoch)
     for epoch in range(args.start_epoch, args.epochs):
 
@@ -463,6 +463,7 @@ def main(args):
                 
                 single_mean = run_evaluation_method(store_path, eval_name, davis_path)
                 log_stats["Davis_single_mean"] = single_mean
+                    
                 model.train()
 
         if misc.is_main_process():
@@ -471,13 +472,13 @@ def main(args):
             model.eval()
             try:
                 visualize_prompting(model, epoch, args.video_prompts_dir)
-            except:
-                print("Error in visualization.")
+            except Exception as e:
+                print("Error in visualization:", e)
             model.train()
         print("Done loop on epoch {}".format(epoch))
 
         if args.test_mode:
-            exit()
+            exit(0)
         ### End evaluation
 
     total_time = time.time() - start_time
