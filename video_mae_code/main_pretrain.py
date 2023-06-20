@@ -170,7 +170,7 @@ def get_args_parser():
     parser.add_argument("--decoder_embed_dim", default=512, type=int)
     parser.add_argument("--decoder_depth", default=4, type=int)
     parser.add_argument("--decoder_num_heads", default=16, type=int)
-    parser.add_argument("--t_patch_size", default=1, type=int)
+    parser.add_argument("--t_patch_size", default=2, type=int) #1, 2 
     parser.add_argument("--num_frames", default=16, type=int)
     parser.add_argument("--checkpoint_period", default=5, type=int)
     parser.add_argument("--sampling_rate", default=4, type=int)
@@ -224,8 +224,8 @@ def get_args_parser():
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
     parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
-    parser.add_argument('--video_dataset_list', nargs='+', default=["CrossTask", "kinetics", "Objectron", "SSV2", "UCF101"])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[8, 1, 1, 1, 1])
+    parser.add_argument('--video_dataset_list', nargs='+', default=["kinetics"])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
     parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
@@ -401,7 +401,6 @@ def main(args):
 
     combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
 
-    print("args.start_epoch: ", args.start_epoch)
     for epoch in range(args.start_epoch, args.epochs):
 
         if args.distributed:
@@ -447,32 +446,32 @@ def main(args):
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
 
-        if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
-            with torch.no_grad():
-                model.eval()
-                store_path = os.path.join(args.output_dir, "davis_segs")
-                if not os.path.exists(store_path):
-                    os.mkdir(store_path)
-                eval_name = "model_mae"
-                parent = Path(__file__).parent.absolute()
-                prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
-                davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                davis_path = args.davis_path
-                generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
-                print("Finished Saving Davis Eval Segmentations")
+        # if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
+        #     with torch.no_grad():
+        #         model.eval()
+        #         store_path = os.path.join(args.output_dir, "davis_segs")
+        #         if not os.path.exists(store_path):
+        #             os.mkdir(store_path)
+        #         eval_name = "model_mae"
+        #         parent = Path(__file__).parent.absolute()
+        #         prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
+        #         davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
+        #         davis_path = args.davis_path
+        #         generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
+        #         print("Finished Saving Davis Eval Segmentations")
                 
-                single_mean = run_evaluation_method(store_path, eval_name, davis_path)
-                log_stats["Davis_single_mean"] = single_mean
-                model.train()
+        #         single_mean = run_evaluation_method(store_path, eval_name, davis_path)
+        #         log_stats["Davis_single_mean"] = single_mean
+        #         model.train()
 
         if misc.is_main_process():
             if not args.test_mode:
                 wandb.log(log_stats)
             model.eval()
-            try:
-                visualize_prompting(model, epoch, args.video_prompts_dir)
-            except:
-                print("Error in visualization.")
+            # try:
+            visualize_prompting(model, epoch, args.video_prompts_dir)
+            # except:
+                # print("Error in visualization.")
             model.train()
         print("Done loop on epoch {}".format(epoch))
 

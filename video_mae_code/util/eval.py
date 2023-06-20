@@ -170,23 +170,32 @@ def reconstruct(mask, ground_truth, test_model_output):
 
 def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     N = orig_image.shape[0]
-    T = orig_image.shape[2]
+    # T = orig_image.shape[2]
+    T = 8
 
     y = torch.reshape(y, [N * T, 196])
 
     if type(model) is torch.nn.parallel.DistributedDataParallel:
         model = model.module
 
+    print("y.shape: ", y.shape)
     y = model.vae.quantize.get_codebook_entry(y.reshape(-1),
                                               [y.shape[0], y.shape[-1] // num_patches, y.shape[-1] // num_patches, -1])
+    print("y.shape: ", y.shape)
     y = model.vae.decode(y)
+    print("y.shape: ", y.shape)
     y = F.interpolate(y, size=(224, 224), mode='bilinear').permute(0, 2, 3, 1)
+    print("y.shape: ", y.shape)
     y = torch.clip(y * 255, 0, 255).int().detach().cpu()
     mask = mask.unsqueeze(-1).repeat(1, 1, model.patch_embed.patch_size[0] ** 2 * 3)
 
     #patchify to get self.patch_info
+    print("orig_image.shape: ", orig_image.shape)
+    img_store = model.patch_embed(orig_image)
+    print("img_store.shape: ", img_store.shape)
     _ = model.patchify(orig_image)
 
+    print("mask.shape: ", mask.shape)
     mask = model.unpatchify(mask)  # 1 is removing, 0 is keeping
 
     orig_image = orig_image.permute(2, 0, 1, 3, 4)
@@ -208,10 +217,10 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
 
 @torch.no_grad()
 def visualize_prompting(model, epoch, test_cases_folder):
-    visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "test_images/"))
+    # visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "test_images/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "random_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "temporally_masked_videos/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_videos/"))
+    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"))
     # visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "view_videos/")) # TODO
 
@@ -262,7 +271,7 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
         _, test_model_output, mask = model(test_model_input)
     elif "temporally_masked_videos" in input_video_viz_dir:
         _, test_model_output, mask = model(test_model_input, test_temporal=True)
-    elif "spatiotemporally_masked_videos" in input_video_viz_dir:
+    elif "spatiotemporally_masked_1_video" in input_video_viz_dir:
         _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
     elif "spatiotemporally_masked_2_videos" in input_video_viz_dir:
         _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
