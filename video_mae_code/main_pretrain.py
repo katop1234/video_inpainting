@@ -46,10 +46,9 @@ def get_args_parser():
     
     #Training
     parser.add_argument(
-        "--cont_pretrain",
-        default=True,
-        type=bool,
-        help="True to continue from previous optmizer and epoch, False otherwise. ",
+        "--no_cont_pretrain",
+        action='store_true',
+        help="Provide for restarting the optimizer and epoch count",
     )
 
     # Model parameters
@@ -225,11 +224,11 @@ def get_args_parser():
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
     parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
-    parser.add_argument('--video_dataset_list', nargs='+', default=["CrossTask", "kinetics", "Objectron", "SSV2"])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[1, 7, 1, 1])
+    parser.add_argument('--video_dataset_list', nargs='+', default=["CrossTask", "kinetics", "Objectron", "SSV2", "UCF101"])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[8, 1, 1, 1, 1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
-    parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
+    parser.add_argument('--eval_freq', default=5, help='frequency of computing davis eval metrics')
     parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
                                                    'ImageSets, Annotations_unsupervised folders',
                     default='/shared/dannyt123/Datasets/DAVIS')
@@ -320,6 +319,7 @@ def main(args):
     else:
         data_loader_video_train = None
 
+
     # define the model
     model = models_mae.__dict__[args.model](
         **vars(args),
@@ -400,7 +400,8 @@ def main(args):
     start_time = time.time()
 
     combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
-
+    log_stats = {}
+    print("args.start_epoch: ", args.start_epoch)
     for epoch in range(args.start_epoch, args.epochs):
 
         if args.distributed:
@@ -446,7 +447,7 @@ def main(args):
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
 
-        if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
+        if epoch % int(args.eval_freq) == 0 and misc.is_main_process():
             with torch.no_grad():
                 model.eval()
                 store_path = os.path.join(args.output_dir, "davis_segs")
@@ -462,6 +463,7 @@ def main(args):
                 
                 single_mean = run_evaluation_method(store_path, eval_name, davis_path)
                 log_stats["Davis_single_mean"] = single_mean
+                    
                 model.train()
 
         if misc.is_main_process():
@@ -470,13 +472,13 @@ def main(args):
             model.eval()
             try:
                 visualize_prompting(model, epoch, args.video_prompts_dir)
-            except:
-                print("Error loading video.")
+            except Exception as e:
+                print("Error in visualization:", e)
             model.train()
         print("Done loop on epoch {}".format(epoch))
 
         if args.test_mode:
-            exit()
+            exit(0)
         ### End evaluation
 
     total_time = time.time() - start_time
