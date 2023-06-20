@@ -447,7 +447,7 @@ def main(args):
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
 
-        if epoch % args.eval_freq == 0 and misc.is_main_process():
+        if epoch % int(args.eval_freq) == 0 and misc.is_main_process():
             with torch.no_grad():
                 model.eval()
                 store_path = os.path.join(args.output_dir, "davis_segs")
