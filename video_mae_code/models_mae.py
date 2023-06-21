@@ -117,7 +117,6 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.norm = norm_layer(embed_dim)
         self.vae = get_vq_model().eval() 
-        # vocab_size = 1024
         vocab_size = 1024 * self.patch_embed.t_patch_size 
         # --------------------------------------------------------------------------
 
