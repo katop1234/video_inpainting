@@ -252,21 +252,19 @@ class MaskedAutoencoderViT(nn.Module):
         Per-sample shuffling is done by argsort random noise.
         x: [N, L, D], sequence
         """
-        print("x.shape: ", x.shape)
         N, L, D = x.shape  # batch, length, dim
 
-        if L == 14 ** 2 * 16:
+        if L == 14 ** 2 * 8: #self.patch_embed.t_grid_size
             # video
             mask_ratio = mask_ratio_video
             pass 
-        elif L == 14 ** 2 * 1:
+        elif L == 14 ** 2 * 1: #Maybe
+            #image
             mask_ratio = mask_ratio_image
-            # image
             pass
         else:
-            # print("L is not 3136 (video) or 196 (image)")
-            # raise NotImplementedError
-            mask_ratio = mask_ratio_video #added
+            print("Invalid tensor size")
+            raise NotImplementedError
 
         len_keep = int(L * (1 - mask_ratio))
 
@@ -338,7 +336,7 @@ class MaskedAutoencoderViT(nn.Module):
         """
         N, L, D = x.shape  # batch, length, dim
 
-        # assert L == 196 * 16, "This only works for L = 196 * 16 (video)"
+        assert L == 196 * self.patch_embed.t_grid_size, "This only works for L = 196 * 16 (video)"
 
         F, H, W = self.patch_embed.t_grid_size, 14, 14  # F is the number of frames
 
@@ -347,7 +345,7 @@ class MaskedAutoencoderViT(nn.Module):
         for frame in range(F):
             for row in range(H):
                 for col in range(W):
-                    if frame > (F - 8):
+                    if frame > (F // 2):
                         mask[:, frame * H * W + row * W + col] = 1
 
         # Apply the mask to the input tensor
@@ -433,21 +431,6 @@ class MaskedAutoencoderViT(nn.Module):
             raise NotImplementedError
         else:
             raise NotImplementedError("Invalid mode.")
-            
-        # Check if output is for a video tensor (torch.Size([4, 3136, 1024]))
-        # 3136 = 14 ** 2 * 16
-        # 196 = 14 ** 2 * 1
-
-        # if x.shape[1:] == torch.Size([int(3136*(1-mask_ratio_video)), 1024]) and mask.shape[1:] == torch.Size([3136]):
-        #     # Valid video tensor
-        #     pass
-        # elif x.shape[1:] == torch.Size([int(196*(1-mask_ratio_image)), 1024]) and mask.shape[1:] == torch.Size([196]):
-        #     # Valid image tensor
-        #     pass
-        # else:
-        #     if pretraining_mode:
-        #         raise ValueError("The output tensor shapes do not match expected shapes for video or image tensors.")
-        #added, commented out
 
         x = x.view(N, -1, C)
 
@@ -463,7 +446,7 @@ class MaskedAutoencoderViT(nn.Module):
                 1, self.input_size[0], 1
             ) 
             
-            if ids_keep.shape[1] == (1 - mask_ratio_video) * 3136 or test_temporal or test_spatiotemporal:
+            if T == 8 or test_temporal or test_spatiotemporal:
                 #Add Temporal Embedding for Videos, Not for Images
                 pos_embed += torch.repeat_interleave(
                     self.pos_embed_temporal,
@@ -561,7 +544,7 @@ class MaskedAutoencoderViT(nn.Module):
                 1, self.input_size[0], 1
             )
 
-            if x.shape[1] == 1 + (14 ** 2) * 16:
+            if x.shape[1] == 1 + (14 ** 2) * 8:
                 # Add Temporal Embedding for Video only
                 decoder_pos_embed += torch.repeat_interleave(
                     self.decoder_pos_embed_temporal,
@@ -582,17 +565,15 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             decoder_pos_embed = self.decoder_pos_embed[:, :, :]
 
-        if x.shape[1] == 1 + 14 ** 2: # image
+        if x.shape[1] == 1 + 14 ** 2 * 1: # image
             # Create a range tensor for indexing
             index_range = torch.arange(0, 197, device=x.device).view(1, -1)
             x[:, :197] = x[:, :197] + decoder_pos_embed[:, index_range]
-        elif x.shape[1] == 1 + (14 ** 2) * 16: # video
+        elif x.shape[1] == 1 + (14 ** 2) * 8: # video
             x = x + decoder_pos_embed
         else:
-            #added
-            x = x + decoder_pos_embed
-            # print("got bad x shape when adding decoder pos emb", x.shape)
-            # raise NotImplementedError 
+            print("got bad x shape when adding decoder pos emb", x.shape)
+            raise NotImplementedError 
     
         attn = self.decoder_blocks[0].attn
         requires_t_shape = hasattr(attn, "requires_t_shape") and attn.requires_t_shape
@@ -645,7 +626,7 @@ class MaskedAutoencoderViT(nn.Module):
         N = _imgs.shape[0]
         T = _imgs.shape[2]
 
-        with torch.no_grad():         
+        with torch.no_grad():  
             _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
             target = self.vae.get_codebook_indices(_imgs).flatten(1)
             target = torch.reshape(target, [N, T * 196])
@@ -663,13 +644,7 @@ class MaskedAutoencoderViT(nn.Module):
             imgs = imgs.repeat(1, 1, repeat, 1, 1)
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
-        
-        #added
-        mask = torch.reshape(mask, [-1, 14, 14])
-        mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=0)
-        mask = torch.flatten(mask, start_dim=1)
-        mask = torch.reshape(mask, [1, -1])
-        print("mask.shape: ", mask.shape)
+        mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
         
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask

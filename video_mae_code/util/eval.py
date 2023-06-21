@@ -171,31 +171,28 @@ def reconstruct(mask, ground_truth, test_model_output):
 def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     N = orig_image.shape[0]
     T = orig_image.shape[2]
-    # T = 8
 
+    if T == 1: #Image
+        repeat = model.patch_embed.t_patch_size
+        orig_image = orig_image.repeat(1, 1, repeat, 1, 1)
+        T = repeat
+    
     y = torch.reshape(y, [N * T, 196])
 
     if type(model) is torch.nn.parallel.DistributedDataParallel:
         model = model.module
 
-    print("y.shape: ", y.shape)
     y = model.vae.quantize.get_codebook_entry(y.reshape(-1),
                                               [y.shape[0], y.shape[-1] // num_patches, y.shape[-1] // num_patches, -1])
-    print("y.shape: ", y.shape)
     y = model.vae.decode(y)
-    print("y.shape: ", y.shape)
     y = F.interpolate(y, size=(224, 224), mode='bilinear').permute(0, 2, 3, 1)
-    print("y.shape: ", y.shape)
     y = torch.clip(y * 255, 0, 255).int().detach().cpu()
     mask = mask.unsqueeze(-1).repeat(1, 1, model.patch_embed.patch_size[0] ** 2 * 3)
 
     #patchify to get self.patch_info
-    print("orig_image.shape: ", orig_image.shape)
-    img_store = model.patch_embed(orig_image)
-    print("img_store.shape: ", img_store.shape)
+    # img_store = model.patch_embed(orig_image)
     _ = model.patchify(orig_image)
 
-    print("mask.shape: ", mask.shape)
     mask = model.unpatchify(mask)  # 1 is removing, 0 is keeping
 
     orig_image = orig_image.permute(2, 0, 1, 3, 4)
@@ -217,7 +214,7 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
 
 @torch.no_grad()
 def visualize_prompting(model, epoch, test_cases_folder):
-    # visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "test_images/"))
+    visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "test_images/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "random_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "temporally_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"))
@@ -244,10 +241,13 @@ def visualize_image_prompting(model, epoch, input_image_viz_dir):
         _, test_model_output, mask = model(test_model_input, test_image=True)
 
         num_patches = 14
+        N = test_model_input.shape[0]
+        test_model_output = torch.reshape(test_model_output, [N, -1, 1024])
         y = test_model_output.argmax(dim=-1)
         im_paste, _, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
         im_paste = im_paste.squeeze()
         im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+        im_paste = im_paste[0]
 
         img_file = os.path.basename(os.path.normpath(img_file))
         img_file = os.path.basename(os.path.normpath(img_file))
@@ -282,9 +282,7 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
     
     num_patches = 14
     N = test_model_input.shape[0]
-    print("test_model_output.shape in decode_raw_predictoin: ", test_model_output.shape)
     test_model_output = torch.reshape(test_model_output, [N, -1, 1024])
-    print("test_model_output.shape after reshape: ", test_model_output.shape)
     y = test_model_output.argmax(dim=-1)
     im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
 
