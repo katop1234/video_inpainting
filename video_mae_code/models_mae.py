@@ -207,10 +207,10 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.decoder_blocks = nn.ModuleList([RINBlockVIP(self.decoder_dim, 
                                                          dim_latent = self.decoder_dim_latent, 
-                                                         process_depth = self.process_depth, 
+                                                         latent_self_attn_depth = self.process_depth, 
                                                          heads = self.decoder_MHA_heads,
-                                                         read_depth=self.read_depth,
-                                                         write_depth=self.write_depth,
+                                                         #read_depth=self.read_depth,
+                                                         #write_depth=self.write_depth,
                                                          ).cuda() for _ in range(self.decoder_depth)])
         
         self.decoder_latents = nn.Parameter(torch.randn(self.decoder_num_latents, self.decoder_dim_latent))

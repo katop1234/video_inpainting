@@ -178,24 +178,30 @@ class RINBlockVIP(nn.Module):
     def __init__(
         self,
         dim,
-        process_depth=2,
+        latent_self_attn_depth,
         dim_latent = None,
         final_norm = True,
-        heads=16,
-        read_depth=1,
-        write_depth=1,
+        heads = 16,
         **attn_kwargs
     ):
         super().__init__()
         dim_latent = rin.default(dim_latent, dim)
 
-        self.latents_attend_to_patches = rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, **attn_kwargs)
+        self.latents_attend_to_patches = rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, norm_context = True, **attn_kwargs)
         self.latents_cross_attn_ff = rin.FeedForward(dim_latent)
 
-        self.latent_self_attns = rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs)
-        self.latent_self_attns_ff = rin.FeedForward(dim_latent)
+        self.latent_self_attns = nn.ModuleList([])
+        for _ in range(latent_self_attn_depth):
+            self.latent_self_attns.append(nn.ModuleList([
+                rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs),
+                rin.FeedForward(dim_latent)
+            ]))
 
         self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
+
+        # self.patches_peg = rin.PEG(dim)
+        # self.patches_self_attn = rin.SelfAttention(dim, norm = True, **attn_kwargs)
+        # self.patches_self_attn_ff = rin.FeedForward(dim)
 
         self.patches_attend_to_latents = rin.CrossAttention(dim, dim_context = dim_latent, heads = heads, norm = True, norm_context = True, **attn_kwargs)
         self.patches_cross_attn_ff = rin.FeedForward(dim)
@@ -204,29 +210,35 @@ class RINBlockVIP(nn.Module):
         self.counter = 0  # Add this line to initialize your counter
         self.print_frequency = 100 # Change this to control how often the similarities are printed
 
-        self.read_depth = read_depth
-        self.process_depth = process_depth
-        self.write_depth = write_depth
-
     def forward(self, patches, latents):
+        # NOTE if you want to add back the positional embedding, you can keep it simple by having the
+        # same learned one added to the interface in each r/p/w block. that way its not that many new
+        # parameters, and it can still learn things properly.
+        # patches = self.patches_peg(patches) + patches # Commented out pos emb for now
+        
         # Store a copy of the current vectors to do dot product later with
         latents_previous = latents.clone().detach()
         patches_previous = patches.clone().detach()
         
         # latents extract or cluster information from the patches
-        for _ in range(self.read_depth):
-            latents = self.latents_attend_to_patches(latents, patches) + latents
-            latents = self.latents_cross_attn_ff(latents) + latents
+        latents = self.latents_attend_to_patches(latents, patches) + latents
+        latents = self.latents_cross_attn_ff(latents) + latents
 
         # latent self attention
-        for _ in range(self.process_depth):
-            latents = self.latent_self_attns(latents) + latents
-            latents = self.latent_self_attns_ff(latents) + latents
 
-        # additional cross attention layers
-        for _ in range(self.write_depth):
-            patches = self.patches_attend_to_latents(patches, latents) + patches
-            patches = self.patches_cross_attn_ff(patches) + patches
+        for attn, ff in self.latent_self_attns:
+            latents = attn(latents) + latents
+            latents = ff(latents) + latents
+
+        # additional patches self attention with linear attention
+        
+        # patches = self.patches_self_attn(patches) + patches # idk why RIN had this
+        # patches = self.patches_self_attn_ff(patches) + patches
+
+        # patches attend to the latents
+
+        patches = self.patches_attend_to_latents(patches, latents) + patches
+        patches = self.patches_cross_attn_ff(patches) + patches
         
         # Calculate and print the dot product/similarity between the current and previous patches
         if self.counter % self.print_frequency == 0:
