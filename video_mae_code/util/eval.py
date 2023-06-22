@@ -211,7 +211,7 @@ def visualize_prompting(model, epoch, test_cases_folder):
     visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "test_images/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "random_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "temporally_masked_videos/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_videos/"))
+    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"))
     # visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "view_videos/")) # TODO
 
@@ -262,7 +262,7 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
         _, test_model_output, mask = model(test_model_input)
     elif "temporally_masked_videos" in input_video_viz_dir:
         _, test_model_output, mask = model(test_model_input, test_temporal=True)
-    elif "spatiotemporally_masked_videos" in input_video_viz_dir:
+    elif "spatiotemporally_masked_1_video" in input_video_viz_dir:
         _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
     elif "spatiotemporally_masked_2_videos" in input_video_viz_dir:
         _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
@@ -298,3 +298,4 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
         format="mp4"
     )
     wandb.log({output_video_title: wandb_video_object})
+    
