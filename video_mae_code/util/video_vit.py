@@ -189,16 +189,16 @@ class RINBlockVIP(nn.Module):
         super().__init__()
         dim_latent = rin.default(dim_latent, dim)
 
-        self.read_attn = rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, **attn_kwargs)
-        self.read_ff = rin.FeedForward(dim_latent)
+        self.latents_attend_to_patches = rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, **attn_kwargs)
+        self.latents_cross_attn_ff = rin.FeedForward(dim_latent)
 
-        self.process_attn = rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs)
-        self.process_ff = rin.FeedForward(dim_latent)
+        self.latent_self_attns = rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs)
+        self.latent_self_attns_ff = rin.FeedForward(dim_latent)
 
         self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
 
-        self.write_attn = rin.CrossAttention(dim, dim_context = dim_latent, heads = heads, norm = True, norm_context = True, **attn_kwargs)
-        self.write_ff = rin.FeedForward(dim)
+        self.patches_attend_to_latents = rin.CrossAttention(dim, dim_context = dim_latent, heads = heads, norm = True, norm_context = True, **attn_kwargs)
+        self.patches_cross_attn_ff = rin.FeedForward(dim)
         
         # How often to print statistics
         self.counter = 0  # Add this line to initialize your counter
@@ -215,18 +215,18 @@ class RINBlockVIP(nn.Module):
         
         # latents extract or cluster information from the patches
         for _ in range(self.read_depth):
-            latents = self.read_attn(latents, patches) + latents
-            latents = self.read_ff(latents) + latents
+            latents = self.latents_attend_to_patches(latents, patches) + latents
+            latents = self.latents_cross_attn_ff(latents) + latents
 
         # latent self attention
         for _ in range(self.process_depth):
-            latents = self.process_attn(latents) + latents
-            latents = self.process_ff(latents) + latents
+            latents = self.latent_self_attns(latents) + latents
+            latents = self.latent_self_attns_ff(latents) + latents
 
         # additional cross attention layers
         for _ in range(self.write_depth):
-            patches = self.write_attn(patches, latents) + patches
-            patches = self.write_ff(patches) + patches
+            patches = self.patches_attend_to_latents(patches, latents) + patches
+            patches = self.patches_cross_attn_ff(patches) + patches
         
         # Calculate and print the dot product/similarity between the current and previous patches
         if self.counter % self.print_frequency == 0:

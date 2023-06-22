@@ -120,7 +120,7 @@ class SelfAttention(nn.Module):
 
             nn.init.zeros_(self.time_cond[-2].weight)
             nn.init.zeros_(self.time_cond[-2].bias)
-
+        
         self.norm = LayerNorm(dim) if norm else nn.Identity()
 
         self.to_qkv = nn.Linear(dim, hidden_dim * 3, bias = True)
@@ -193,6 +193,7 @@ class CrossAttention(nn.Module):
         self.heads = heads
 
         self.norm = LayerNorm(dim) if norm else nn.Identity()
+
         self.norm_context = LayerNorm(dim_context) if norm_context else nn.Identity()
 
         self.to_q = nn.Linear(dim, hidden_dim, bias = True)
