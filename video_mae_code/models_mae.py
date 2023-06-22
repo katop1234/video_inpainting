@@ -591,6 +591,8 @@ class MaskedAutoencoderViT(nn.Module):
 
         mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2) # quantizes it 
         mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it 
+        
+        print("got x.shape", x.shape)
 
         if x.shape[1] == 14 ** 2 * (1 - mask_ratio_image) * 1 or x.shape[1] == 14 ** 2 * (0.75) * 1: # image and image test. functionally the same
             T = 1 
@@ -673,7 +675,6 @@ class MaskedAutoencoderViT(nn.Module):
 
         for blk in self.decoder_blocks:
             x = blk(x)
-        x = self.norm(x)
         
         ### RIN Implementation below
         
