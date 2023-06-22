@@ -51,7 +51,7 @@ class PatchEmbed(nn.Module):
 
         self.grid_size = img_size[0] // patch_size[0]
         self.t_grid_size = frames // t_patch_size
-        
+
         self.embed_dim = embed_dim
 
         kernel_size = [t_patch_size] + list(patch_size) # 1, 16, 16
@@ -170,3 +170,81 @@ class Block(nn.Module):
         x = x + self.drop_path(self.attn(self.norm1(x)))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
+    
+### Instant-Attention Implementation below ###
+
+    
+### RIN Implementation below ###
+import util.rin as rin
+
+class InstantAttnBlock(nn.Module):
+    def __init__(self):
+        return 
+    
+    def forward(self, patches):
+        return patches
+    
+
+class RINBlockVIP(nn.Module):
+    def __init__(
+        self,
+        dim,
+        process_depth=2,
+        dim_latent = None,
+        final_norm = True,
+        heads=16,
+        read_depth=1,
+        write_depth=1,
+        **attn_kwargs
+    ):
+        super().__init__()
+        dim_latent = rin.default(dim_latent, dim)
+
+        self.read_attn = rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, **attn_kwargs)
+        self.read_ff = rin.FeedForward(dim_latent)
+
+        self.process_attn = rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs)
+        self.process_ff = rin.FeedForward(dim_latent)
+
+        self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
+
+        self.write_attn = rin.CrossAttention(dim, dim_context = dim_latent, heads = heads, norm = True, norm_context = True, **attn_kwargs)
+        self.write_ff = rin.FeedForward(dim)
+        
+        # How often to print statistics
+        self.counter = 0  # Add this line to initialize your counter
+        self.print_frequency = 100 # Change this to control how often the similarities are printed
+
+        self.read_depth = read_depth
+        self.process_depth = process_depth
+        self.write_depth = write_depth
+
+    def forward(self, patches, latents):
+        # Store a copy of the current vectors to do dot product later with
+        latents_previous = latents.clone().detach()
+        patches_previous = patches.clone().detach()
+        
+        # latents extract or cluster information from the patches
+        for _ in range(self.read_depth):
+            latents = self.read_attn(latents, patches) + latents
+            latents = self.read_ff(latents) + latents
+
+        # latent self attention
+        for _ in range(self.process_depth):
+            latents = self.process_attn(latents) + latents
+            latents = self.process_ff(latents) + latents
+
+        # additional cross attention layers
+        for _ in range(self.write_depth):
+            patches = self.write_attn(patches, latents) + patches
+            patches = self.write_ff(patches) + patches
+        
+        # Calculate and print the dot product/similarity between the current and previous patches
+        if self.counter % self.print_frequency == 0:
+            similarity = torch.sum(latents * latents_previous) / (torch.norm(latents) * torch.norm(latents_previous))
+            similarity_patches = torch.sum(patches * patches_previous) / (torch.norm(patches) * torch.norm(patches_previous))
+            print('Latent vector similarity: ', similarity.item(), 'Patch vector similarity: ', similarity_patches.item())
+        self.counter += 1
+        
+        latents = self.latent_final_norm(latents)
+        return patches, latents
