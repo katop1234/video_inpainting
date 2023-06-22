@@ -446,32 +446,29 @@ def main(args):
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
 
-        # if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
-        #     with torch.no_grad():
-        #         model.eval()
-        #         store_path = os.path.join(args.output_dir, "davis_segs")
-        #         if not os.path.exists(store_path):
-        #             os.mkdir(store_path)
-        #         eval_name = "model_mae"
-        #         parent = Path(__file__).parent.absolute()
-        #         prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
-        #         davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-        #         davis_path = args.davis_path
-        #         generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
-        #         print("Finished Saving Davis Eval Segmentations")
+        if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
+            with torch.no_grad():
+                model.eval()
+                store_path = os.path.join(args.output_dir, "davis_segs")
+                if not os.path.exists(store_path):
+                    os.mkdir(store_path)
+                eval_name = "model_mae"
+                parent = Path(__file__).parent.absolute()
+                prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
+                davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
+                davis_path = args.davis_path
+                generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
+                print("Finished Saving Davis Eval Segmentations")
                 
-        #         single_mean = run_evaluation_method(store_path, eval_name, davis_path)
-        #         log_stats["Davis_single_mean"] = single_mean
-        #         model.train()
+                single_mean = run_evaluation_method(store_path, eval_name, davis_path)
+                log_stats["Davis_single_mean"] = single_mean
+                model.train()
 
         if misc.is_main_process():
             if not args.test_mode:
                 wandb.log(log_stats)
             model.eval()
-            # try:
             visualize_prompting(model, epoch, args.video_prompts_dir)
-            # except:
-                # print("Error in visualization.")
             model.train()
         print("Done loop on epoch {}".format(epoch))
 

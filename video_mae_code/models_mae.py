@@ -67,15 +67,6 @@ class MaskedAutoencoderViT(nn.Module):
 
         # --------------------------------------------------------------------------
         # MAE encoder specifics
-        self.patch_embed = patch_embed(
-            img_size,  # 224
-            patch_size, # 16
-            in_chans, # 3
-            embed_dim, # 1024
-            num_frames, # 16
-            t_patch_size, # 2
-        )
-        
         self.patch_embed_image = patch_embed_image(
             img_size, # 224
             patch_size, # 16
@@ -83,6 +74,15 @@ class MaskedAutoencoderViT(nn.Module):
             embed_dim, # 1024
             num_frames, # 16
             t_patch_size_image, #1
+        )
+        
+        self.patch_embed = patch_embed(
+            img_size,  # 224
+            patch_size, # 16
+            in_chans, # 3
+            embed_dim, # 1024
+            num_frames, # 16
+            t_patch_size, # 2
         )
 
         num_patches = self.patch_embed.num_patches
@@ -267,13 +267,14 @@ class MaskedAutoencoderViT(nn.Module):
         x: [N, L, D], sequence
         """
         N, L, D = x.shape  # batch, length, dim
+        print("x.shape: ", x.shape)
 
         if L == 14 ** 2 * self.patch_embed.t_grid_size: #8
             # print("mask_ratio for video")
             # video
             mask_ratio = mask_ratio_video
             pass 
-        elif L == 14 ** 2 * 1: #Maybe
+        elif L == 14 ** 2 * 1: #1
             # print("mask_ratio for image")
             #image
             mask_ratio = mask_ratio_image
@@ -427,7 +428,11 @@ class MaskedAutoencoderViT(nn.Module):
             pretraining_mode = False
 
         # x .shape ==  (B, C, T, H, W). For image T == 1, for video T > 1
-        x = self.patch_embed(x)
+        print("x.shape: ", x.shape)
+        if x.shape[2] == 16:
+            x = self.patch_embed(x)
+        else:
+            x = self.patch_embed_image(x)
         N, T, L, C = x.shape
         x = x.view(N, T * L, C)
 
@@ -671,7 +676,7 @@ class MaskedAutoencoderViT(nn.Module):
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         
-        if imgs.shape[2] == self.patch_embed.num_frames: #image
+        if imgs.shape[2] == self.patch_embed.frames: #video
             mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
         
         loss = self.forward_loss(imgs, pred, mask)
