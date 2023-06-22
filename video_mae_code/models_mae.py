@@ -196,14 +196,14 @@ class MaskedAutoencoderViT(nn.Module):
         # nn.init.zeros_(self.init_self_cond_latents[-1].gamma)
         
         # Decoder
-        self.decoder_dim = 1024 # dimension of the input feature space (embed_dim)
+        self.decoder_dim = 512 # dimension of the input feature space (embed_dim)
         self.decoder_dim_latent = self.decoder_dim # can just keep it same as dim
         self.decoder_num_latents = 56 # sqrt(16 * 14 * 14) = sqrt(3136) = 56
-        self.read_depth = 4
+        self.read_depth = 1
         self.process_depth = 4 # number of self-attention layers in the latent space.
-        self.write_depth = 2
-        self.decoder_MHA_heads = 4
-        self.decoder_depth = 5 # Num of RIN blocks
+        self.write_depth = 1
+        self.decoder_MHA_heads = 16
+        self.decoder_depth = 8 # Num of RIN blocks
         
         self.decoder_blocks = nn.ModuleList([RINBlockVIP(self.decoder_dim, 
                                                          dim_latent = self.decoder_dim_latent, 
