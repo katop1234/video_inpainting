@@ -380,7 +380,6 @@ def main(args):
     loss_scaler = NativeScaler(fp32=args.fp32)
 
     print("loading model")
-
     _ = misc.load_model(
         args=args,
         model_without_ddp=model_without_ddp,
@@ -388,12 +387,12 @@ def main(args):
         loss_scaler=loss_scaler,
     )
 
-
     if misc.is_main_process():
         wandb_config = vars(args)
         base_lr = (args.lr * 256 / eff_batch_size)
         wandb_config['base_lr'] = base_lr
         wandb.init(
+            resume=True,
             project="video_inpainting2",
             config=wandb_config)
 
