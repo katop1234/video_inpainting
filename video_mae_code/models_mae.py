@@ -38,7 +38,9 @@ class MaskedAutoencoderViT(nn.Module):
         norm_layer=nn.LayerNorm,
         norm_pix_loss=False,
         num_frames=16,
+        t_patch_size_image=1,
         t_patch_size=2,
+        patch_embed_image=video_vit.PatchEmbed, 
         patch_embed=video_vit.PatchEmbed,
         no_qkv_bias=False,
         sep_pos_embed=True,
@@ -72,6 +74,15 @@ class MaskedAutoencoderViT(nn.Module):
             embed_dim, # 1024
             num_frames, # 16
             t_patch_size, # 2
+        )
+        
+        self.patch_embed_image = patch_embed_image(
+            img_size, # 224
+            patch_size, # 16
+            in_chans, # 3
+            embed_dim, # 1024
+            num_frames, # 16
+            t_patch_size_image, #1
         )
 
         num_patches = self.patch_embed.num_patches
@@ -117,7 +128,7 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.norm = norm_layer(embed_dim)
         self.vae = get_vq_model().eval() 
-        vocab_size = 1024 * self.patch_embed.t_patch_size 
+        vocab_size = 1024 
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
@@ -162,7 +173,8 @@ class MaskedAutoencoderViT(nn.Module):
         )
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
-        self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
+        self.decoder_pred_image = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
+        self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size * self.patch_embed.t_patch_size, bias=True)
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
@@ -187,11 +199,14 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             torch.nn.init.trunc_normal_(self.pos_embed, std=0.02)
             torch.nn.init.trunc_normal_(self.decoder_pos_embed, std=0.02)
+        w_image = self.patch_embed_image.proj.weight.data
         w = self.patch_embed.proj.weight.data
         if self.trunc_init:
+            torch.nn.init_trunc_normal_(w_image)
             torch.nn.init.trunc_normal_(w)
             torch.nn.init.trunc_normal_(self.mask_token, std=0.02)
         else:
+            torch.nn.init.xavier_uniform_(w_image.view([w.shape[0], -1]))
             torch.nn.init.xavier_uniform_(w.view([w.shape[0], -1]))
             torch.nn.init.normal_(self.mask_token, std=0.02)
 
@@ -594,7 +609,10 @@ class MaskedAutoencoderViT(nn.Module):
         x = self.decoder_norm(x)
 
         # predictor projection
-        x = self.decoder_pred(x) # Linear into correct patchified dimensions
+        if x.shape[1] == 1 + (14 ** 2) * self.patch_embed.t_grid_size: #8
+            x = self.decoder_pred(x) # Linear into correct patchified dimensions
+        else:
+            x = self.decoder_pred_image(x)
         
         if requires_t_shape:
             x = x.view([N, T * H * W, -1])
@@ -646,12 +664,15 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
         self.vae.eval()
-        if imgs.shape[2] == 1: #images
-            repeat = self.patch_embed.t_patch_size
-            imgs = imgs.repeat(1, 1, repeat, 1, 1)
+        # if imgs.shape[2] == 1: #images
+        #     repeat = self.patch_embed.t_patch_size
+        #     imgs = imgs.repeat(1, 1, repeat, 1, 1)
+        
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
-        mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
+        
+        if imgs.shape[2] == self.patch_embed.num_frames: #image
+            mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
         
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
