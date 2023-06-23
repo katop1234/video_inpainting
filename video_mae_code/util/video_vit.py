@@ -229,6 +229,7 @@ class InstantAttnBlock(nn.Module):
         return module_list
     
     def create_hierarchy_pos_embds(self):
+        # TODO rewrite this function once getting actual hierarchy is fixed
         module_list = nn.ModuleList()
 
         # Iterate over each power of 2, up to context_length // 2
@@ -342,7 +343,8 @@ class InstantAttnBlock(nn.Module):
         K = ...
         Q = ...
         V = ...
-
+        
+        # TODO what is this supposed to output?
         for layer in self.layers:
             x = layer(x) + x
         
