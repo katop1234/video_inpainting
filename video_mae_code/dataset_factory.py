@@ -57,6 +57,8 @@ def get_dataset(name, root_path, ds_type):
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron/")
         elif name == "SSV2":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos/") 
+        elif name == "UCF101":
+            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/UCF101/") 
         else:
             raise NotImplementedError()
     else:

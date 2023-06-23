@@ -99,9 +99,9 @@ class Kinetics(torch.utils.data.Dataset):
         self.jitter_aspect_relative = jitter_aspect_relative
         self.jitter_scales_relative = jitter_scales_relative
 
-        print(
-            f"jitter_aspect_relative {jitter_aspect_relative} jitter_scales_relative {jitter_scales_relative}"
-        )
+        # print(
+        #     f"jitter_aspect_relative {jitter_aspect_relative} jitter_scales_relative {jitter_scales_relative}"
+        # )
 
         self._repeat_aug = repeat_aug
         self._video_meta = {}
@@ -139,14 +139,14 @@ class Kinetics(torch.utils.data.Dataset):
         elif self.mode in ["test"]:
             self._num_clips = test_num_ensemble_views * test_num_spatial_crops
 
-        print("Constructing Kinetics {}...".format(mode))
+        # print("Constructing Kinetics {}...".format(mode))
         self._construct_loader()
         if self.mode in ["pretrain", "val", "test"]:
             self.rand_aug = False
-            print("Perform standard augmentation")
+            # print("Perform standard augmentation")
         else:
             self.rand_aug = rand_aug
-            print("Perform rand augmentation")
+            # print("Perform rand augmentation")
         self.use_temporal_gradient = False
         self.temporal_gradient_rate = 0.0
 

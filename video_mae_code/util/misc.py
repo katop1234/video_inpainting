@@ -404,7 +404,11 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
             if "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
             print("With optim & sched!")
+<<<<<<< HEAD
         elif (args.no_cont_pretrain):
+=======
+        elif args.no_cont_pretrain:
+>>>>>>> kinetics_full_run
             args.start_epoch = 0
             
     return args.resume
