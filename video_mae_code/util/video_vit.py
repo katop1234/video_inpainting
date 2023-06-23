@@ -173,15 +173,26 @@ class Block(nn.Module):
     
 ### Instant-Attention Implementation below ###
 
-    
 ### RIN Implementation below ###
 import util.rin as rin
 
 class InstantAttnBlock(nn.Module):
-    def __init__(self):
+    def __init__(self, dim):
+        self.dim = dim
+        
+        self.hierarchy = self.get_hierarchy()
+        
+        
         return 
     
+    def get_hierarchy(self):
+        
+        return
+    
     def forward(self, patches):
+        
+        
+        
         return patches
     
 
