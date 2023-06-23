@@ -174,26 +174,49 @@ class Block(nn.Module):
 ### Instant-Attention Implementation below ###
 
 ### RIN Implementation below ###
-import util.rin as rin
+import util.rin as rin, math
 
 class InstantAttnBlock(nn.Module):
-    def __init__(self, dim=1024, context_length=1024, seeker_depth=4):
+    def __init__(self, dim=1024, context_length=1024, seeker_depth=4, object_dimensionality=1):
+        
+        '''
+        object_dimensionality: 1 for 1D text/audio, 2 for 2D images, 3 for 3D video, etc.
+        '''
+        
         self.dim = dim
         self.context_length = context_length
         self.seeker_depth = seeker_depth
+        self.object_dimensionality = object_dimensionality
+        
+        self.seeker_heads = 16
+        self.num_locations = int(context_length ** 0.5) # TODO try log(context_length) also
+        self.heads = 16
+        self.num_read_layers = 4
+        self.depth = 8
         
         self.hierarchy = self.create_hierarchy()
         self.hierarchy_pos_embds = self.create_hierarchy_pos_embds()
-        self.seeker = self.create_seeker()
+        self.k_seeker, self.q_seeker, self.v_seeker = self.create_seeker(), self.create_seeker(), self.create_seeker()
+        
+        self.layers = nn.Sequential()
+        for _ in self.depth:
+            attn = rin.CrossAttention(self.dim, heads = self.heads, norm = True)
+            ff = rin.FeedForward(self.dim)
+            self.layers.append(attn)
+            self.layers.append(ff)
     
     def create_hierarchy(self):
+        # TODO make this work for any dimensions (1d text, 2d images, 3d video, etc.)
         module_list = nn.ModuleList()
 
         # Iterate over each power of 2, up to context_length // 2
         k = 1
+        # TODO actually do this instant-ngp style, where you dont have a fixed growth factor, but it's determined
+        # by max_resolution N_max, and Max. entries per level
         while 2**k <= self.context_length // 2:
             # Create a nn.ModuleList with 2^k vectors
             # last token is CLS for that layer
+            
             vector_list = nn.ModuleList([nn.Parameter(torch.empty(self.dim).normal_(std=0.02)) for _ in range(2**k + 1)])
 
             # Add the list to the main module_list
@@ -221,6 +244,23 @@ class InstantAttnBlock(nn.Module):
 
         return module_list
     
+    def get_hierarchy_shape(self):
+        return [len(sublist) for sublist in self.hierarchy]
+    
+    def flatten_hierarchy(self, hierarchy):
+        return [param for sublist in hierarchy for param in sublist]
+
+    def deflatten_hierarchy(self, flattened):
+        hierarchy_shape = self.get_hierarchy_shape()
+        hierarchy = nn.ModuleList()
+        start_idx = 0
+        for shape in hierarchy_shape:
+            end_idx = start_idx + shape
+            sublist = nn.ModuleList(flattened[start_idx:end_idx])
+            hierarchy.append(sublist)
+            start_idx = end_idx
+        return hierarchy
+
     def add_hierarchy_and_pos_embds(self):
         added_hierarchy = nn.ModuleList()
 
@@ -237,25 +277,75 @@ class InstantAttnBlock(nn.Module):
     def create_seeker(self):
         seeker_layers = []
         for _ in range(self.seeker_depth):
-            seeker_layers.append(rin.CrossAttention(self.dim, heads=16, norm=True))
+            seeker_layers.append(rin.CrossAttention(self.dim, heads=self.seeker_heads, norm=True))
             seeker_layers.append(rin.FeedForward(self.dim))
         
         # The final layer maps to w points and applies a sigmoid to get values in [0, 1]
         seeker_layers.append(nn.Sequential(
-            nn.Linear(self.dim, self.w),  
+            nn.Linear(self.dim, self.num_locations),  
             nn.Sigmoid()  # Ensures output is in the range [0, 1]
         ))
         return nn.ModuleList(seeker_layers)
+
+    def get_cls_tokens(self, hierarchy):
+        # Get the CLS token from each level of the hierarchy
+        CLS_tokens = [level[-1] for level in hierarchy]
+        
+        # Concatenate the CLS tokens from each level
+        CLS_tokens = torch.cat(CLS_tokens, dim=0)
+        
+        # Add a batch dimension
+        CLS_tokens = CLS_tokens.unsqueeze(0)
+        
+        return CLS_tokens
     
+    def get_locations_from_seeker(self, CLS_tokens, seeker):
+        for layer in seeker[:-1]:
+            CLS_tokens = layer(CLS_tokens) + CLS_tokens
+        locations = seeker[-1](CLS_tokens)
+        return locations
+    
+    def get_locations_from_seeker(self, CLS_tokens):
+        k_locations = self.get_locations_from_seeker(CLS_tokens, self.k_seeker)
+        q_locations = self.get_locations_from_seeker(CLS_tokens, self.q_seeker)
+        v_locations = self.get_locations_from_seeker(CLS_tokens, self.v_seeker)
+        return k_locations, q_locations, v_locations
+        
     def forward(self, x):
         
-        self.hierarchy = self.add_hierarchy_and_pos_embds()
+        hierarchy = self.add_hierarchy_and_pos_embds()
         
-        # TODO cross attn from x onto hierarchy to encode context
+        latents = self.flatten_hierarchy(hierarchy)
         
-        # Apply each layer in seeker to the CLS tokens
-        for layer in self.seeker:
+        chunk_size = max(1, int(math.log2(len(latents))))
+        for _ in range(self.num_read_layers):
+            new_latents = torch.zeros_like(latents)
+            for i in range(0, len(latents), chunk_size):
+                # WARNING due to floating point arithmetic, adding these chunked numbers may be
+                # different than doing the original matrix multplication at once
+                chunk = latents[i:i+chunk_size]
+                updated_chunk = self.read_attn(chunk, x) + chunk
+                updated_chunk = self.read_ff(updated_chunk) + updated_chunk
+                new_latents[i:i+chunk_size] = updated_chunk
+            latents = new_latents
+        
+        hierarchy = self.deflatten_hierarchy(latents)
+        
+        CLS_tokens = self.get_cls_tokens(hierarchy)
+        
+        # Get attention locations
+        # TODO can you get 4 seperate sets of attention locations and do them in parallel?
+        k_locations, q_locations, v_locations = self.get_locations_from_seeker(CLS_tokens)
+        
+        # TODO get matrices for K Q V thru the locations above using hierarchy
+        
+        K = ...
+        Q = ...
+        V = ...
+
+        for layer in self.layers:
             x = layer(x) + x
+        
         return x
     
 
