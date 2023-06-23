@@ -178,7 +178,9 @@ class RINBlockVIP(nn.Module):
     def __init__(
         self,
         dim,
-        latent_self_attn_depth,
+        read_depth=1,
+        process_depth=4,
+        write_depth=1,
         dim_latent = None,
         final_norm = True,
         heads = 16,
@@ -192,7 +194,7 @@ class RINBlockVIP(nn.Module):
         self.latents_cross_attn_ff = rin.FeedForward(dim_latent)
 
         self.latent_self_attns = nn.ModuleList([])
-        for _ in range(latent_self_attn_depth):
+        for _ in range(process_depth):
             self.latent_self_attns.append(nn.ModuleList([
                 rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs),
                 rin.FeedForward(dim_latent)
