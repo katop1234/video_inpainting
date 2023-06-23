@@ -170,8 +170,8 @@ class MaskedAutoencoderViT(nn.Module):
             )
         elif self.use_rin:
             # Decoder
-            self.decoder_dim = 512 # dimension of the input feature space (embed_dim)
-            self.decoder_dim_latent = self.decoder_dim # can just keep it same as dim
+            self.decoder_dim = decoder_embed_dim # 512 works
+            self.decoder_dim_latent = self.decoder_dim
             self.decoder_num_latents = 56 # sqrt(16 * 14 * 14) = sqrt(3136) = 56
             self.read_depth = 1
             self.process_depth = 4 # number of self-attention layers in the latent space.
@@ -188,14 +188,13 @@ class MaskedAutoencoderViT(nn.Module):
                                                             ).cuda() for _ in range(self.decoder_depth)])
             
             self.decoder_latents = nn.Parameter(torch.randn(self.decoder_num_latents, self.decoder_dim_latent))
-            nn.init.normal_(self.decoder_latents, std = 0.02)
         
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
-
+        
         self.initialize_weights()
         
         print("model initialized new code")
