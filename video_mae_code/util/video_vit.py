@@ -184,6 +184,7 @@ class RINBlockVIP(nn.Module):
         heads = 16,
         **attn_kwargs
     ):
+        # TODO can you sequentialize crossattention to use even less memory?
         super().__init__()
         dim_latent = rin.default(dim_latent, dim)
 
