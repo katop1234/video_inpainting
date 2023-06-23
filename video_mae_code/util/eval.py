@@ -190,7 +190,6 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     mask = mask.unsqueeze(-1).repeat(1, 1, model.patch_embed.patch_size[0] ** 2 * 3)
 
     #patchify to get self.patch_info
-    # img_store = model.patch_embed(orig_image)
     _ = model.patchify(orig_image)
 
     mask = model.unpatchify(mask)  # 1 is removing, 0 is keeping
