@@ -267,7 +267,6 @@ class MaskedAutoencoderViT(nn.Module):
         x: [N, L, D], sequence
         """
         N, L, D = x.shape  # batch, length, dim
-        print("x.shape: ", x.shape)
 
         if L == 14 ** 2 * self.patch_embed.t_grid_size: #8
             # print("mask_ratio for video")
@@ -428,7 +427,6 @@ class MaskedAutoencoderViT(nn.Module):
             pretraining_mode = False
 
         # x .shape ==  (B, C, T, H, W). For image T == 1, for video T > 1
-        print("x.shape: ", x.shape)
         if x.shape[2] == 16:
             x = self.patch_embed(x)
         else:

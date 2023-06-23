@@ -303,9 +303,7 @@ class NativeScalerWithGradNormCount:
         update_grad=True,
     ):  
         
-        print("before backward in misc")
         self._scaler.scale(loss).backward(create_graph=create_graph)
-        print("after backward in misc")
 
         if update_grad:
             if clip_grad is not None:
