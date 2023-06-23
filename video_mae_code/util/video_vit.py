@@ -177,23 +177,86 @@ class Block(nn.Module):
 import util.rin as rin
 
 class InstantAttnBlock(nn.Module):
-    def __init__(self, dim):
+    def __init__(self, dim=1024, context_length=1024, seeker_depth=4):
         self.dim = dim
+        self.context_length = context_length
+        self.seeker_depth = seeker_depth
         
-        self.hierarchy = self.get_hierarchy()
-        
-        
-        return 
+        self.hierarchy = self.create_hierarchy()
+        self.hierarchy_pos_embds = self.create_hierarchy_pos_embds()
+        self.seeker = self.create_seeker()
     
-    def get_hierarchy(self):
+    def create_hierarchy(self):
+        module_list = nn.ModuleList()
+
+        # Iterate over each power of 2, up to context_length // 2
+        k = 1
+        while 2**k <= self.context_length // 2:
+            # Create a nn.ModuleList with 2^k vectors
+            # last token is CLS for that layer
+            vector_list = nn.ModuleList([nn.Parameter(torch.empty(self.dim).normal_(std=0.02)) for _ in range(2**k + 1)])
+
+            # Add the list to the main module_list
+            module_list.append(vector_list)
+
+            k += 1
         
-        return
+        self.num_hierarchy_levels = k - 1
+
+        return module_list
     
-    def forward(self, patches):
+    def create_hierarchy_pos_embds(self):
+        module_list = nn.ModuleList()
+
+        # Iterate over each power of 2, up to context_length // 2
+        k = 1
+        while 2**k <= self.context_length // 2:
+            # Create a nn.ModuleList with 2^k positional embeddings
+            pos_embd_list = nn.ModuleList([nn.Parameter(torch.empty(self.dim).normal_(std=0.02)) for _ in range(2**k + 1)])
+
+            # Add the list to the main module_list
+            module_list.append(pos_embd_list)
+
+            k += 1
+
+        return module_list
+    
+    def add_hierarchy_and_pos_embds(self):
+        added_hierarchy = nn.ModuleList()
+
+        # Iterate over each level in the hierarchy
+        for hierarchy_level, pos_embd_level in zip(self.hierarchy, self.hierarchy_pos_embds):
+            # Add the vectors and positional embeddings at this level
+            added_level = nn.ModuleList([vector + pos_embd for vector, pos_embd in zip(hierarchy_level, pos_embd_level)])
+
+            # Add the list to the main module_list
+            added_hierarchy.append(added_level)
+
+        return added_hierarchy
+
+    def create_seeker(self):
+        seeker_layers = []
+        for _ in range(self.seeker_depth):
+            seeker_layers.append(rin.CrossAttention(self.dim, heads=16, norm=True))
+            seeker_layers.append(rin.FeedForward(self.dim))
         
+        # The final layer maps to w points and applies a sigmoid to get values in [0, 1]
+        seeker_layers.append(nn.Sequential(
+            nn.Linear(self.dim, self.w),  
+            nn.Sigmoid()  # Ensures output is in the range [0, 1]
+        ))
+        return nn.ModuleList(seeker_layers)
+    
+    def forward(self, x):
         
+        self.hierarchy = self.add_hierarchy_and_pos_embds()
         
-        return patches
+        # TODO cross attn from x onto hierarchy to encode context
+        
+        # Apply each layer in seeker to the CLS tokens
+        for layer in self.seeker:
+            x = layer(x) + x
+        return x
     
 
 class RINBlockVIP(nn.Module):
