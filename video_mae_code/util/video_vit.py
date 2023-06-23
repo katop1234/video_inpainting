@@ -203,7 +203,7 @@ class RINBlockVIP(nn.Module):
         self.read_attn = rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, **attn_kwargs)
         self.read_ff = rin.FeedForward(dim_latent)
 
-        self.process_attn = rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs)
+        self.process_attn = rin.SelfAttention(dim_latent, heads = heads, norm = True, **attn_kwargs)
         self.process_ff = rin.FeedForward(dim_latent)
 
         self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
