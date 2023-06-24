@@ -237,3 +237,57 @@ class RINBlockVIP(nn.Module):
         
         latents = self.latent_final_norm(latents)
         return patches, latents
+    
+class FITBlockVIP(nn.Module):
+    def __init__(
+        self,
+        dim,
+        num_groups=4, # G groups
+        process_depth=4,
+        dim_latent = None,
+        final_norm = True,
+        heads=16,
+        read_depth=1,
+        write_depth=1,
+        **attn_kwargs
+    ):
+        super().__init__()
+        dim_latent = rin.default(dim_latent, dim)
+        
+        self.num_groups = num_groups
+        self.dim_group = dim // num_groups
+        self.dim_latent_group = dim_latent // num_groups
+
+        self.rin_blocks = nn.ModuleList([
+            RINBlockVIP(
+                self.dim_group, 
+                process_depth=process_depth, 
+                dim_latent=self.dim_latent_group, 
+                final_norm=final_norm, 
+                heads=heads, 
+                read_depth=read_depth, 
+                write_depth=write_depth, 
+                **attn_kwargs
+            )
+            for _ in range(num_groups)
+        ])
+
+    def forward(self, patches, latents):
+        # Shape: [batch_size, num_groups, num_patches_per_group, dim_group]
+        patches_group = patches.view(*patches.shape[:-1], self.num_groups, self.dim_group)
+        latents_group = latents.view(*latents.shape[:-1], self.num_groups, self.dim_latent_group)
+        
+        outputs = []
+        for i in range(self.num_groups):
+            patch_group = patches_group[..., i, :]
+            latent_group = latents_group[..., i, :]
+            out_patch, out_latent = self.rin_blocks[i](patch_group, latent_group)
+            outputs.append((out_patch, out_latent))
+        
+        # Re-assemble the outputs
+        patches_out, latents_out = zip(*outputs)
+        patches_out = torch.stack(patches_out, dim=-2).view_as(patches)
+        latents_out = torch.stack(latents_out, dim=-2).view_as(latents)
+
+        return patches_out, latents_out
+
