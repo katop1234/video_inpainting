@@ -247,7 +247,7 @@ class FITBlockVIP(nn.Module):
         self.process_depth = process_depth
         self.write_depth = write_depth
 
-        self.latents = nn.Parameter(torch.randn(G, l, dim))
+        self.latents = nn.Parameter(torch.randn(G, l, dim)) * 0.02
 
         self.self_attn = rin.CrossAttention(dim, **attn_kwargs)
         self.read_attn = rin.CrossAttention(dim, dim_context=dim, **attn_kwargs)
@@ -264,7 +264,7 @@ class FITBlockVIP(nn.Module):
         # Step 1: Do self attention within each group
         x = self.self_attn(x)
 
-        # Step 2: Each group cross attends to its own latent vectors
+        # Step 2: (READ) Each group cross attends to its own latent vectors
         latents_per_group = self.latents.unsqueeze(0).expand(B, -1, -1, -1)
         for _ in range(self.read_depth):
             latents_per_group = self.read_attn(latents_per_group, x) + latents_per_group
@@ -273,12 +273,12 @@ class FITBlockVIP(nn.Module):
         # Step 3: Concat all the latents
         latents_concat = latents_per_group.view(B, self.G*self.l, -1)
 
-        # Step 4: Concat all the latents and do self attention globally
+        # Step 4: (PROCESS) Concat all the latents and do self attention globally
         for _ in range(self.process_depth):
             latents_concat = self.process_attn(latents_concat) + latents_concat
             latents_concat = self.process_ff(latents_concat) + latents_concat
 
-        # Step 5: Write back to x in the reverse process as 2
+        # Step 5: (WRITE) Write back to x in the reverse process as 2
         latents_per_group = latents_concat.view(B, self.G, self.l, -1)
         for _ in range(self.write_depth):
             x = self.write_attn(x, latents_per_group) + x
