@@ -239,58 +239,51 @@ class RINBlockVIP(nn.Module):
         return patches, latents
     
 class FITBlockVIP(nn.Module):
-    def __init__(self, dim, G, l, read_depth, process_depth, write_depth, heads=16, **attn_kwargs):
+    def __init__(self, dim, G, l, read_depth=1, process_depth=1, write_depth=1, **attn_kwargs):
         super().__init__()
-
         self.G = G
         self.l = l
         self.read_depth = read_depth
         self.process_depth = process_depth
         self.write_depth = write_depth
 
-        self.read_attn = rin.CrossAttention(dim, dim_context=dim, heads=heads, norm=True, **attn_kwargs)
+        self.latents = nn.Parameter(torch.randn(G, l, dim))
+
+        self.self_attn = rin.CrossAttention(dim, **attn_kwargs)
+        self.read_attn = rin.CrossAttention(dim, dim_context=dim, **attn_kwargs)
         self.read_ff = rin.FeedForward(dim)
-
-        self.process_attn = rin.CrossAttention(dim, heads=heads, norm=True, **attn_kwargs)
+        self.process_attn = rin.CrossAttention(dim, **attn_kwargs)
         self.process_ff = rin.FeedForward(dim)
-
-        self.write_attn = rin.CrossAttention(dim, dim_context=dim, heads=heads, norm=True, norm_context=True, **attn_kwargs)
+        self.write_attn = rin.CrossAttention(dim, dim_context=dim, **attn_kwargs)
         self.write_ff = rin.FeedForward(dim)
 
-        self.latents = nn.Parameter(torch.randn(G, l, dim)) * 0.02 
-
-    def group_attention(self, group):
-        group = self.process_attn(group) + group
-        group = self.process_ff(group) + group
-        return group
-
     def forward(self, x):
-        # Step 1: Divide input into G groups
-        groups = x.view(self.G, -1, x.shape[-1])
+        B, N, _ = x.shape
+        x = x.view(B, self.G, -1, x.shape[-1])
 
-        # Step 2: Self-attention within each group
-        groups = torch.stack([self.group_attention(group) for group in groups])
+        # Step 1: Do self attention within each group
+        x = self.self_attn(x)
 
-        # Step 3: Each group cross-attends to its corresponding latent vectors
+        # Step 2: Each group cross attends to its own latent vectors
+        latents_per_group = self.latents.unsqueeze(0).expand(B, -1, -1, -1)
         for _ in range(self.read_depth):
-            for i, group in enumerate(groups):
-                self.latents[i] = self.read_attn(self.latents[i], group) + self.latents[i]
-                self.latents[i] = self.read_ff(self.latents[i]) + self.latents[i]
+            latents_per_group = self.read_attn(latents_per_group, x) + latents_per_group
+            latents_per_group = self.read_ff(latents_per_group) + latents_per_group
+
+        # Step 3: Concat all the latents
+        latents_concat = latents_per_group.view(B, self.G*self.l, -1)
 
         # Step 4: Concat all the latents and do self attention globally
-        latents_concat = self.latents.view(-1, x.shape[-1])
         for _ in range(self.process_depth):
             latents_concat = self.process_attn(latents_concat) + latents_concat
             latents_concat = self.process_ff(latents_concat) + latents_concat
 
-        # Update the latents with the globally attended latents
-        latents_concat = latents_concat.view(self.G, self.l, x.shape[-1])
-
-        # Step 5: Latents for each group write back to that group
+        # Step 5: Write back to x in the reverse process as 2
+        latents_per_group = latents_concat.view(B, self.G, self.l, -1)
         for _ in range(self.write_depth):
-            groups = torch.stack([self.write_attn(group, latents_concat[i]) + group for i, group in enumerate(groups)])
-            groups = torch.stack([self.write_ff(group) + group for group in groups])
+            x = self.write_attn(x, latents_per_group) + x
+            x = self.write_ff(x) + x
 
-        return groups.view(x.shape)
+        return x.view(B, N, -1)
 
 
