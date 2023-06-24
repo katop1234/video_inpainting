@@ -188,6 +188,12 @@ class InstantAttnBlock(nn.Module):
         self.seeker_depth = seeker_depth
         self.object_dimensionality = object_dimensionality
         
+        self.N_max = self.context_length # finest resolution
+        self.N_min = 2 # coarsest resolution
+        self.hierarchy_height = 16
+        assert self.dim % self.hierarchy_height == 0, "dim should be divisible by hierarchy_height so that hierarchy_dimension is an integer"
+        self.hierarchy_dimension = self.dim // self.hierarchy_height
+        
         self.seeker_heads = 16
         self.num_locations = int(context_length ** 0.5) # TODO try log(context_length) also
         self.heads = 16
@@ -227,6 +233,11 @@ class InstantAttnBlock(nn.Module):
         self.num_hierarchy_levels = k - 1
 
         return module_list
+    
+    def create_hierarchy(self):
+        L = self.hierarchy_height
+        b = math.exp((math.log(self.N_max) - math.log(self.N_min)) / (L-1)) # growth factor
+        
     
     def create_hierarchy_pos_embds(self):
         # TODO rewrite this function once getting actual hierarchy is fixed
@@ -318,12 +329,13 @@ class InstantAttnBlock(nn.Module):
         
         latents = self.flatten_hierarchy(hierarchy)
         
+        ### READ ###
         chunk_size = max(1, int(math.log2(len(latents))))
         for _ in range(self.num_read_layers):
             new_latents = torch.zeros_like(latents)
             for i in range(0, len(latents), chunk_size):
                 # WARNING due to floating point arithmetic, adding these chunked numbers may be
-                # different than doing the original matrix multplication at once
+                # minutely different from doing the original matrix multplication at once
                 chunk = latents[i:i+chunk_size]
                 updated_chunk = self.read_attn(chunk, x) + chunk
                 updated_chunk = self.read_ff(updated_chunk) + updated_chunk
@@ -332,11 +344,19 @@ class InstantAttnBlock(nn.Module):
         
         hierarchy = self.deflatten_hierarchy(latents)
         
+        # TODO when you try to read from the hierarchy's CLS tokens all concatenated together, you can also
+        # concat a context token directly from x, which has no position (just represents whole thing). It is the 𝜉 in NGP
+        
+        ### PROCESS ###
         CLS_tokens = self.get_cls_tokens(hierarchy)
         
         # Get attention locations
         # TODO can you get 4 seperate sets of attention locations and do them in parallel?
+        # TODO after doing these 4 separately, you can them cross attend them all onto x over many 
+        # layers. Order can be nn1, nn2, nn3, nn4, nn1... total write_layers number of times. See if parallelizable or too much memory.
         k_locations, q_locations, v_locations = self.get_locations_from_seeker(CLS_tokens)
+        
+        # TODO remember to concat the vectors from each level of the hierarchy to get the final K Q Vs
         
         # TODO get matrices for K Q V thru the locations above using hierarchy
         
@@ -345,11 +365,16 @@ class InstantAttnBlock(nn.Module):
         V = ...
         
         # TODO what is this supposed to output?
+        # how do we want to process the keys and values
         for layer in self.layers:
             x = layer(x) + x
         
+        ### WRITE ###
+        # TODO once you process the latents, you'll probably cross attend back to x if this is generative.
+        # however, if you're doing autoregressive, you don't need to write back to length N, and can just output a prediction  
+        # So keep the option to change up what to do after the latents are fully processed
+        
         return x
-    
 
 class RINBlockVIP(nn.Module):
     def __init__(
