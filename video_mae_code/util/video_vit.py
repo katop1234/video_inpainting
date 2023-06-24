@@ -284,11 +284,11 @@ class FITBlockVIP(nn.Module):
             latents_concat = self.process_ff(latents_concat) + latents_concat
 
         # Update the latents with the globally attended latents
-        self.latents = latents_concat.view(self.G, self.l, x.shape[-1])
+        latents_concat = latents_concat.view(self.G, self.l, x.shape[-1])
 
         # Step 5: Latents for each group write back to that group
         for _ in range(self.write_depth):
-            groups = torch.stack([self.write_attn(group, self.latents[i]) + group for i, group in enumerate(groups)])
+            groups = torch.stack([self.write_attn(group, latents_concat[i]) + group for i, group in enumerate(groups)])
             groups = torch.stack([self.write_ff(group) + group for group in groups])
 
         return groups.view(x.shape)
