@@ -280,31 +280,35 @@ class FIT(nn.Module):
         patches_group = patches.view(*patches.shape[:-1], self.num_groups, self.dim_group)
         latents_group = latents.view(*latents.shape[:-1], self.num_groups, self.dim_latent_group)
 
-        latents_out_group = []
-        for i in range(self.num_groups):
-            patch_group = patches_group[..., i, :]
-            latent_group = latents_group[..., i, :]
-            _, out_latent = self.rin_blocks[i](patch_group, latent_group)
-            latents_out_group.append(out_latent)
+        # Prepare groups for parallel processing
+        patch_groups = patches_group.unbind(dim=-2)
+        latent_groups = latents_group.unbind(dim=-2)
+        grouped_rin_blocks = zip(self.rin_blocks, patch_groups, latent_groups)
+        
+        # Grouped processing
+        group_out = [rin_block(patch_group, latent_group) for rin_block, patch_group, latent_group in grouped_rin_blocks]
+        patches_out_group, latents_out_group = zip(*group_out)
 
         # Concatenate all latents
-        latents_all = torch.cat(latents_out_group, dim=-2)
+        latents_all = torch.stack(latents_out_group, dim=-2)
 
         # Perform self attention on all latents
         for _ in range(self.process_depth):
             latents_all = self.process_attn(latents_all) + latents_all
             latents_all = self.process_ff(latents_all) + latents_all
 
-        # Write back to the patches from corresponding latents
-        outputs = []
-        for i in range(self.num_groups):
-            patch_group = patches_group[..., i, :]
-            out_latent_group = latents_all[..., i*self.dim_latent_group:(i+1)*self.dim_latent_group]
-            out_patch, _ = self.rin_blocks[i](patch_group, out_latent_group)
-            outputs.append(out_patch)
+        # Prepare latents for writing back to the patches
+        latents_back_group = latents_all.view(*latents_all.shape[:-1], self.num_groups, self.dim_latent_group)
+
+        # Prepare for writing back
+        back_grouped_rin_blocks = zip(self.rin_blocks, patch_groups, latents_back_group.unbind(dim=-2))
         
+        # Write back to the patches from corresponding latents
+        back_group_out = [rin_block(patch_group, out_latent_group) for rin_block, patch_group, out_latent_group in back_grouped_rin_blocks]
+        patches_out_group, _ = zip(*back_group_out)
+
         # Re-assemble the patches
-        patches_out = torch.stack(outputs, dim=-2).view_as(patches)
+        patches_out = torch.stack(patches_out_group, dim=-2).view_as(patches)
 
         return patches_out, latents_all
 
