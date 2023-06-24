@@ -238,77 +238,59 @@ class RINBlockVIP(nn.Module):
         latents = self.latent_final_norm(latents)
         return patches, latents
     
-class FIT(nn.Module):
-    def __init__(
-        self,
-        dim,
-        num_groups=4, # G groups
-        process_depth=4,
-        dim_latent = None,
-        final_norm = True,
-        heads=16,
-        read_depth=1,
-        write_depth=1,
-        **attn_kwargs
-    ):
+class FITBlockVIP(nn.Module):
+    def __init__(self, dim, G, l, read_depth, process_depth, write_depth, heads=16, **attn_kwargs):
         super().__init__()
-        dim_latent = rin.default(dim_latent, dim)
 
-        self.num_groups = num_groups
-        self.dim_group = dim // num_groups
-        self.dim_latent_group = dim_latent // num_groups
+        self.G = G
+        self.l = l
+        self.read_depth = read_depth
+        self.process_depth = process_depth
+        self.write_depth = write_depth
 
-        self.rin_blocks = nn.ModuleList([
-            RINBlockVIP(
-                self.dim_group, 
-                process_depth=process_depth, 
-                dim_latent=self.dim_latent_group, 
-                final_norm=final_norm, 
-                heads=heads, 
-                read_depth=read_depth, 
-                write_depth=write_depth, 
-                **attn_kwargs
-            )
-            for _ in range(num_groups)
-        ])
+        self.read_attn = rin.CrossAttention(dim, dim_context=dim, heads=heads, norm=True, **attn_kwargs)
+        self.read_ff = rin.FeedForward(dim)
 
-        self.process_attn = rin.SelfAttention(dim_latent, heads = heads, norm = True, **attn_kwargs)
-        self.process_ff = rin.FeedForward(dim_latent)
+        self.process_attn = rin.CrossAttention(dim, heads=heads, norm=True, **attn_kwargs)
+        self.process_ff = rin.FeedForward(dim)
 
-    def forward(self, patches, latents):
-        # Shape: [batch_size, num_groups, num_patches_per_group, dim_group]
-        patches_group = patches.view(*patches.shape[:-1], self.num_groups, self.dim_group)
-        latents_group = latents.view(*latents.shape[:-1], self.num_groups, self.dim_latent_group)
+        self.write_attn = rin.CrossAttention(dim, dim_context=dim, heads=heads, norm=True, norm_context=True, **attn_kwargs)
+        self.write_ff = rin.FeedForward(dim)
 
-        # Prepare groups for parallel processing
-        patch_groups = patches_group.unbind(dim=-2)
-        latent_groups = latents_group.unbind(dim=-2)
-        grouped_rin_blocks = zip(self.rin_blocks, patch_groups, latent_groups)
-        
-        # Grouped processing
-        group_out = [rin_block(patch_group, latent_group) for rin_block, patch_group, latent_group in grouped_rin_blocks]
-        patches_out_group, latents_out_group = zip(*group_out)
+        self.latents = nn.Parameter(torch.randn(G, l, dim)) * 0.02 
 
-        # Concatenate all latents
-        latents_all = torch.stack(latents_out_group, dim=-2)
+    def group_attention(self, group):
+        group = self.process_attn(group) + group
+        group = self.process_ff(group) + group
+        return group
 
-        # Perform self attention on all latents
+    def forward(self, x):
+        # Step 1: Divide input into G groups
+        groups = x.view(self.G, -1, x.shape[-1])
+
+        # Step 2: Self-attention within each group
+        groups = torch.stack([self.group_attention(group) for group in groups])
+
+        # Step 3: Each group cross-attends to its corresponding latent vectors
+        for _ in range(self.read_depth):
+            for i, group in enumerate(groups):
+                self.latents[i] = self.read_attn(self.latents[i], group) + self.latents[i]
+                self.latents[i] = self.read_ff(self.latents[i]) + self.latents[i]
+
+        # Step 4: Concat all the latents and do self attention globally
+        latents_concat = self.latents.view(-1, x.shape[-1])
         for _ in range(self.process_depth):
-            latents_all = self.process_attn(latents_all) + latents_all
-            latents_all = self.process_ff(latents_all) + latents_all
+            latents_concat = self.process_attn(latents_concat) + latents_concat
+            latents_concat = self.process_ff(latents_concat) + latents_concat
 
-        # Prepare latents for writing back to the patches
-        latents_back_group = latents_all.view(*latents_all.shape[:-1], self.num_groups, self.dim_latent_group)
+        # Update the latents with the globally attended latents
+        self.latents = latents_concat.view(self.G, self.l, x.shape[-1])
 
-        # Prepare for writing back
-        back_grouped_rin_blocks = zip(self.rin_blocks, patch_groups, latents_back_group.unbind(dim=-2))
-        
-        # Write back to the patches from corresponding latents
-        back_group_out = [rin_block(patch_group, out_latent_group) for rin_block, patch_group, out_latent_group in back_grouped_rin_blocks]
-        patches_out_group, _ = zip(*back_group_out)
+        # Step 5: Latents for each group write back to that group
+        for _ in range(self.write_depth):
+            groups = torch.stack([self.write_attn(group, self.latents[i]) + group for i, group in enumerate(groups)])
+            groups = torch.stack([self.write_ff(group) + group for group in groups])
 
-        # Re-assemble the patches
-        patches_out = torch.stack(patches_out_group, dim=-2).view_as(patches)
+        return groups.view(x.shape)
 
-        return patches_out, latents_all
 
