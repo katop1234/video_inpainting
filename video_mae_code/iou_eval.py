@@ -129,6 +129,8 @@ def generate_segmentations(model, store_path, eval_name, prompt_csv, davis_promp
                 _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
                 
                 num_patches = 14
+                N = test_model_input.shape[0]
+                test_model_output = torch.reshape(test_model_output, [N, -1, 1024])
                 y = test_model_output.argmax(dim=-1)
                 im_paste, _, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
 
