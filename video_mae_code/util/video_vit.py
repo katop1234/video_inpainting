@@ -238,7 +238,7 @@ class RINBlockVIP(nn.Module):
         latents = self.latent_final_norm(latents)
         return patches, latents
     
-class FITBlockVIP(nn.Module):
+class FIT(nn.Module):
     def __init__(
         self,
         dim,
@@ -253,7 +253,7 @@ class FITBlockVIP(nn.Module):
     ):
         super().__init__()
         dim_latent = rin.default(dim_latent, dim)
-        
+
         self.num_groups = num_groups
         self.dim_group = dim // num_groups
         self.dim_latent_group = dim_latent // num_groups
@@ -272,22 +272,39 @@ class FITBlockVIP(nn.Module):
             for _ in range(num_groups)
         ])
 
+        self.process_attn = rin.SelfAttention(dim_latent, heads = heads, norm = True, **attn_kwargs)
+        self.process_ff = rin.FeedForward(dim_latent)
+
     def forward(self, patches, latents):
         # Shape: [batch_size, num_groups, num_patches_per_group, dim_group]
         patches_group = patches.view(*patches.shape[:-1], self.num_groups, self.dim_group)
         latents_group = latents.view(*latents.shape[:-1], self.num_groups, self.dim_latent_group)
-        
-        outputs = []
+
+        latents_out_group = []
         for i in range(self.num_groups):
             patch_group = patches_group[..., i, :]
             latent_group = latents_group[..., i, :]
-            out_patch, out_latent = self.rin_blocks[i](patch_group, latent_group)
-            outputs.append((out_patch, out_latent))
-        
-        # Re-assemble the outputs
-        patches_out, latents_out = zip(*outputs)
-        patches_out = torch.stack(patches_out, dim=-2).view_as(patches)
-        latents_out = torch.stack(latents_out, dim=-2).view_as(latents)
+            _, out_latent = self.rin_blocks[i](patch_group, latent_group)
+            latents_out_group.append(out_latent)
 
-        return patches_out, latents_out
+        # Concatenate all latents
+        latents_all = torch.cat(latents_out_group, dim=-2)
+
+        # Perform self attention on all latents
+        for _ in range(self.process_depth):
+            latents_all = self.process_attn(latents_all) + latents_all
+            latents_all = self.process_ff(latents_all) + latents_all
+
+        # Write back to the patches from corresponding latents
+        outputs = []
+        for i in range(self.num_groups):
+            patch_group = patches_group[..., i, :]
+            out_latent_group = latents_all[..., i*self.dim_latent_group:(i+1)*self.dim_latent_group]
+            out_patch, _ = self.rin_blocks[i](patch_group, out_latent_group)
+            outputs.append(out_patch)
+        
+        # Re-assemble the patches
+        patches_out = torch.stack(outputs, dim=-2).view_as(patches)
+
+        return patches_out, latents_all
 
