@@ -267,7 +267,7 @@ def decode(
                 img = frame.to_image()
                 img_array = np.array(img)
                 frames_list.append(img_array)
-                frame_count += 1
+            frame_count += 1
             if frame_count >= start_frame + window_length:
                 break
 
