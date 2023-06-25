@@ -249,7 +249,8 @@ class FITBlockVIP(nn.Module):
 
         self.latents = nn.Parameter(torch.randn(G, l, dim)) * 0.02
 
-        self.self_attn = rin.CrossAttention(dim, **attn_kwargs)
+        self.group_attn = rin.CrossAttention(dim, **attn_kwargs)
+        self.group_ff = rin.FeedForward(dim)
         self.read_attn = rin.CrossAttention(dim, dim_context=dim, **attn_kwargs)
         self.read_ff = rin.FeedForward(dim)
         self.process_attn = rin.CrossAttention(dim, **attn_kwargs)
@@ -262,7 +263,8 @@ class FITBlockVIP(nn.Module):
         x = x.view(B, self.G, -1, x.shape[-1])
 
         # Step 1: Do self attention within each group
-        x = self.self_attn(x)
+        x = self.group_attn(x)
+        x = self.group_ff(x)
 
         # Step 2: (READ) Each group cross attends to its own latent vectors
         latents_per_group = self.latents.unsqueeze(0).expand(B, -1, -1, -1)
