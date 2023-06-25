@@ -285,5 +285,3 @@ class FITBlockVIP(nn.Module):
             x = self.write_ff(x) + x
 
         return x.view(B, N, -1)
-
-
