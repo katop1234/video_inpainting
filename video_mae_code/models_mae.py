@@ -188,6 +188,7 @@ class MaskedAutoencoderViT(nn.Module):
                                                             ).cuda() for _ in range(self.decoder_depth)])
             
             self.decoder_latents = nn.Parameter(torch.randn(self.decoder_num_latents, self.decoder_dim_latent) * 0.02)
+            self.counter = 0 # for seeing latent similarities
         
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
@@ -643,7 +644,8 @@ class MaskedAutoencoderViT(nn.Module):
             
             # Apply RIN Blocks
             for blk in self.decoder_blocks:
-                x, latents = blk(x, latents)
+                x, latents = blk(x, latents, self.counter)
+            self.counter += 1
         
         x = self.decoder_norm(x)
 
