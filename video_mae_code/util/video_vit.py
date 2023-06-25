@@ -207,33 +207,38 @@ class RINBlockVIP(nn.Module):
         self.write_depth = write_depth
 
     def forward(self, patches, latents):
-        # Store a copy of the current vectors to do dot product later with
-        latents_previous = latents.clone().detach()
-        patches_previous = patches.clone().detach()
-        
-        # latents extract or cluster information from the patches
-        for _ in range(self.read_depth):
+        # Helper function to calculate and print similarity
+        def print_similarity(old, new, block_name, depth):
+            similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
+            print(f'{block_name} block vector similarity at depth {depth}: {similarity.item()}')
+
+        latents_initial = latents.clone().detach()
+        for i in range(self.read_depth):
             latents = self.read_attn(latents, patches) + latents
             latents = self.read_ff(latents) + latents
-
-        # latent self attention
-        for _ in range(self.process_depth):
+            if (i+1) % self.print_frequency == 0:
+                print_similarity(latents_initial, latents, 'Read', i+1)
+                
+        latents_initial = latents.clone().detach()
+        for i in range(self.process_depth):
             latents = self.process_attn(latents) + latents
             latents = self.process_ff(latents) + latents
+            if (i+1) % self.print_frequency == 0:
+                print_similarity(latents_initial, latents, 'Process', i+1)
 
-        # additional cross attention layers
-        for _ in range(self.write_depth):
+        patches_initial = patches.clone().detach()
+        for i in range(self.write_depth):
             patches = self.write_attn(patches, latents) + patches
             patches = self.write_ff(patches) + patches
-        
-        # Calculate and print the dot product/similarity between the current and previous patches
-        if self.counter % self.print_frequency == 0:
-            similarity = torch.sum(latents * latents_previous) / (torch.norm(latents) * torch.norm(latents_previous))
-            similarity_patches = torch.sum(patches * patches_previous) / (torch.norm(patches) * torch.norm(patches_previous))
-            print('Latent vector similarity: ', similarity.item(), 'Patch vector similarity: ', similarity_patches.item())
-        self.counter += 1
-        
+            if (i+1) % self.print_frequency == 0:
+                print_similarity(patches_initial, patches, 'Write', i+1)
+
+        # Print final similarity values
+        print_similarity(latents_initial, latents, 'Final Latent', self.read_depth+self.process_depth+self.write_depth)
+        print_similarity(patches_initial, patches, 'Final Patch', self.read_depth+self.process_depth+self.write_depth)
+
         return patches, latents
+
     
 class FITBlockVIP(nn.Module):
     def __init__(self, dim, G, l, read_depth=1, process_depth=1, write_depth=1, **attn_kwargs):
