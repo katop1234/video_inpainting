@@ -195,8 +195,6 @@ class RINBlockVIP(nn.Module):
         self.process_attn = rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs)
         self.process_ff = rin.FeedForward(dim_latent)
 
-        self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
-
         self.write_attn = rin.CrossAttention(dim, dim_context = dim_latent, heads = heads, norm = True, norm_context = True, **attn_kwargs)
         self.write_ff = rin.FeedForward(dim)
         
@@ -235,7 +233,6 @@ class RINBlockVIP(nn.Module):
             print('Latent vector similarity: ', similarity.item(), 'Patch vector similarity: ', similarity_patches.item())
         self.counter += 1
         
-        latents = self.latent_final_norm(latents)
         return patches, latents
     
 class FITBlockVIP(nn.Module):
