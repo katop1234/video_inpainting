@@ -210,33 +210,36 @@ class RINBlockVIP(nn.Module):
         # Helper function to calculate and print similarity
         def print_similarity(old, new, block_name, depth):
             similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
-            print(f'{block_name} block vector similarity at depth {depth}: {similarity.item()}')
+            print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
-        latents_initial = latents.clone().detach()
+        latents_preread = latents.clone().detach()
         for i in range(self.read_depth):
             latents = self.read_attn(latents, patches) + latents
             latents = self.read_ff(latents) + latents
-            if (i+1) % self.print_frequency == 0:
-                print_similarity(latents_initial, latents, 'Read', i+1)
+            if self.counter % self.print_frequency == 0:
+                print_similarity(latents_preread, latents, 'Read latents', i+1)
                 
-        latents_initial = latents.clone().detach()
+        latents_preprocess = latents.clone().detach()
         for i in range(self.process_depth):
             latents = self.process_attn(latents) + latents
             latents = self.process_ff(latents) + latents
-            if (i+1) % self.print_frequency == 0:
-                print_similarity(latents_initial, latents, 'Process', i+1)
+            if self.counter % self.print_frequency == 0:
+                print_similarity(latents_preprocess, latents, 'Process latents', i+1)
 
-        patches_initial = patches.clone().detach()
+        patches_prewrite = patches.clone().detach()
         for i in range(self.write_depth):
             patches = self.write_attn(patches, latents) + patches
             patches = self.write_ff(patches) + patches
-            if (i+1) % self.print_frequency == 0:
-                print_similarity(patches_initial, patches, 'Write', i+1)
+            if (self.counter) % self.print_frequency == 0:
+                print_similarity(patches_prewrite, patches, 'Write patches', i+1)
 
         # Print final similarity values
-        print_similarity(latents_initial, latents, 'Final Latent', self.read_depth+self.process_depth+self.write_depth)
-        print_similarity(patches_initial, patches, 'Final Patch', self.read_depth+self.process_depth+self.write_depth)
+        if (self.counter) % self.print_frequency == 0:
+            print_similarity(latents_preread, latents, 'Final Latent', self.read_depth+self.process_depth+self.write_depth)
+            print_similarity(patches_prewrite, patches, 'Final Patch', self.read_depth+self.process_depth+self.write_depth)
 
+        self.counter += 1
+        
         return patches, latents
 
     
