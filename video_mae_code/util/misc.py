@@ -311,8 +311,8 @@ class NativeScalerWithGradNormCount:
             sorted_params_with_grads = sorted(params_with_grads, key=lambda x: x[1].abs().max().item(), reverse=True)
             top_gradients = []
             for idx, (param, grad) in enumerate(sorted_params_with_grads[:100]):
-                top_gradients.append((f"Top {idx+1} param grad max abs", grad.abs().max().item()))
-            print("Before running backprop:", top_gradients)
+                top_gradients.append(grad.abs().max().item())
+            print("Before running backprop, largest gradients are:", top_gradients)
             
             if clip_grad is not None:
                 assert parameters is not None
