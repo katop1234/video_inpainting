@@ -189,25 +189,34 @@ class RINBlockVIP(nn.Module):
         super().__init__()
         dim_latent = rin.default(dim_latent, dim)
 
-        self.read_attn = rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, **attn_kwargs)
-        self.read_ff = rin.FeedForward(dim_latent)
-
-        self.process_attn = rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs)
-        self.process_ff = rin.FeedForward(dim_latent)
-
-        self.write_attn = rin.CrossAttention(dim, dim_context = dim_latent, heads = heads, norm = True, norm_context = True, **attn_kwargs)
-        self.write_ff = rin.FeedForward(dim)
+        self.read_blocks = nn.ModuleList([
+            nn.Sequential(
+                rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, **attn_kwargs),
+                rin.FeedForward(dim_latent)
+            )
+            for _ in range(read_depth)
+        ])
         
-        # How often to print statistics
-        self.counter = 0
-        self.print_frequency = 100 # Change this to control how often the similarities are printed
+        self.process_blocks = nn.ModuleList([
+            nn.Sequential(
+                rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs),
+                rin.FeedForward(dim_latent)
+            )
+            for _ in range(process_depth)
+        ])
 
-        self.read_depth = read_depth
-        self.process_depth = process_depth
-        self.write_depth = write_depth
+        self.write_blocks = nn.ModuleList([
+            nn.Sequential(
+                rin.CrossAttention(dim, dim_context = dim_latent, heads = heads, norm = True, norm_context = True, **attn_kwargs),
+                rin.FeedForward(dim)
+            )
+            for _ in range(write_depth)
+        ])
+
+        self.counter = 0
+        self.print_frequency = 100  # Change this to control how often the similarities are printed
 
     def forward(self, patches, latents, print_similarities=False):
-
         # Helper function to calculate and print similarity
         def print_similarity(old, new, block_name, depth):
             similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
@@ -217,35 +226,34 @@ class RINBlockVIP(nn.Module):
             print("---Start of RIN Block---")
 
         latents_preread = latents.clone().detach()
-        for i in range(self.read_depth):
-            latents = self.read_attn(latents, patches) + latents
-            latents = self.read_ff(latents) + latents
+        for i, read_block in enumerate(self.read_blocks):
+            latents = read_block[0](latents, patches) + latents
+            latents = read_block[1](latents) + latents
             if self.counter % self.print_frequency == 0:
                 print_similarity(latents_preread, latents, 'Read latents', i+1)
                 
         latents_preprocess = latents.clone().detach()
-        for i in range(self.process_depth):
-            latents = self.process_attn(latents) + latents
-            latents = self.process_ff(latents) + latents
+        for i, process_block in enumerate(self.process_blocks):
+            latents = process_block[0](latents) + latents
+            latents = process_block[1](latents) + latents
             if self.counter % self.print_frequency == 0:
                 print_similarity(latents_preprocess, latents, 'Process latents', i+1)
 
         patches_prewrite = patches.clone().detach()
-        for i in range(self.write_depth):
-            patches = self.write_attn(patches, latents) + patches
-            patches = self.write_ff(patches) + patches
+        for i, write_block in enumerate(self.write_blocks):
+            patches = write_block[0](patches, latents) + patches
+            patches = write_block[1](patches) + patches
             if self.counter % self.print_frequency == 0:
                 print_similarity(patches_prewrite, patches, 'Write patches', i+1)
 
         # Print final similarity values
         if self.counter % self.print_frequency == 0:
-            print_similarity(latents_preread, latents, 'Final vs Initial Latent', self.read_depth+self.process_depth+self.write_depth)
-            print_similarity(patches_prewrite, patches, 'Final vs Initial Patch', self.read_depth+self.process_depth+self.write_depth)
+            print_similarity(latents_preread, latents, 'Final vs Initial Latent', len(self.read_blocks)+len(self.process_blocks)+len(self.write_blocks))
+            print_similarity(patches_prewrite, patches, 'Final vs Initial Patch', len(self.read_blocks)+len(self.process_blocks)+len(self.write_blocks))
         
         self.counter += 1
         
         return patches, latents
-
     
 class FITBlockVIP(nn.Module):
     def __init__(self, dim, G, l, read_depth=1, process_depth=1, write_depth=1, **attn_kwargs):
