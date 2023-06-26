@@ -153,6 +153,10 @@ class MaskedAutoencoderViT(nn.Module):
             self.decoder_pos_embed = nn.Parameter(
                 torch.zeros(1, _num_patches, decoder_embed_dim),
             )
+            
+        self.decoder_norm = norm_layer(decoder_embed_dim)
+        self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
+        self.norm_pix_loss = norm_pix_loss
         
         if not self.use_rin:
             self.decoder_blocks = nn.ModuleList(
@@ -168,7 +172,10 @@ class MaskedAutoencoderViT(nn.Module):
                     for i in range(decoder_depth)
                 ]
             )
+            self.initialize_weights()
         elif self.use_rin:
+            self.initialize_weights() # just tried to make it as consistent as https://github.com/katop1234/video_inpainting/blob/85e259686661703c35cd822331a9ce8af55ed7c4/video_mae_code/models_mae.py#L175
+            
             # Decoder
             self.decoder_dim = decoder_embed_dim # 512 works
             self.decoder_dim_latent = self.decoder_dim
@@ -177,7 +184,7 @@ class MaskedAutoencoderViT(nn.Module):
             self.process_depth = 4 # number of self-attention layers in the latent space.
             self.write_depth = 1
             self.decoder_MHA_heads = 16
-            self.decoder_depth = 4 # Num of RIN blocks
+            self.decoder_depth = 8 # Num of RIN blocks
             
             self.decoder_blocks = nn.ModuleList([RINBlockVIP(self.decoder_dim, 
                                                             dim_latent = self.decoder_dim_latent, 
@@ -188,14 +195,8 @@ class MaskedAutoencoderViT(nn.Module):
                                                             ).cuda() for _ in range(self.decoder_depth)])
             
             self.decoder_latents = nn.Parameter(torch.randn(self.decoder_num_latents, self.decoder_dim_latent) * 0.02)
-        
-        self.decoder_norm = norm_layer(decoder_embed_dim)
-        self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
+            nn.init.normal_(self.decoder_latents, std = 0.02)
         # --------------------------------------------------------------------------
-
-        self.norm_pix_loss = norm_pix_loss
-        
-        self.initialize_weights()
         
         print("model initialized new code")
 

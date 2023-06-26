@@ -186,8 +186,6 @@ class CrossAttention(nn.Module):
 
             nn.init.zeros_(self.time_cond[-2].weight)
             nn.init.zeros_(self.time_cond[-2].bias)
-
-        dim_head
         
         self.scale = dim_head ** -0.5
         self.heads = heads

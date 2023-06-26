@@ -212,6 +212,8 @@ class RINBlockVIP(nn.Module):
             )
             for _ in range(write_depth)
         ])
+        
+        self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
 
         self.counter = 0
         self.print_frequency = 100  # Change this to control how often the similarities are printed
@@ -252,6 +254,8 @@ class RINBlockVIP(nn.Module):
             print_similarity(patches_prewrite, patches, 'Final vs Initial Patch', len(self.read_blocks)+len(self.process_blocks)+len(self.write_blocks))
         
         self.counter += 1
+        
+        latents = self.latent_final_norm(latents)
         
         return patches, latents
     
