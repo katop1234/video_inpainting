@@ -375,7 +375,7 @@ class MaskedAutoencoderViT(nn.Module):
         for frame in range(F):
             for row in range(H):
                 for col in range(W):
-                    if frame > (F - 8):
+                    if frame >= (F - 8):
                         mask[:, frame * H * W + row * W + col] = 1
 
         # Apply the mask to the input tensor
