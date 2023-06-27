@@ -126,6 +126,8 @@ class MaskedAutoencoderViT(nn.Module):
         self.vae = get_vq_model().eval() 
         vocab_size = 1024
         # --------------------------------------------------------------------------
+        
+        self.imagenet_linear_probe = nn.Linear(embed_dim, embed_dim)
 
         # --------------------------------------------------------------------------
         # MAE decoder specifics
@@ -375,7 +377,7 @@ class MaskedAutoencoderViT(nn.Module):
         for frame in range(F):
             for row in range(H):
                 for col in range(W):
-                    if frame > (F - 8):
+                    if frame >= (F - 8):
                         mask[:, frame * H * W + row * W + col] = 1
 
         # Apply the mask to the input tensor
@@ -700,6 +702,11 @@ class MaskedAutoencoderViT(nn.Module):
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
         self.vae.eval()
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view)
+        probed_features = self.linear_probe(latent)
+        
+        # Assuming `model` is an instance of `MaskedAutoencoderViT`
+        # model.evaluate_classification_accuracy(data_loader_image_train)
+        
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
