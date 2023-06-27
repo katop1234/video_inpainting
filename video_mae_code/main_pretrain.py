@@ -386,6 +386,7 @@ def main(args):
         optimizer=optimizer,
         loss_scaler=loss_scaler,
     )
+    print("Total number of parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
     if misc.is_main_process():
         wandb_config = vars(args)

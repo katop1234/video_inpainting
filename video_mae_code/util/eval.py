@@ -247,7 +247,8 @@ def visualize_image_prompting(model, epoch, input_image_viz_dir):
         im_paste = im_paste.squeeze()
         im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
         if im_paste.shape[0] > 1:
-            im_paste = im_paste[0]
+            # im_paste = im_paste[0]
+            im_paste = im_paste[1]
 
         img_file = os.path.basename(os.path.normpath(img_file))
         img_file = os.path.basename(os.path.normpath(img_file))
