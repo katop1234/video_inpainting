@@ -236,6 +236,8 @@ def get_args_parser():
                     default='/shared/dannyt123/Datasets/DAVIS')
     parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
+    
+    parser.add_argument('--detect_anomaly', action='store_true', help='detect anomaly during training')
 
     return parser
 
@@ -399,6 +401,9 @@ def main(args):
             resume="hwhsdrc0",
             project="video_inpainting2",
             config=wandb_config)
+    
+    if args.detect_anomaly:
+        torch.autograd.set_detect_anomaly(True)
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
@@ -451,6 +456,80 @@ def main(args):
                         "a",
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
+                    
+            train_imagenet_probe = True         
+            if train_imagenet_probe:
+                # Freeze all layers
+                for param in model.parameters():
+                    param.requires_grad = False
+
+                # Unfreeze the linear probe
+                for param in model.linear_probe.parameters():
+                    param.requires_grad = True
+                    
+                # Specify the ImageNet dataset location
+                imagenet_dataset_path = "/home/katop1234/Datasets/ilsvrc/val/"
+
+                # Create the ImageNet dataset
+                imagenet_dataset = datasets.ImageFolder(imagenet_dataset_path, transforms.Compose([
+                    transforms.RandomResizedCrop(224),
+                    transforms.RandomHorizontalFlip(),
+                    transforms.ToTensor(),
+                    normalize,
+                ]))
+
+                # Create the ImageNet dataloader
+                imagenet_dataloader = torch.utils.data.DataLoader(
+                    imagenet_dataset,
+                    sampler=torch.utils.data.DistributedSampler(
+                        imagenet_dataset, 
+                        num_replicas=num_tasks, 
+                        rank=global_rank, 
+                        shuffle=True
+                    ),
+                    batch_size=args.batch_size_image,
+                    num_workers=args.num_workers,
+                    pin_memory=args.pin_mem,
+                    drop_last=True,
+                )
+
+                # Choose an optimizer for the linear probe
+                probe_optimizer = torch.optim.Adam(model.linear_probe.parameters(), lr=0.001)
+                
+                # Epochs for the linear probe training
+                probe_epochs = 10
+
+                # Training the linear probe
+                for epoch in range(probe_epochs):
+                    for i, data in enumerate(imagenet_dataloader):
+                        # get the inputs; data is a list of [inputs, labels]
+                        inputs, labels = data
+
+                        # Zero the parameter gradients
+                        probe_optimizer.zero_grad()
+
+                        # Get encoded features (latents) and ignore the decoding
+                        _, latents = model(inputs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view)
+
+                        # Apply linear probe to latents
+                        outputs = model.linear_probe(latents)
+                        
+                        # Compute the loss
+                        loss = F.cross_entropy(outputs, labels)
+
+                        # Backpropagation
+                        loss.backward()
+
+                        # Optimize
+                        probe_optimizer.step()
+
+                        # Print statistics
+                        if i % 2000 == 1999:    # print every 2000 mini-batches
+                            print('[%d, %5d] loss: %.3f' %
+                                (epoch + 1, i + 1, running_loss / 2000))
+                            running_loss = 0.0
+
+
 
         if epoch % int(args.eval_freq) == 0 and misc.is_main_process():
             with torch.no_grad():

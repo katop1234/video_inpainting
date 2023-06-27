@@ -429,7 +429,27 @@ class MaskedAutoencoderViT(nn.Module):
         ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to(x.device)
 
         return x_masked, mask, ids_restore, ids_keep
+    
+    def evaluate_imagenet(self, latents, labels):
+        # Ensure the model is in evaluation mode
+        self.eval()
 
+        # We don't want to backpropagate, so we wrap this in no_grad()
+        with torch.no_grad():
+            # Apply linear probe to latents
+            probed_features = self.linear_probe(latents)
+
+            # Compute predictions
+            probs = softmax(probed_features, dim=1)
+            predictions = probs.argmax(dim=1)
+
+            # Track correct and total predictions
+            correct_predictions = (predictions == labels).sum().item()
+            total_predictions = labels.shape[0]
+
+        # Compute and return accuracy
+        accuracy = correct_predictions / total_predictions
+        return accuracy
 
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
         test_modes = [int(mode) for mode in [test_image, test_temporal, test_spatiotemporal, test_view]]
@@ -699,17 +719,15 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
 
-    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
+    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, return_latents=False, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
         self.vae.eval()
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view)
-        probed_features = self.linear_probe(latent)
-        
-        # Assuming `model` is an instance of `MaskedAutoencoderViT`
-        # model.evaluate_classification_accuracy(data_loader_image_train)
-        
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         loss = self.forward_loss(imgs, pred, mask)
-        return loss, pred, mask
+        if return_latents:
+            return loss, pred, mask, latent
+        else:
+            return loss, pred, mask
 
 def mae_vit_base_patch16(**kwargs):
     model = MaskedAutoencoderViT(
