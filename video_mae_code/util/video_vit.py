@@ -177,6 +177,8 @@ class Block(nn.Module):
 import util.rin as rin, math
 
 class InstantAttnBlock(nn.Module):
+    # TODO can even project the input down to smaller dim (i.e. 1024/16), and then cross attention to each block that way
+    # because attn is only dependent on D, we can make it super small.
     def __init__(self, dim=1024, context_length=1024, seeker_depth=4, object_dimensionality=1):
         
         '''
