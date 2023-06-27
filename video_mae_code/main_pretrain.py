@@ -236,6 +236,8 @@ def get_args_parser():
                     default='/shared/dannyt123/Datasets/DAVIS')
     parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
+    
+    parser.add_argument('--detect_anomaly', action='store_true', help='detect anomaly during training')
 
     return parser
 
@@ -338,6 +340,7 @@ def main(args):
 
         exit()
 
+
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
 
@@ -398,6 +401,9 @@ def main(args):
             resume="hwhsdrc0",
             project="video_inpainting2",
             config=wandb_config)
+    
+    if args.detect_anomaly:
+        torch.autograd.set_detect_anomaly(True)
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
