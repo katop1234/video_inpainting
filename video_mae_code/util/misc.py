@@ -301,11 +301,19 @@ class NativeScalerWithGradNormCount:
         parameters=None,
         create_graph=False,
         update_grad=True,
-    ):  
-        
+    ):
+
         self._scaler.scale(loss).backward(create_graph=create_graph)
 
         if update_grad:
+            
+            params_with_grads = [(p, p.grad) for p in parameters if p.requires_grad and p.grad is not None]
+            sorted_params_with_grads = sorted(params_with_grads, key=lambda x: x[1].abs().max().item(), reverse=True)
+            top_gradients = []
+            for idx, (param, grad) in enumerate(sorted_params_with_grads[:10]):
+                top_gradients.append(grad.abs().max().item())
+            print("Before running backprop, largest gradients are:", top_gradients)
+            
             if clip_grad is not None:
                 assert parameters is not None
                 self._scaler.unscale_(
@@ -319,6 +327,7 @@ class NativeScalerWithGradNormCount:
             self._scaler.update()
         else:
             norm = None
+
         return norm
 
     def state_dict(self):
@@ -404,7 +413,7 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
             if "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
             print("With optim & sched!")
-        elif args.no_cont_pretrain:
+        elif (args.no_cont_pretrain):
             args.start_epoch = 0
             
     return args.resume

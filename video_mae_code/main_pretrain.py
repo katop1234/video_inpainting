@@ -220,6 +220,8 @@ def get_args_parser():
     )
     parser.add_argument("--cls_embed", action="store_true")
     parser.set_defaults(cls_embed=True)
+    
+    parser.add_argument('--use_rin', action='store_true', help='activate RIN')
 
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
@@ -234,6 +236,8 @@ def get_args_parser():
                     default='/shared/dannyt123/Datasets/DAVIS')
     parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
+    
+    parser.add_argument('--detect_anomaly', action='store_true', help='detect anomaly during training')
 
     return parser
 
@@ -386,15 +390,20 @@ def main(args):
         optimizer=optimizer,
         loss_scaler=loss_scaler,
     )
+    
+    print("Total number of parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
 
     if misc.is_main_process():
         wandb_config = vars(args)
         base_lr = (args.lr * 256 / eff_batch_size)
         wandb_config['base_lr'] = base_lr
         wandb.init(
-            resume=True,
+            #resume="hwhsdrc0",
             project="video_inpainting2",
             config=wandb_config)
+    
+    if args.detect_anomaly:
+        torch.autograd.set_detect_anomaly(True)
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")

@@ -51,7 +51,7 @@ class PatchEmbed(nn.Module):
 
         self.grid_size = img_size[0] // patch_size[0]
         self.t_grid_size = frames // t_patch_size
-        
+
         self.embed_dim = embed_dim
 
         kernel_size = [t_patch_size] + list(patch_size) # 1, 16, 16
@@ -170,3 +170,155 @@ class Block(nn.Module):
         x = x + self.drop_path(self.attn(self.norm1(x)))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
+    
+### RIN Implementation below ###
+import util.rin as rin
+
+class RINBlockVIP(nn.Module):
+    def __init__(
+        self,
+        dim,
+        process_depth=4,
+        dim_latent = None,
+        final_norm = True,
+        heads=16,
+        read_depth=1,
+        write_depth=1,
+        **attn_kwargs
+    ):
+        super().__init__()
+        dim_latent = rin.default(dim_latent, dim)
+
+        self.read_blocks = nn.ModuleList([
+            nn.Sequential(
+                rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, **attn_kwargs),
+                rin.FeedForward(dim_latent)
+            )
+            for _ in range(read_depth)
+        ])
+        
+        self.process_blocks = nn.ModuleList([
+            nn.Sequential(
+                rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs),
+                rin.FeedForward(dim_latent)
+            )
+            for _ in range(process_depth)
+        ])
+
+        self.write_blocks = nn.ModuleList([
+            nn.Sequential(
+                rin.CrossAttention(dim, dim_context = dim_latent, heads = heads, norm = True, norm_context = True, **attn_kwargs),
+                rin.FeedForward(dim)
+            )
+            for _ in range(write_depth)
+        ])
+        
+        self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
+
+        self.counter = 0
+        self.print_frequency = 100  # Change this to control how often the similarities are printed
+
+    def forward(self, patches, latents, print_similarities=False):
+        # Helper function to calculate and print similarity
+        def print_similarity(old, new, block_name, depth):
+            similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
+            print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
+            
+        latents_initial = latents.clone().detach()  # Store the initial latents
+        patches_initial = patches.clone().detach()  # Store the initial patches
+        
+        if self.counter % self.print_frequency == 0:
+            print("---Start of RIN Block---")
+
+        for i, read_block in enumerate(self.read_blocks):
+            latents_prev = latents.clone().detach()  # Store the previous latents
+            latents = read_block[0](latents, patches) + latents
+            latents = read_block[1](latents) + latents
+            if self.counter % self.print_frequency == 0:
+                print_similarity(latents_prev, latents, 'Read latents', i+1)
+                
+        for i, process_block in enumerate(self.process_blocks):
+            latents_prev = latents.clone().detach()  # Store the previous latents
+            latents = process_block[0](latents) + latents
+            latents = process_block[1](latents) + latents
+            if self.counter % self.print_frequency == 0:
+                print_similarity(latents_prev, latents, 'Process latents', i+1)
+
+        for i, write_block in enumerate(self.write_blocks):
+            patches_prev = patches.clone().detach()  # Store the previous patches
+            patches = write_block[0](patches, latents) + patches
+            patches = write_block[1](patches) + patches
+            if self.counter % self.print_frequency == 0:
+                print_similarity(patches_prev, patches, 'Write patches', i+1)
+
+        # Print final similarity values
+        if self.counter % self.print_frequency == 0:
+            print_similarity(latents_initial, latents, 'Final vs Initial Latent', len(self.read_blocks)+len(self.process_blocks)+len(self.write_blocks))
+            print_similarity(patches_initial, patches, 'Final vs Initial Patch', len(self.read_blocks)+len(self.process_blocks)+len(self.write_blocks))
+        
+        self.counter += 1
+        
+        latents = self.latent_final_norm(latents)
+        
+        return patches, latents
+    
+class FITBlockVIP(nn.Module):
+    def __init__(self, dim, G, l, read_depth=1, process_depth=1, write_depth=1, **attn_kwargs):
+        super().__init__()
+        self.G = G
+        self.l = l
+        self.latents = nn.Parameter(torch.randn(G, l, dim)) * 0.02
+
+        self.group_attn = rin.CrossAttention(dim, **attn_kwargs)
+        self.group_ff = rin.FeedForward(dim)
+
+        self.read_blocks = nn.ModuleList([
+            nn.Sequential(
+                rin.CrossAttention(dim, dim_context=dim, **attn_kwargs),
+                rin.FeedForward(dim)
+            ) for _ in range(read_depth)
+        ])
+
+        self.process_blocks = nn.ModuleList([
+            nn.Sequential(
+                rin.CrossAttention(dim, **attn_kwargs),
+                rin.FeedForward(dim)
+            ) for _ in range(process_depth)
+        ])
+
+        self.write_blocks = nn.ModuleList([
+            nn.Sequential(
+                rin.CrossAttention(dim, dim_context=dim, **attn_kwargs),
+                rin.FeedForward(dim)
+            ) for _ in range(write_depth)
+        ])
+
+    def forward(self, x):
+        B, N, _ = x.shape
+        x = x.view(B, self.G, -1, x.shape[-1])
+
+        # Step 1: Do self attention within each group
+        x = self.group_attn(x)
+        x = self.group_ff(x)
+
+        # Step 2: (READ) Each group cross attends to its own latent vectors
+        latents_per_group = self.latents.unsqueeze(0).expand(B, -1, -1, -1)
+        for read_block in self.read_blocks:
+            latents_per_group = read_block[0](latents_per_group, x) + latents_per_group
+            latents_per_group = read_block[1](latents_per_group) + latents_per_group
+
+        # Step 3: Concat all the latents
+        latents_concat = latents_per_group.view(B, self.G*self.l, -1)
+
+        # Step 4: (PROCESS) Concat all the latents and do self attention globally
+        for process_block in self.process_blocks:
+            latents_concat = process_block[0](latents_concat) + latents_concat
+            latents_concat = process_block[1](latents_concat) + latents_concat
+
+        # Step 5: (WRITE) Write back to x in the reverse process as 2
+        latents_per_group = latents_concat.view(B, self.G, self.l, -1)
+        for write_block in self.write_blocks:
+            x = write_block[0](x, latents_per_group) + x
+            x = write_block[1](x) + x
+
+        return x.view(B, N, -1)

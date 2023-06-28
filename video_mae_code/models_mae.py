@@ -20,6 +20,10 @@ from util.logging import master_print as print
 from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
 
+from util.video_vit import RINBlockVIP as RINBlockVIP
+from util import rin
+import numpy as np
+
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
 
@@ -45,6 +49,7 @@ class MaskedAutoencoderViT(nn.Module):
         trunc_init=False,
         cls_embed=True,
         pred_t_dim=16,
+        use_rin=False,
         **kwargs,
     ):
         
@@ -53,6 +58,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.sep_pos_embed = sep_pos_embed
         self.cls_embed = cls_embed
         self.pred_t_dim = pred_t_dim
+        self.use_rin = use_rin
 
         # t_patch_size is how many consecutive video frames are grouped together to form a single temporal patch
         # pred_t_dim is how many consecutive temporal patches are predicted
@@ -101,7 +107,8 @@ class MaskedAutoencoderViT(nn.Module):
                 torch.zeros(1, _num_patches, embed_dim),
             )
 
-        self.blocks = nn.ModuleList(
+        # ViT Implementation 
+        self.encoder_blocks = nn.ModuleList(
             [
                 video_vit.Block(
                     embed_dim,
@@ -146,29 +153,48 @@ class MaskedAutoencoderViT(nn.Module):
             self.decoder_pos_embed = nn.Parameter(
                 torch.zeros(1, _num_patches, decoder_embed_dim),
             )
-        
-        self.decoder_blocks = nn.ModuleList(
-            [
-                video_vit.Block(
-                    decoder_embed_dim,
-                    decoder_num_heads,
-                    mlp_ratio,
-                    qkv_bias=not no_qkv_bias,
-                    qk_scale=None,
-                    norm_layer=norm_layer,
-                )
-                for i in range(decoder_depth)
-            ]
-        )
-
+            
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
-        # --------------------------------------------------------------------------
-
         self.norm_pix_loss = norm_pix_loss
-
+        
+        if not self.use_rin:
+            self.decoder_blocks = nn.ModuleList(
+                [
+                    video_vit.Block(
+                        decoder_embed_dim,
+                        decoder_num_heads,
+                        mlp_ratio,
+                        qkv_bias=not no_qkv_bias,
+                        qk_scale=None,
+                        norm_layer=norm_layer,
+                    )
+                    for i in range(decoder_depth)
+                ]
+            )
+        elif self.use_rin: 
+            # Decoder
+            self.decoder_dim = decoder_embed_dim # 512 works
+            self.decoder_dim_latent = self.decoder_dim
+            self.read_depth = 1
+            self.process_depth = 4 # number of self-attention layers in the latent space.
+            self.write_depth = 1
+            self.decoder_MHA_heads = 16
+            self.decoder_depth = 8 # Num of RIN blocks
+            
+            self.decoder_blocks = nn.ModuleList([RINBlockVIP(self.decoder_dim, 
+                                                            dim_latent = self.decoder_dim_latent, 
+                                                            process_depth = self.process_depth, 
+                                                            heads = self.decoder_MHA_heads,
+                                                            read_depth=self.read_depth,
+                                                            write_depth=self.write_depth,
+                                                            ).cuda() for _ in range(self.decoder_depth)])
+            
+            self.decoder_latents = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
+            
         self.initialize_weights()
-
+        # --------------------------------------------------------------------------
+        
         print("model initialized new code")
 
     def initialize_weights(self):
@@ -346,7 +372,7 @@ class MaskedAutoencoderViT(nn.Module):
         for frame in range(F):
             for row in range(H):
                 for col in range(W):
-                    if frame > (F - 8):
+                    if frame >= (F - 8):
                         mask[:, frame * H * W + row * W + col] = 1
 
         # Apply the mask to the input tensor
@@ -399,7 +425,6 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore, ids_keep
 
-
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
         test_modes = [int(mode) for mode in [test_image, test_temporal, test_spatiotemporal, test_view]]
         assert sum(test_modes) <= 1, "Only one or zero test modes can be active at a time"
@@ -448,7 +473,7 @@ class MaskedAutoencoderViT(nn.Module):
                 raise ValueError("The output tensor shapes do not match expected shapes for video or image tensors.")
 
         x = x.view(N, -1, C)
-
+        
         # append cls token
         if self.cls_embed:
             cls_token = self.cls_token
@@ -506,17 +531,17 @@ class MaskedAutoencoderViT(nn.Module):
 
         x = x.view([N, -1, C]) + pos_embed
 
-        # apply Transformer blocks
-        for blk in self.blocks:
+        # # apply Transformer blocks
+        for blk in self.encoder_blocks:
             x = blk(x)
         x = self.norm(x)
-
+        
         if self.cls_embed:
             # remove cls token
             x = x[:, 1:, :]
         else:
             x = x[:, :, :]
-
+        
         return x, mask, ids_restore
 
     def forward_decoder(self, x, ids_restore, mask_ratio_image=0.75, mask_ratio_video=0.9):
@@ -594,14 +619,28 @@ class MaskedAutoencoderViT(nn.Module):
             print("got bad x shape when adding decoder pos emb", x.shape)
             raise NotImplementedError 
     
-        attn = self.decoder_blocks[0].attn
-        requires_t_shape = hasattr(attn, "requires_t_shape") and attn.requires_t_shape
+        # attn = self.decoder_blocks[0].attn
+        # requires_t_shape = hasattr(attn, "requires_t_shape") and attn.requires_t_shape
+        requires_t_shape = False # We use RIN attention instead of Transformer
         if requires_t_shape:
             x = x.view([N, T, H * W, C])
 
-        # apply Transformer blocks
-        for blk in self.decoder_blocks:
-            x = blk(x)
+        # # apply Transformer blocks
+        if not self.use_rin:
+            for blk in self.decoder_blocks:
+                x = blk(x)
+        elif self.use_rin:
+            batch = x.shape[0]
+            
+            N = x.shape[1]
+            n = int(N // 3.5)
+
+            # prepare latents across batches and length
+            latents = rin.repeat(self.decoder_latents, '1 d -> b n d', b = batch, n = n)
+            
+            # Apply RIN Blocks
+            for blk in self.decoder_blocks:
+                x, latents = blk(x, latents, print_similarities=True)
         
         x = self.decoder_norm(x)
 
@@ -610,7 +649,7 @@ class MaskedAutoencoderViT(nn.Module):
         
         if requires_t_shape:
             x = x.view([N, T * H * W, -1])
-
+        
         if self.cls_embed:
             # remove cls token
             x = x[:, 1:, :]
@@ -654,8 +693,7 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
 
-
-    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
+    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, return_latents=False, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
         self.vae.eval()
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
