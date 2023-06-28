@@ -241,14 +241,19 @@ def visualize_image_prompting(model, epoch, input_image_viz_dir):
 
         num_patches = 14
         N = test_model_input.shape[0]
-        test_model_output = torch.reshape(test_model_output, [N, -1, 1024])
+
+        test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
+        test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
+        test_model_output = test_model_output.flatten(1, 2)
+        test_model_output = test_model_output.flatten(1, 2)
+    
         y = test_model_output.argmax(dim=-1)
         im_paste, _, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
         im_paste = im_paste.squeeze()
         im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
         if im_paste.shape[0] > 1:
-            # im_paste = im_paste[0]
-            im_paste = im_paste[1]
+            im_paste = im_paste[0]
+            # im_paste = im_paste[1]
 
         img_file = os.path.basename(os.path.normpath(img_file))
         img_file = os.path.basename(os.path.normpath(img_file))
@@ -283,7 +288,12 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
     
     num_patches = 14
     N = test_model_input.shape[0]
-    test_model_output = torch.reshape(test_model_output, [N, -1, 1024])
+
+    test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
+    test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
+    test_model_output = test_model_output.flatten(1, 2)
+    test_model_output = test_model_output.flatten(1, 2)
+    
     y = test_model_output.argmax(dim=-1)
     im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
 

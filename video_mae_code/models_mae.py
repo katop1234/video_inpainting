@@ -59,7 +59,7 @@ class MaskedAutoencoderViT(nn.Module):
         # num_frames is the total number of video frames in input (16)
         # t_pred_patch_size determines the size of the predicted temporal patches in the output video
 
-        self.t_pred_patch_size = t_patch_size * pred_t_dim // num_frames # 1 
+        self.t_pred_patch_size = t_patch_size * pred_t_dim // num_frames # 2 
 
         assert self.t_pred_patch_size > 0, "pred_t_dim must be a multiple of num_frames" + f"({t_patch_size}, {pred_t_dim}, {num_frames})"
 
@@ -253,14 +253,10 @@ class MaskedAutoencoderViT(nn.Module):
         """
         N, L, D = x.shape  # batch, length, dim
 
-        if L == 14 ** 2 * self.patch_embed.t_grid_size: #8
-            # print("mask_ratio for video")
-            # video
+        if L == 14 ** 2 * self.patch_embed.t_grid_size:
             mask_ratio = mask_ratio_video
             pass 
-        elif L == 14 ** 2 * 1: #Maybe
-            # print("mask_ratio for image")
-            #image
+        elif L == 14 ** 2 * 1:
             mask_ratio = mask_ratio_image
             pass
         else:
@@ -511,11 +507,9 @@ class MaskedAutoencoderViT(nn.Module):
         mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2) # quantizes it 
         mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it 
 
-        if x.shape[1] == 14 ** 2 * (1 - mask_ratio_image) * 1 or x.shape[1] == 14 ** 2 * (0.75) * 1: # image and image test. functionally the same
-            # print("entered forward_decoder image")
+        if x.shape[1] == 14 ** 2 * (1 - mask_ratio_image) * 1 or x.shape[1] == 14 ** 2 * (0.75) * 1: # image and image test
             T = 1 
         else: #Video case
-            # print("entered forward_decoder video")
             T = self.patch_embed.t_grid_size
         
         N = x.shape[0]
@@ -550,7 +544,6 @@ class MaskedAutoencoderViT(nn.Module):
 
             if x.shape[1] == 1 + (14 ** 2) * self.patch_embed.t_grid_size: #8
                 # Add Temporal Embedding for Video only
-                # print("added decoder pos embed temporal for video")
                 decoder_pos_embed += torch.repeat_interleave(
                     self.decoder_pos_embed_temporal,
                     self.input_size[1] * self.input_size[2],
@@ -572,11 +565,9 @@ class MaskedAutoencoderViT(nn.Module):
 
         if x.shape[1] == 1 + 14 ** 2 * 1: # image
             # Create a range tensor for indexing
-            # print("entered decoder_pos_embed for images")
             index_range = torch.arange(0, 197, device=x.device).view(1, -1)
             x[:, :197] = x[:, :197] + decoder_pos_embed[:, index_range]
         elif x.shape[1] == 1 + (14 ** 2) * self.patch_embed.t_grid_size: # video, 8
-            # print("entered decoder_pos_embed for video")
             x = x + decoder_pos_embed
         else:
             print("got bad x shape when adding decoder pos emb", x.shape)
@@ -638,7 +629,11 @@ class MaskedAutoencoderViT(nn.Module):
             target = self.vae.get_codebook_indices(_imgs).flatten(1)
             target = torch.reshape(target, [N, T * 196])
         
-        pred = torch.reshape(pred, [N, -1, 1024])
+        pred = pred.view(N, -1, 196, 2, 1024)
+        pred = pred.permute(0, 1, 3, 2, 4)
+        pred = pred.flatten(1, 2)
+        pred = pred.flatten(1, 2)
+        
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
