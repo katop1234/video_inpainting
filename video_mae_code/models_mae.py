@@ -195,7 +195,6 @@ class MaskedAutoencoderViT(nn.Module):
                                                             ).cuda() for _ in range(self.decoder_depth)])
             
             self.decoder_latents = nn.Parameter(torch.randn(self.decoder_num_latents, self.decoder_dim_latent) * 0.02)
-            nn.init.normal_(self.decoder_latents, std = 0.02)
         # --------------------------------------------------------------------------
         
         print("model initialized new code")
