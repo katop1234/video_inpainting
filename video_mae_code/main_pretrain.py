@@ -340,7 +340,6 @@ def main(args):
 
         exit()
 
-
     model_without_ddp = model
     print("Model = %s" % str(model_without_ddp))
 

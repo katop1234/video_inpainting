@@ -358,7 +358,7 @@ class MaskedAutoencoderViT(nn.Module):
 
     def mask_temporal(self, x):
         """
-        Mask the last 7 frames of the video patches.
+        Mask the last 8 frames of the video patches.
         x: [N, L, D], sequence
         """
         N, L, D = x.shape  # batch, length, dim
@@ -425,8 +425,46 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore, ids_keep
 
-    def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
-        test_modes = [int(mode) for mode in [test_image, test_temporal, test_spatiotemporal, test_view]]
+    def mask_middle8(self, x):
+        """
+        Mask the middle 8 frames of the video patches.
+        x: [N, L, D], sequence
+        """
+        N, L, D = x.shape  # batch, length, dim
+
+        assert L == 196 * 16, "This only works for L = 196 * 16 (video)"
+
+        F, H, W = 16, 14, 14  # F is the number of frames
+
+        # Define the starting frame for masking (F//2 - 4) 
+        # and the ending frame for masking (F//2 + 4)
+        start_frame, end_frame = F // 2 - 4, F // 2 + 4
+
+        # Create the binary mask: 0 is keep, 1 is remove
+        mask = torch.zeros([N, L], device=x.device)
+        for frame in range(F):
+            for row in range(H):
+                for col in range(W):
+                    if start_frame <= frame < end_frame:
+                        mask[:, frame * H * W + row * W + col] = 1
+
+        # Apply the mask to the input tensor
+        x_masked = x[mask == 0].view(N, -1, D)
+        
+        ids_keep = torch.nonzero(mask == 0)[:, 1] # Get only the indices of the kept elements
+        ids_remove = torch.nonzero(mask == 1)[:, 1] # Get only the indices of the removed elements
+
+        # Create ids_restore by concatenating ids_keep and ids_remove
+        ids_shuffle = torch.cat((ids_keep, ids_remove), dim=0)
+        ids_restore = torch.argsort(ids_shuffle, dim=0)
+        
+        ids_keep = ids_keep.unsqueeze(0).repeat(N, 1).to(x.device)
+        ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to(x.device)
+
+        return x_masked, mask, ids_restore, ids_keep
+
+    def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
+        test_modes = [int(mode) for mode in [test_image, test_temporal, test_spatiotemporal, test_view, test_middle8]]
         assert sum(test_modes) <= 1, "Only one or zero test modes can be active at a time"
         
         mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2 * 1) # quantizes it 
@@ -452,6 +490,9 @@ class MaskedAutoencoderViT(nn.Module):
 
         elif test_spatiotemporal:
             x, mask, ids_restore, ids_keep = self.mask_spatiotemporal(x)
+        
+        elif test_middle8:
+            x, mask, ids_restore, ids_keep = self.mask_middle8(x)
 
         elif test_view:
             raise NotImplementedError
@@ -553,7 +594,7 @@ class MaskedAutoencoderViT(nn.Module):
             T = 1 
         elif x.shape[1] == 14 ** 2 * (1 - mask_ratio_video) * 16: # video
             T = 16
-        elif x.shape[1] == 3136 * 9 / 16 or x.shape[1] == 3136 * 12 / 16: # video temporal inference
+        elif x.shape[1] == 3136 * 9 / 16 or x.shape[1] == 3136 * 12 / 16 or x.shape[1] == 3136 * 12 / 16 or x.shape[1] == 3136 * 1/2: # video temporal inference or video mask middle 8
             T = 16
         else:
             raise NotImplementedError("got unsupported x, x shape was " + str(x.shape))
@@ -693,9 +734,9 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
 
-    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, return_latents=False, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
+    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
         self.vae.eval()
-        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view)
+        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view, test_middle8)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
