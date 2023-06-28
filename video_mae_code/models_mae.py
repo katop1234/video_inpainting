@@ -172,10 +172,7 @@ class MaskedAutoencoderViT(nn.Module):
                     for i in range(decoder_depth)
                 ]
             )
-            self.initialize_weights()
-        elif self.use_rin:
-            self.initialize_weights() # just tried to make it as consistent as https://github.com/katop1234/video_inpainting/blob/85e259686661703c35cd822331a9ce8af55ed7c4/video_mae_code/models_mae.py#L175
-            
+        elif self.use_rin: 
             # Decoder
             self.decoder_dim = decoder_embed_dim # 512 works
             self.decoder_dim_latent = self.decoder_dim
@@ -194,6 +191,8 @@ class MaskedAutoencoderViT(nn.Module):
                                                             ).cuda() for _ in range(self.decoder_depth)])
             
             self.decoder_latents = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
+            
+        self.initialize_weights()
         # --------------------------------------------------------------------------
         
         print("model initialized new code")
@@ -634,9 +633,9 @@ class MaskedAutoencoderViT(nn.Module):
             batch = x.shape[0]
             
             N = x.shape[1]
-            n = N // 4
+            n = N // 3.5
 
-            # prepare latents across batches
+            # prepare latents across batches and length
             latents = rin.repeat(self.decoder_latents, 'l d -> b n d', b = batch, n = n)
             
             # Apply RIN Blocks
