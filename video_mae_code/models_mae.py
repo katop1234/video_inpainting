@@ -177,10 +177,10 @@ class MaskedAutoencoderViT(nn.Module):
             self.decoder_dim = decoder_embed_dim # 512 works
             self.decoder_dim_latent = self.decoder_dim
             self.read_depth = 1
-            self.process_depth = 1 # number of self-attention layers in the latent space.
+            self.process_depth = 4 # number of self-attention layers in the latent space.
             self.write_depth = 1
             self.decoder_MHA_heads = 16
-            self.decoder_depth = 4 # Num of RIN blocks
+            self.decoder_depth = 8 # Num of RIN blocks
             
             self.decoder_blocks = nn.ModuleList([RINBlockVIP(self.decoder_dim, 
                                                             dim_latent = self.decoder_dim_latent, 
