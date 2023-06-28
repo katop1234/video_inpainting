@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 import util.decoder.constants as constants
 import random
+from os.path import basename
 
 def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     '''
@@ -213,6 +214,7 @@ def visualize_prompting(model, epoch, test_cases_folder):
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "temporally_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"))
+    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "mask_middle_8_frames_videos/"))
     # visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "view_videos/")) # TODO
 
 @torch.no_grad()
@@ -258,16 +260,22 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
 
     print("prompting video with", input_video_viz_dir)
 
-    if "random_masked_videos" in input_video_viz_dir:
+    input_folder_name = basename(input_video_viz_dir.rstrip('/'))
+    
+    print("input_folder_name", input_folder_name)
+
+    if "random_masked_videos" == input_folder_name:
         _, test_model_output, mask = model(test_model_input)
-    elif "temporally_masked_videos" in input_video_viz_dir:
+    elif "temporally_masked_videos" == input_folder_name:
         _, test_model_output, mask = model(test_model_input, test_temporal=True)
-    elif "spatiotemporally_masked_1_video" in input_video_viz_dir:
+    elif "spatiotemporally_masked_1_video" == input_folder_name:
         _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
-    elif "spatiotemporally_masked_2_videos" in input_video_viz_dir:
+    elif "spatiotemporally_masked_2_videos" == input_folder_name:
         _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
-    elif "view_videos" in input_video_viz_dir:
+    elif "view_videos" == input_folder_name:
         _, test_model_output, mask = model(test_model_input, test_view=True)
+    elif "mask_middle_8_frames_videos" == input_folder_name:
+        _, test_model_output, mask = model(test_model_input, test_middle8=True)
     else:
         raise ValueError("Invalid input_video_viz_dir")
     

@@ -156,8 +156,11 @@ class SelfAttention(nn.Module):
         out = torch.einsum('b h d e, b h n d -> b h n e', context, q)
         out = rearrange(out, 'b h n d -> b n (h d)')
         return self.to_out(out)
-
+    
 class CrossAttention(nn.Module):
+    '''
+    Cross Attention with learned K Q and V (as opposed to sharing K V)
+    '''
     def __init__(
         self,
         dim,
@@ -198,6 +201,7 @@ class CrossAttention(nn.Module):
         self.to_kv = nn.Linear(dim_context, hidden_dim * 2, bias = True)
         self.to_out = nn.Linear(hidden_dim, dim, bias = False)
 
+    
     def forward(
         self,
         x,
