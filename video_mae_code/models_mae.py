@@ -177,10 +177,10 @@ class MaskedAutoencoderViT(nn.Module):
             self.decoder_dim = decoder_embed_dim # 512 works
             self.decoder_dim_latent = self.decoder_dim
             self.read_depth = 1
-            self.process_depth = 1 # number of self-attention layers in the latent space.
+            self.process_depth = 4 # number of self-attention layers in the latent space.
             self.write_depth = 1
             self.decoder_MHA_heads = 16
-            self.decoder_depth = 4 # Num of RIN blocks
+            self.decoder_depth = 8 # Num of RIN blocks
             
             self.decoder_blocks = nn.ModuleList([RINBlockVIP(self.decoder_dim, 
                                                             dim_latent = self.decoder_dim_latent, 
@@ -464,6 +464,8 @@ class MaskedAutoencoderViT(nn.Module):
         return x_masked, mask, ids_restore, ids_keep
 
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
+        print("x.shape", x.shape)
+        
         test_modes = [int(mode) for mode in [test_image, test_temporal, test_spatiotemporal, test_view, test_middle8]]
         assert sum(test_modes) <= 1, "Only one or zero test modes can be active at a time"
         
