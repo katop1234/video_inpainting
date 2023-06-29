@@ -384,6 +384,7 @@ def main(args):
     loss_scaler = NativeScaler(fp32=args.fp32)
 
     print("loading model")
+
     _ = misc.load_model(
         args=args,
         model_without_ddp=model_without_ddp,
