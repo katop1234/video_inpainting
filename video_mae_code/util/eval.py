@@ -212,17 +212,22 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     return im_paste, mask, orig_image
 
 @torch.no_grad()
-def visualize_prompting(model, epoch, test_cases_folder):
-    visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "test_images/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "random_masked_videos/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "temporally_masked_videos/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"))
-    # visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "view_videos/")) # TODO
+def visualize_prompting(model, test_cases_folder):
+    visualize_image_prompting(model, os.path.join(test_cases_folder, "test_images/"))
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "random")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "temporally_masked_videos/"), "temporal")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"), "spatiotemporal")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"), "spatiotemporal")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "frame prediction")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "frame interpolation")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "central inpainting")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "dynamic inpainting")
+    
+    # visualize_video_prompting(model, os.path.join(test_cases_folder, "view_videos/"), "view") # TODO
 
 @torch.no_grad()
 
-def visualize_image_prompting(model, epoch, input_image_viz_dir):
+def visualize_image_prompting(model, input_image_viz_dir):
     ### Test on images
 
     '''
@@ -263,7 +268,7 @@ def visualize_image_prompting(model, epoch, input_image_viz_dir):
         wandb.log({output_img_name: image})
 
 @torch.no_grad()
-def visualize_video_prompting(model, epoch, input_video_viz_dir):
+def visualize_video_prompting(model, input_video_viz_dir, test_type=""):
 
     if type(model) is torch.nn.parallel.DistributedDataParallel:
         model = model.module
@@ -273,16 +278,10 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
 
     print("prompting video with", input_video_viz_dir)
 
-    if "random_masked_videos" in input_video_viz_dir:
+    if test_type == "random":
         _, test_model_output, mask = model(test_model_input)
-    elif "temporally_masked_videos" in input_video_viz_dir:
-        _, test_model_output, mask = model(test_model_input, test_temporal=True)
-    elif "spatiotemporally_masked_1_video" in input_video_viz_dir:
-        _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
-    elif "spatiotemporally_masked_2_videos" in input_video_viz_dir:
-        _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
-    elif "view_videos" in input_video_viz_dir:
-        _, test_model_output, mask = model(test_model_input, test_view=True)
+    elif test_type:
+        _, test_model_output, mask = model(test_model_input, video_test_type=test_type)
     else:
         raise ValueError("Invalid input_video_viz_dir")
     
@@ -303,9 +302,9 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
     orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
 
     folder_name = os.path.basename(os.path.normpath(input_video_viz_dir))
-    video_title = "{type}_{folder_name}"
-    input_video_title = video_title.format(type="input", folder_name=folder_name)
-    output_video_title = video_title.format(type="output", folder_name=folder_name)
+    video_title = "{type}_{test_type}_{folder_name}"
+    input_video_title = video_title.format(type="input", test_type=test_type, folder_name=folder_name)
+    output_video_title = video_title.format(type="output", test_type=test_type, folder_name=folder_name)
     
     wandb_video_object = wandb.Video(
         data_or_path=orig_video,

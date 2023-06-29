@@ -170,7 +170,7 @@ def get_args_parser():
     parser.add_argument("--decoder_embed_dim", default=512, type=int)
     parser.add_argument("--decoder_depth", default=4, type=int)
     parser.add_argument("--decoder_num_heads", default=16, type=int)
-    parser.add_argument("--t_patch_size", default=2, type=int) #2
+    parser.add_argument("--t_patch_size", default=2, type=int)
     parser.add_argument("--num_frames", default=16, type=int)
     parser.add_argument("--checkpoint_period", default=5, type=int)
     parser.add_argument("--sampling_rate", default=4, type=int)
@@ -469,10 +469,7 @@ def main(args):
             if not args.test_mode:
                 wandb.log(log_stats)
             model.eval()
-            # try:
-            visualize_prompting(model, epoch, args.video_prompts_dir)
-            # except:
-                # print("Error in visualization.")
+            visualize_prompting(model, args.video_prompts_dir)
             model.train()
         print("Done loop on epoch {}".format(epoch))
 
