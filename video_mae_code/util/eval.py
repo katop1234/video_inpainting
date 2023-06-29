@@ -218,10 +218,12 @@ def visualize_prompting(model, test_cases_folder):
     visualize_video_prompting(model, os.path.join(test_cases_folder, "temporally_masked_videos/"), "temporal")
     visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"), "spatiotemporal")
     visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"), "spatiotemporal")
-    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "frame prediction")
-    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "frame interpolation")
-    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "central inpainting")
-    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "dynamic inpainting")
+    
+    objectron_videos_path = '/shared/dannyt123/video_inpainting/test_videos/Objectron'
+    visualize_video_prompting(model, objectron_videos_path, "frame prediction")
+    visualize_video_prompting(model, objectron_videos_path, "frame interpolation")
+    visualize_video_prompting(model, objectron_videos_path, "central inpainting")
+    visualize_video_prompting(model, objectron_videos_path, "dynamic inpainting")
     
     # visualize_video_prompting(model, os.path.join(test_cases_folder, "view_videos/"), "view") # TODO
 
