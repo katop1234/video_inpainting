@@ -251,6 +251,8 @@ def decode(
         fps = video_meta["video_fps"]
 
         total_frames = video_stream.frames
+        
+        frame_window_size = int(64 / 30 * fps) + 1 # 64 frames at 30 fps, variable depending on fps
 
         window_length = fps / 30 * 64
         if total_frames < window_length + 1:
