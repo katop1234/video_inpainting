@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from torchvision import transforms
 import util.decoder.constants as constants
 import random
+from os.path import basename
 
 def save_frames_as_mp4(frames: torch.Tensor, file_name: str):
     '''
@@ -141,7 +142,7 @@ def get_test_model_input(file: str = None, data_dir: str = None):
             video_tensor = video_to_tensor(file)
             video_tensor = uint8_to_normalized(video_tensor)
             return video_tensor.cuda()
-        elif file.endswith(".png"):
+        elif file.endswith(".png") or file.endswith(".JPEG"):
             image_tensor = image_to_tensor(file, (1, 3, 1, 224, 224))
             image_tensor = uint8_to_normalized(image_tensor)
             return image_tensor.cuda()
@@ -209,43 +210,55 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
 @torch.no_grad()
 def visualize_prompting(model, epoch, test_cases_folder):
     visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "test_images/"))
+    visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "random_masked_images/"))
+    
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "random_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "temporally_masked_videos/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"))
     visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"))
+    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "mask_middle_8_frames_videos/"))
     # visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "view_videos/")) # TODO
 
 @torch.no_grad()
-
 def visualize_image_prompting(model, epoch, input_image_viz_dir):
-    ### Test on images
+    """Masks out the bottom right quadrant of an image and inpaints it."""
+    
+    print("Prompting image with", input_image_viz_dir)
 
-    '''
-    Masks out the bottom right quadrant of an image and inpaint it.
-    '''
+    folder_name = basename(os.path.normpath(input_image_viz_dir)).rstrip("/")
 
-    for i, img_file in enumerate(os.listdir(input_image_viz_dir)):
-        img_file = os.path.join(input_image_viz_dir, img_file)
-        test_model_input = get_test_model_input(file=img_file)
+    if type(model) is torch.nn.parallel.DistributedDataParallel:
+        model = model.module
+
+    num_patches = 14
+
+    for i, img_file_name in enumerate(os.listdir(input_image_viz_dir)):
+        img_file_path = os.path.join(input_image_viz_dir, img_file_name)
+
+        test_model_input = get_test_model_input(file=img_file_path)
         test_model_input = test_model_input.cuda()
 
-        if type(model) is torch.nn.parallel.DistributedDataParallel:
-            model = model.module
+        if folder_name == "test_images":
+            _, test_model_output, mask = model(test_model_input, test_image=True)
+        elif folder_name == "random_masked_images":
+            _, test_model_output, mask = model(test_model_input)
+        else:
+            raise ValueError("Invalid image folder name")
 
-        _, test_model_output, mask = model(test_model_input, test_image=True)
-
-        num_patches = 14
         y = test_model_output.argmax(dim=-1)
-        im_paste, _, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
-        im_paste = im_paste.squeeze()
-        im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+        output_img, _, input_img = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
 
-        img_file = os.path.basename(os.path.normpath(img_file))
-        img_file = os.path.basename(os.path.normpath(img_file))
-        output_img_name = str(img_file)
+        output_img = (output_img.squeeze().cpu().numpy()).astype(np.uint8)
+        input_img = (input_img.squeeze().cpu().numpy()).astype(np.uint8)
 
-        image = wandb.Image(im_paste)
-        wandb.log({output_img_name: image})
+        img_file_name = basename(os.path.normpath(img_file_name))
+        
+        image_title = "{type}_{img_name}"
+        input_image_title = image_title.format(type="input", img_name=img_file_name)
+        output_image_title = image_title.format(type="output", img_name=img_file_name)
+
+        wandb.log({input_image_title: wandb.Image(input_img)})
+        wandb.log({output_image_title: wandb.Image(output_img)})
 
 @torch.no_grad()
 def visualize_video_prompting(model, epoch, input_video_viz_dir):
@@ -258,16 +271,22 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
 
     print("prompting video with", input_video_viz_dir)
 
-    if "random_masked_videos" in input_video_viz_dir:
+    input_folder_name = basename(input_video_viz_dir.rstrip('/'))
+    
+    print("input_folder_name", input_folder_name)
+
+    if "random_masked_videos" == input_folder_name:
         _, test_model_output, mask = model(test_model_input)
-    elif "temporally_masked_videos" in input_video_viz_dir:
+    elif "temporally_masked_videos" == input_folder_name:
         _, test_model_output, mask = model(test_model_input, test_temporal=True)
-    elif "spatiotemporally_masked_1_video" in input_video_viz_dir:
+    elif "spatiotemporally_masked_1_video" == input_folder_name:
         _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
-    elif "spatiotemporally_masked_2_videos" in input_video_viz_dir:
+    elif "spatiotemporally_masked_2_videos" == input_folder_name:
         _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
-    elif "view_videos" in input_video_viz_dir:
+    elif "view_videos" == input_folder_name:
         _, test_model_output, mask = model(test_model_input, test_view=True)
+    elif "mask_middle_8_frames_videos" == input_folder_name:
+        _, test_model_output, mask = model(test_model_input, test_middle8=True)
     else:
         raise ValueError("Invalid input_video_viz_dir")
     

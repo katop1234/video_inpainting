@@ -399,7 +399,7 @@ def main(args):
         base_lr = (args.lr * 256 / eff_batch_size)
         wandb_config['base_lr'] = base_lr
         wandb.init(
-            resume="rz1l9yuh",
+            resume="zld3o17x",
             project="video_inpainting2",
             config=wandb_config)
     
