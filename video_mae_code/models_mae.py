@@ -428,6 +428,44 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore, ids_keep
 
+    def mask_middle8(self, x):
+        """
+        Mask the middle 8 frames of the video patches.
+        x: [N, L, D], sequence
+        """
+        N, L, D = x.shape  # batch, length, dim
+
+        assert L == 196 * 16, "This only works for L = 196 * 16 (video)"
+
+        F, H, W = 16, 14, 14  # F is the number of frames
+
+        # Define the starting frame for masking (F//2 - 4) 
+        # and the ending frame for masking (F//2 + 4)
+        start_frame, end_frame = F // 2 - 4, F // 2 + 4
+
+        # Create the binary mask: 0 is keep, 1 is remove
+        mask = torch.zeros([N, L], device=x.device)
+        for frame in range(F):
+            for row in range(H):
+                for col in range(W):
+                    if start_frame <= frame < end_frame:
+                        mask[:, frame * H * W + row * W + col] = 1
+
+        # Apply the mask to the input tensor
+        x_masked = x[mask == 0].view(N, -1, D)
+        
+        ids_keep = torch.nonzero(mask == 0)[:, 1] # Get only the indices of the kept elements
+        ids_remove = torch.nonzero(mask == 1)[:, 1] # Get only the indices of the removed elements
+
+        # Create ids_restore by concatenating ids_keep and ids_remove
+        ids_shuffle = torch.cat((ids_keep, ids_remove), dim=0)
+        ids_restore = torch.argsort(ids_shuffle, dim=0)
+        
+        ids_keep = ids_keep.unsqueeze(0).repeat(N, 1).to(x.device)
+        ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to(x.device)
+
+        return x_masked, mask, ids_restore, ids_keep
+
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
         test_modes = [int(mode) for mode in [test_image, test_temporal, test_spatiotemporal, test_view, test_middle8]]
         assert sum(test_modes) <= 1, "Only one or zero test modes can be active at a time"
