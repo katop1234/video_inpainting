@@ -684,7 +684,7 @@ class MaskedAutoencoderViT(nn.Module):
             # Apply RIN Blocks
             for blk in self.decoder_blocks:
                 x, latents = blk(x, latents, print_similarities=True)
-        
+                
         x = self.decoder_norm(x)
 
         # predictor projection
