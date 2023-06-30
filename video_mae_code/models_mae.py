@@ -556,7 +556,7 @@ class MaskedAutoencoderViT(nn.Module):
             T = 1 
         elif x.shape[1] == 14 ** 2 * (1 - mask_ratio_video) * 16: # video
             T = 16
-        elif x.shape[1] == 3136 * 9 / 16 or x.shape[1] == 3136 * 12 / 16: # video temporal inference
+        elif x.shape[1] == 3136 * 9 / 16 or x.shape[1] == 3136 * 12 / 16 or x.shape[1] == 3136 * 0.5: # video temporal inference
             T = 16
         else:
             raise NotImplementedError("got unsupported x, x shape was " + str(x.shape))
