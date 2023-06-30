@@ -202,17 +202,17 @@ class RINBlockVIP(nn.Module):
         dim_latent = rin.default(dim_latent, dim) # WARNING we use the same dim for everything.
 
         self.read_blocks = nn.ModuleList([
-            TransformerBlock(dim_latent, heads=heads, **attn_kwargs)
+            TransformerBlock(dim_latent, **attn_kwargs)
             for _ in range(read_depth)
         ])
         
         self.process_blocks = nn.ModuleList([
-            TransformerBlock(dim_latent, heads=heads, **attn_kwargs)
+            TransformerBlock(dim_latent, **attn_kwargs)
             for _ in range(process_depth)
         ])
 
         self.write_blocks = nn.ModuleList([
-            TransformerBlock(dim_latent, heads=heads, **attn_kwargs)
+            TransformerBlock(dim_latent, **attn_kwargs)
             for _ in range(write_depth)
         ])
 
