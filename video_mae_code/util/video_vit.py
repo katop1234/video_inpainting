@@ -190,7 +190,7 @@ class RINBlockVIP(nn.Module):
     def __init__(
         self,
         dim,
-        process_depth=4,
+        process_depth=1,
         dim_latent = None,
         final_norm = True,
         heads=16,
@@ -222,7 +222,7 @@ class RINBlockVIP(nn.Module):
         self.print_frequency = 100  # Change this to control how often the similarities are printed
     
     # Helper function to calculate and print similarity
-    def _print_similarity(old, new, block_name, depth):
+    def _print_similarity(self, old, new, block_name, depth):
         similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
         print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
@@ -265,8 +265,8 @@ class RINBlockVIP(nn.Module):
 class FITBlockVIP(nn.Module):
     def __init__(self, dim, read_depth=1, process_depth=1, write_depth=1, **attn_kwargs):
         super().__init__()
-        self.l = 56 # Num latents per group
-        self.group_size = 196 # Patches per group
+        self.group_size = 196 // 4 # Patches per group
+        self.l = self.group_size // 4 # Num latents per group
 
         self.dim_latent = dim
         self.latent = nn.Parameter(torch.randn(1, self.dim_latent) * 0.02)
@@ -291,7 +291,7 @@ class FITBlockVIP(nn.Module):
         self.print_frequency = 100
         self.counter = 0
         
-    def _print_similarity(old, new, block_name, depth):
+    def _print_similarity(self, old, new, block_name, depth):
         similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
         print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
