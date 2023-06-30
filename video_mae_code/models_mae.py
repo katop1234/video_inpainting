@@ -190,7 +190,7 @@ class MaskedAutoencoderViT(nn.Module):
                                                             write_depth=self.write_depth,
                                                             ).cuda() for _ in range(self.decoder_depth)])
             
-            self.decoder_latents = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
+            self.decoder_latent = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
             
         self.initialize_weights()
         # --------------------------------------------------------------------------
@@ -677,7 +677,7 @@ class MaskedAutoencoderViT(nn.Module):
             n = int(N // 3.5)
 
             # prepare latents across batches and length
-            latents = rin.repeat(self.decoder_latents, '1 d -> b n d', b = batch, n = n)
+            latents = rin.repeat(self.decoder_latent, '1 d -> b n d', b = batch, n = n)
             
             # Apply RIN Blocks
             for blk in self.decoder_blocks:
