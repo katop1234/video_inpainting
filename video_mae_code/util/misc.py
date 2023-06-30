@@ -393,6 +393,7 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
     if not args.resume:
         args.resume = get_last_checkpoint(args)
     if args.resume:
+        args.resume = os.path.join(args.output_dir, f"checkpoint-{int(args.resume):05d}.pth") if args.resume.isdigit() else args.resume
         if args.resume.startswith("https"):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location="cpu", check_hash=True
