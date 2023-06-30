@@ -188,6 +188,8 @@ class RINBlockVIP(nn.Module):
     ):
         super().__init__()
         dim_latent = rin.default(dim_latent, dim)
+    
+        # TODO put the nn sequentials in a nice getter function
 
         self.read_blocks = nn.ModuleList([
             nn.Sequential(
