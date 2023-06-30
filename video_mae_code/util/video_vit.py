@@ -174,13 +174,25 @@ class Block(nn.Module):
 ### RIN Implementation below ###
 import util.rin as rin
 
+class TransformerBlock(nn.Module):
+    def __init__(self, dim_in, dim_out, heads, norm=True, dim_context=None, norm_context=False, **attn_kwargs):
+        super().__init__()
+        self.cross_attn = rin.CrossAttention(dim_in, dim_context=dim_context, heads=heads, norm=norm, norm_context=norm_context, **attn_kwargs)
+        self.ff = rin.FeedForward(dim_out)
+        
+    def forward(self, x, context=None):
+        x_prev = x.clone().detach()  # Store the previous x
+        x = self.cross_attn(x, context) + x
+        x = self.ff(x) + x
+        return x, x_prev
+
 class RINBlockVIP(nn.Module):
     def __init__(
         self,
         dim,
         process_depth=4,
-        dim_latent = None,
-        final_norm = True,
+        dim_latent=None,
+        final_norm=True,
         heads=16,
         read_depth=1,
         write_depth=1,
@@ -188,33 +200,22 @@ class RINBlockVIP(nn.Module):
     ):
         super().__init__()
         dim_latent = rin.default(dim_latent, dim)
-    
-        # TODO put the nn sequentials in a nice getter function
 
         self.read_blocks = nn.ModuleList([
-            nn.Sequential(
-                rin.CrossAttention(dim_latent, dim_context = dim, heads = heads, norm = True, **attn_kwargs),
-                rin.FeedForward(dim_latent)
-            )
+            TransformerBlock(dim_latent, dim_latent, heads, dim_context=dim, **attn_kwargs)
             for _ in range(read_depth)
         ])
-        
+
         self.process_blocks = nn.ModuleList([
-            nn.Sequential(
-                rin.CrossAttention(dim_latent, heads = heads, norm = True, **attn_kwargs),
-                rin.FeedForward(dim_latent)
-            )
+            TransformerBlock(dim_latent, dim_latent, heads, **attn_kwargs)
             for _ in range(process_depth)
         ])
 
         self.write_blocks = nn.ModuleList([
-            nn.Sequential(
-                rin.CrossAttention(dim, dim_context = dim_latent, heads = heads, norm = True, norm_context = True, **attn_kwargs),
-                rin.FeedForward(dim)
-            )
+            TransformerBlock(dim, dim, heads, dim_context=dim_latent, norm_context=True, **attn_kwargs)
             for _ in range(write_depth)
         ])
-        
+
         self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
 
         self.counter = 0
