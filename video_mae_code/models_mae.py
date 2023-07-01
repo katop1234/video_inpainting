@@ -474,7 +474,7 @@ class MaskedAutoencoderViT(nn.Module):
         mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it
 
         pretraining_mode = True
-        if test_image or test_temporal or test_spatiotemporal or test_view:
+        if test_image or test_temporal or test_spatiotemporal or test_view or test_middle8:
             pretraining_mode = False
 
         # x .shape ==  (B, C, T, H, W). For image T == 1, for video T > 1
