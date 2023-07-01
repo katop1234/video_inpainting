@@ -180,10 +180,18 @@ class TransformerBlock(nn.Module):
 
         self.cross_attention = rin.CrossAttention(dim, heads=heads, norm=True, **attn_kwargs)
         self.feed_forward = rin.FeedForward(dim)
+        
+    def call_cross_attention(self, x, context=None):
+        if x.shape[1] == 1:
+            return x # Can't do attention with only one patch
+        return self.cross_attention(x, context)
+
+    def call_feed_forward(self, x):
+        return self.feed_forward(x)
 
     def forward(self, x, context=None):
-        x = self.cross_attention(x, context=context) + x
-        x = self.feed_forward(x) + x
+        x = self.call_cross_attention(x, context) + x
+        x = self.call_feed_forward(x) + x
         return x
 
 class RINBlockVIP(nn.Module):
@@ -296,51 +304,48 @@ class FITBlockVIP(nn.Module):
         print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
     def forward(self, x):
-        B, N, _ = x.shape
-
-        # calculate the number of groups
-        G = N // self.group_size
-        leftover = N % self.group_size
-        if leftover:
-            G += 1
-
-        x = x.view(B, G, -1, x.shape[-1])
+        B, N, D = x.shape
         x_initial = x.clone().detach()
 
+        # calculate the number of groups and leftovers
+        G = N // self.group_size
+        leftover = N % self.group_size
+
+        # Latents per group
+        L = self.l
+
+        grouped_count = G * self.group_size
+
+        x_grouped = x[:, :grouped_count, :]
+        x_leftover = x[:, grouped_count:, :]
+
         # Step 1: (GROUP) Each group attends to itself
-        x_group_prev = x.clone().detach()
-        x = self.group_block(x)
-        if self.counter % self.print_frequency == 0:
-            self._print_similarity(x_group_prev, x, 'Group blocks', 1)
+        x_grouped = x_grouped.reshape(B*G, self.group_size, D)
+        x_grouped = self.group_block(x_grouped)
+        x_leftover = self.group_block(x_leftover) if leftover else x_leftover
 
         # Step 2: (READ) Each group cross attends to its own latent vectors
-        latents = rin.repeat(self.latent, '1 L -> B G L', B=B, G=G)
+        latents = self.latent.expand(B, G, L, D)  # Broadcast latents across batches and groups
+        latents = latents.reshape(B*G, L, D)
         for i, read_block in enumerate(self.read_blocks):
-            latents_prev = latents.clone().detach()
-            latents = read_block(latents, x)
-            if self.counter % self.print_frequency == 0:
-                self._print_similarity(latents_prev, latents, 'Read latents', i+1)
+            latents = read_block(latents, x_grouped)
+            x_leftover = read_block(x_leftover) if leftover else x_leftover
 
         # Step 3: (PROCESS) Concat all the latents and do self attention globally
-        latents_concat = latents.view(B, G*self.l, -1)
+        latents = latents.reshape(B, G*L, D)
+        x_leftover = x_leftover.reshape(B, leftover, D)
+        latents_concat = torch.cat((latents, x_leftover), dim=1)
         for i, process_block in enumerate(self.process_blocks):
-            latents_prev = latents_concat.clone().detach()
             latents_concat = process_block(latents_concat)
-            if self.counter % self.print_frequency == 0:
-                self._print_similarity(latents_prev, latents_concat, 'Process latents', i+1)
 
         # Step 4: (WRITE) Write back to x in the reverse process as 2
-        latents = latents_concat.view(B, G, self.l, -1)
+        latents, x_leftover = latents_concat[:, :G*L, :], latents_concat[:, G*L:, :]
+        latents = latents.reshape(B*G, L, D)
         for i, write_block in enumerate(self.write_blocks):
-            x_prev = x.clone().detach()
-            x = write_block(x, latents)
-            if self.counter % self.print_frequency == 0:
-                self._print_similarity(x_prev, x, 'Write blocks', i+1)
+            x_grouped = write_block(x_grouped, latents)
+            x_leftover = write_block(x_leftover) if leftover else x_leftover
+        
+        x_grouped = x_grouped.reshape(B, G*self.group_size, D)
+        x = torch.cat((x_grouped, x_leftover), dim=1)
 
-        if self.counter % self.print_frequency == 0:
-            self._print_similarity(x_initial, x, 'Final vs Initial x', len(self.read_blocks)+len(self.process_blocks)+len(self.write_blocks))
-
-        self.counter += 1
-
-        return x.view(B, N, -1)
-
+        return x
