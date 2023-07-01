@@ -182,9 +182,7 @@ class TransformerBlock(nn.Module):
         self.feed_forward = rin.FeedForward(dim)
         
     def call_cross_attention(self, x, context=None):
-        if x.shape[1] == 1:
-            return x # Can't do attention with only one patch
-        return self.cross_attention(x, context)
+        return self.cross_attention(x, context) if x.shape[1] > 1 else x  # Can't do attention with only one patch
 
     def call_feed_forward(self, x):
         return self.feed_forward(x)
