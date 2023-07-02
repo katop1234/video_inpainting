@@ -194,8 +194,10 @@ class MaskedAutoencoderViT(nn.Module):
             
             self.decoder_latent = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
         elif self.use_fit:
+            self.decoder_dim_latent = decoder_embed_dim
             self.decoder_depth = 4 # Num of FIT blocks
             self.decoder_blocks = nn.ModuleList([FITBlockVIP(decoder_embed_dim).cuda() for _ in range(self.decoder_depth)])
+            self.decoder_latent = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
             
         self.initialize_weights()
         # --------------------------------------------------------------------------
@@ -672,10 +674,10 @@ class MaskedAutoencoderViT(nn.Module):
             x = x.view([N, T, H * W, C])
 
         # apply Transformer blocks
-        if not self.use_rin or self.use_fit:
+        if not self.use_rin and not self.use_fit:
             for blk in self.decoder_blocks:
                 x = blk(x)
-        elif self.use_rin:
+        elif self.use_rin or self.use_fit:
             batch = x.shape[0]
             
             N = x.shape[1]
@@ -687,7 +689,7 @@ class MaskedAutoencoderViT(nn.Module):
             # Apply RIN Blocks
             for blk in self.decoder_blocks:
                 x, latents = blk(x, latents, print_similarities=True)
-        
+
         x = self.decoder_norm(x)
 
         # predictor projection

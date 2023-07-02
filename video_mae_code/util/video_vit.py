@@ -275,7 +275,6 @@ class FITBlockVIP(nn.Module):
         self.l = self.group_size // 4 # Num latents per group
 
         self.dim_latent = dim
-        self.latent = nn.Parameter(torch.randn(1, self.dim_latent) * 0.02)
 
         self.group_block = TransformerBlock(dim, **attn_kwargs)
 
@@ -301,13 +300,16 @@ class FITBlockVIP(nn.Module):
         similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
         print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
-    def forward(self, x):
+    def forward(self, x, latents, print_similarities=False):
         B, N, D = x.shape
         x_initial = x.clone().detach()
 
         # calculate the number of groups and leftovers
         G = N // self.group_size
         leftover = N % self.group_size
+        
+        print("leftover is", leftover)
+        exit()
 
         # Latents per group
         L = self.l
@@ -316,6 +318,7 @@ class FITBlockVIP(nn.Module):
 
         x_grouped = x[:, :grouped_count, :]
         x_leftover = x[:, grouped_count:, :]
+        latents = latents[:, :G*L, :] if leftover else latents # only want latents corresponding to groups
 
         # Step 1: (GROUP) Each group attends to itself
         x_grouped = x_grouped.reshape(B*G, self.group_size, D)
@@ -323,7 +326,6 @@ class FITBlockVIP(nn.Module):
         x_leftover = self.group_block(x_leftover) if leftover else x_leftover
 
         # Step 2: (READ) Each group cross attends to its own latent vectors
-        latents = self.latent.expand(B, G, L, D)  # Broadcast latents across batches and groups
         latents = latents.reshape(B*G, L, D)
         for i, read_block in enumerate(self.read_blocks):
             latents = read_block(latents, x_grouped)
@@ -346,4 +348,4 @@ class FITBlockVIP(nn.Module):
         x_grouped = x_grouped.reshape(B, G*self.group_size, D)
         x = torch.cat((x_grouped, x_leftover), dim=1)
 
-        return x
+        return x, latents
