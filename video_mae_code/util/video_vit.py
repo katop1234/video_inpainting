@@ -309,7 +309,6 @@ class FITBlockVIP(nn.Module):
         leftover = N % self.group_size
         
         print("leftover is", leftover)
-        exit()
 
         # Latents per group
         L = self.l
