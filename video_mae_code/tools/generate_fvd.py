@@ -37,13 +37,13 @@ import tqdm
 PARSER = argparse.ArgumentParser()
 #
 PARSER.add_argument('--reference_dir', type=str, default='/shared/dannyt123/video_inpainting/test_videos/bair_evaluation/test_np/', 
-                    help='resume at case number resume')
+                    help='directory for ground truth arrays')
 #
-PARSER.add_argument('--output_dir', type=str, default='/shared/dannyt123/video_inpainting/test_videos/bair_evaluation/test_np/', 
-                    help='a for append and w for write')
+PARSER.add_argument('--output_dir', type=str, default='/shared/dannyt123/video_inpainting/output_dir/two_patch_kinetics_3/fvd_arrays', 
+                    help='directory of generated arrays')
 #
 PARSER.add_argument('--num_groups', type=int, default=1, 
-                    help='a for append and w for write')
+                    help='number of groups')
 
 
 _MODULE_SPEC = 'https://tfhub.dev/deepmind/i3d-kinetics-400/1'
@@ -198,9 +198,7 @@ def caculate_fvd(reference_dir: str, output_dir: str, num_groups: int):
 
   def read_data(video_path):
     with gfile.GFile(video_path, 'rb') as f:
-      print("video_path: ", video_path)
       video = np.load(f, allow_pickle=True).item()['video']
-      print("successfully loaded ", video_path)
     if video.dtype == np.float32:
       assert sum((video > 1e-5) & (video < 1 - 1e-5)) == 0
     return video.astype(np.float32)
@@ -240,11 +238,11 @@ def caculate_fvd(reference_dir: str, output_dir: str, num_groups: int):
 
 
 def main():
-  args = PARSER.parse_known_args()[0]
+  args = PARSER.parse_known_args()[0]    
   
-  logging.info('FVD mean: %f, std: %f',
-               *caculate_fvd(args.reference_dir,
-                             args.output_dir, args.num_groups))
+  mean, std = caculate_fvd(args.reference_dir, args.output_dir, args.num_groups)
+  print("mean: ", mean)
+  print("std: ", std)
 
 if __name__ == '__main__':
   main()

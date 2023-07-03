@@ -126,20 +126,20 @@ def generate_segmentations(model, store_path, eval_name, prompt_csv, davis_promp
                 
                 test_model_input = get_test_model_input(file=prompt_path)
                 test_model_input = spatial_sample_test_video(test_model_input)
-                _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
+                _, test_model_output, mask = model(test_model_input, video_test_type="spatiotemporal")
                 
                 num_patches = 14
                 N = test_model_input.shape[0]
                 
-                test_model_input = test_model_input.view(N, -1, 196, 2, 1024)
-                test_model_input = test_model_input.permute(0, 1, 3, 2, 4)
-                test_model_input = test_model_input.flatten(1, 2)
-                test_model_input = test_model_input.flatten(1, 2)
-                
+                test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
+                test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
+                test_model_output = test_model_output.flatten(1, 2)
+                test_model_output = test_model_output.flatten(1, 2)
+    
                 y = test_model_output.argmax(dim=-1)
                 im_paste, _, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
 
-                im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+                im_paste = (im_paste.cpu().numpy()).astype(np.uint8)                
                 frames = extract_prompt_seg(im_paste[0], val_height, val_width)
                 seg_save_path = os.path.join(results_path, val)
                 

@@ -42,6 +42,17 @@ def get_random_file(data_dir):
     return os.path.join(data_dir, random_file)
 
 def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
+    resized_frames = video_to_array(video_path, target_size, num_frames)
+    video_tensor = torch.tensor(resized_frames, dtype=torch.float32)
+
+    # Rearrange the tensor dimensions to (batch, channel, time, height, width)
+    video_tensor = video_tensor.permute(3, 0, 1, 2).unsqueeze(0)
+
+    assert video_tensor.shape == (1, 3, 16, 224, 224)
+
+    return video_tensor
+
+def video_to_array(video_path, target_size=(224, 224), num_frames=16):
     '''
     Converts a given video mp4 file to a PyTorch tensor
     NOT normalized
@@ -93,14 +104,8 @@ def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
 
     # Convert the list of frames to a PyTorch tensor
     resized_frames = np.array(resized_frames)
-    video_tensor = torch.tensor(resized_frames, dtype=torch.float32)
 
-    # Rearrange the tensor dimensions to (batch, channel, time, height, width)
-    video_tensor = video_tensor.permute(3, 0, 1, 2).unsqueeze(0)
-
-    assert video_tensor.shape == (1, 3, 16, 224, 224)
-
-    return video_tensor
+    return resized_frames
 
 def check_folder_equality(str1, str2):
     n = len(str2)
@@ -287,21 +292,23 @@ def visualize_video_prompting(model, input_video_viz_dir, test_type=""):
     else:
         raise ValueError("Invalid input_video_viz_dir")
     
-    num_patches = 14
-    N = test_model_input.shape[0]
+    # num_patches = 14
+    # N = test_model_input.shape[0]
 
-    test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
-    test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
-    test_model_output = test_model_output.flatten(1, 2)
-    test_model_output = test_model_output.flatten(1, 2)
+    # test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
+    # test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
+    # test_model_output = test_model_output.flatten(1, 2)
+    # test_model_output = test_model_output.flatten(1, 2)
     
-    y = test_model_output.argmax(dim=-1)
-    im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+    # y = test_model_output.argmax(dim=-1)
+    # im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
 
-    im_paste = im_paste.permute((0, 1, 4, 2, 3))
-    orig_video = orig_video.permute((0, 1, 4, 2, 3))
-    im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
-    orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
+    # im_paste = im_paste.permute((0, 1, 4, 2, 3))
+    # orig_video = orig_video.permute((0, 1, 4, 2, 3))
+    # im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+    # orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
+    
+    im_paste, orig_video = video_generation(model, mask, test_model_input, test_model_output)
 
     folder_name = os.path.basename(os.path.normpath(input_video_viz_dir))
     video_title = "{type}_{test_type}_{folder_name}"
@@ -321,3 +328,22 @@ def visualize_video_prompting(model, input_video_viz_dir, test_type=""):
         format="mp4"
     )
     wandb.log({output_video_title: wandb_video_object})
+    
+def video_generation(model, mask, test_model_input, test_model_output):
+    num_patches = 14
+    N = test_model_input.shape[0]
+
+    test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
+    test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
+    test_model_output = test_model_output.flatten(1, 2)
+    test_model_output = test_model_output.flatten(1, 2)
+
+    y = test_model_output.argmax(dim=-1)
+    im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+
+    im_paste = im_paste.permute((0, 1, 4, 2, 3))
+    orig_video = orig_video.permute((0, 1, 4, 2, 3))
+    im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+    orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
+
+    return im_paste, orig_video

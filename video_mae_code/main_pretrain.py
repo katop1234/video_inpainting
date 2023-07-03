@@ -224,8 +224,8 @@ def get_args_parser():
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
     parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
     parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
-    parser.add_argument('--video_dataset_list', nargs='+', default=["kinetics"])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
+    parser.add_argument('--video_dataset_list', nargs='+', default=["CrossTask", "kinetics", "Objectron", "SSV2", "UCF101", "CSV"])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[1, 1, 1, 1, 1, 1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
     parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
@@ -259,6 +259,8 @@ def main(args):
         dataset_image_train = None
     
     if args.video_itr > 0:
+        print("creating video merged dataset")
+        print("args.video_dataset_list: ", args.video_dataset_list)
         dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video')
     else:
         dataset_video_train = None
