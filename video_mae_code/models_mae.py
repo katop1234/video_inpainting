@@ -14,7 +14,7 @@ from functools import partial
 
 import torch
 import torch.nn as nn
-from util import video_vit
+from util import video_vit, misc
 import random
 from util.logging import master_print as print
 from timm.models.vision_transformer import Block
@@ -681,13 +681,15 @@ class MaskedAutoencoderViT(nn.Module):
             batch = x.shape[0]
             
             N = x.shape[1]
-            n = int(N // 3.5)
+            l = int(N // 3.5)
 
             # prepare latents across batches and length
-            latents = rin.repeat(self.decoder_latent, '1 d -> b n d', b = batch, n = n)
+            latents = rin.repeat(self.decoder_latent, '1 d -> b l d', b = batch, l = l)
             
             # Apply RIN Blocks
+            print("about to call rin blocks")
             for blk in self.decoder_blocks:
+                #print("calling blk", blk) if misc.is_main_process() else None
                 x, latents = blk(x, latents, print_similarities=True)
 
         x = self.decoder_norm(x)
