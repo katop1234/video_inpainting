@@ -301,8 +301,8 @@ class FITBlockVIP(nn.Module):
         print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
     def forward(self, x, latents, print_similarities=False):
+        # TODO have the leftovers passed in together, don't just sequentially pass them in cuz runtime
         B, N, D = x.shape
-        x_initial = x.clone().detach()
 
         # calculate the number of groups and leftovers
         G = N // self.group_size
