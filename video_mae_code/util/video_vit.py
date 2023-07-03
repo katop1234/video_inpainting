@@ -222,7 +222,7 @@ class RINBlockVIP(nn.Module):
         self.print_frequency = 100  # Change this to control how often the similarities are printed
     
     # Helper function to calculate and print similarity
-    def _print_similarity(old, new, block_name, depth):
+    def _print_similarity(self, old, new, block_name, depth):
         similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
         print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
