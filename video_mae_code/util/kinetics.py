@@ -171,15 +171,34 @@ class Kinetics(torch.utils.data.Dataset):
         self._path_to_videos = []
         self._labels = []
         self._spatial_temporal_idx = []
-        with pathmgr.open(path_to_file, "r") as f:
-            for clip_idx, path_label in enumerate(f.read().splitlines()):
-                assert len(path_label.split()) == 2
-                path, label = path_label.split()
-                for idx in range(self._num_clips):
-                    self._path_to_videos.append(os.path.join(path))
-                    self._labels.append(int(label))
-                    self._spatial_temporal_idx.append(idx)
-                    self._video_meta[clip_idx * self._num_clips + idx] = {}
+
+        if 'kinetics' in self._path_to_data_dir:
+            with pathmgr.open(path_to_file, "r") as f:
+                for clip_idx, path_label in enumerate(f.read().splitlines()):
+                    assert len(path_label.split()) == 2
+                    path, label = path_label.split()
+                        
+                    for idx in range(self._num_clips):
+                        self._path_to_videos.append(os.path.join(path))
+                        self._labels.append(int(label))
+                        self._spatial_temporal_idx.append(idx)
+                        self._video_meta[clip_idx * self._num_clips + idx] = {}
+        else:
+            clip_idx = 0
+            for dirpath, _, filenames in os.walk(self._path_to_data_dir):
+                for file in filenames: 
+                    curr_file = os.path.join(dirpath, file)
+                    if os.path.isfile(curr_file):
+                        path = curr_file
+                        label = 0
+                        
+                        for idx in range(self._num_clips):
+                            self._path_to_videos.append(os.path.join(path))
+                            self._labels.append(int(label))
+                            self._spatial_temporal_idx.append(idx)
+                            self._video_meta[clip_idx * self._num_clips + idx] = {}
+                    clip_idx += 1
+                    
         assert (
             len(self._path_to_videos) > 0
         ), "Failed to load Kinetics split {} from {}".format(

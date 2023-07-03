@@ -59,8 +59,7 @@ def get_dataset(name, root_path, ds_type):
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos/") 
         elif name == "UCF101":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/UCF101/") 
-        elif name == 'CSV':
-            # dataset_train = VideoDataset(path_to_data_dir="/home/dannyt123/Datasets/CSV")
+        elif name == "CSV":
             dataset_train = VideoDataset(path_to_data_dir="/shared/dannyt123/Datasets/CSV")
         else:
             raise NotImplementedError()
@@ -129,6 +128,7 @@ class CombinedGen:
             self.num_iter_per_epoch = 96*(accum_iter_img*image_itr)
         else:
             self.num_iter_per_epoch = 24*(accum_iter_img*image_itr + accum_iter_vid*video_itr)
+        self.num_iter_per_epoch = 20
 
     def __iter__(self):
         return combined_gen(self.image_gen, self.video_gen, self.accum_iter_img, self.accum_iter_vid, self.image_itr, self.video_itr, len(self))
