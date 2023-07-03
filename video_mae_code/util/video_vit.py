@@ -261,6 +261,107 @@ class RINBlockVIP(nn.Module):
         latents = self.latent_final_norm(latents)
         
         return patches, latents
+    
+class Identity(nn.Module):
+    def forward(self, x):
+        return x
+
+class naiveRINBlockVIP(nn.Module):
+    def __init__(
+        self,
+        dim,
+        process_depth=4,
+        dim_latent = None,
+        final_norm = True,
+        heads=16,
+        read_depth=1,
+        write_depth=1,
+        first_block=False,
+        last_block=False,
+        **attn_kwargs
+    ):
+        super().__init__()
+        dim_latent = rin.default(dim_latent, dim) # WARNING we use the same dim for everything.
+        
+        self.first_block = first_block
+        self.last_block = last_block
+        
+        # self.read_blocks = nn.ModuleList([
+        #     Identity()
+        #     for _ in range(read_depth)
+        # ])
+        # self.process_blocks = nn.ModuleList([
+        #     Identity()
+        #     for _ in range(process_depth)
+        # ])
+        # self.write_blocks = nn.ModuleList([
+        #     Identity()
+        #     for _ in range(write_depth)
+        # ])
+
+        if self.first_block:
+            self.read_blocks = nn.ModuleList([
+                TransformerBlock(dim_latent, **attn_kwargs)
+                for _ in range(read_depth)
+            ])
+        elif self.last_block:
+            self.write_blocks = nn.ModuleList([
+            TransformerBlock(dim_latent, **attn_kwargs)
+            for _ in range(write_depth)
+            ])
+        else:
+            self.process_blocks = nn.ModuleList([
+                TransformerBlock(dim_latent, **attn_kwargs)
+                for _ in range(process_depth)
+            ])
+
+        self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
+
+        self.counter = 0
+        self.print_frequency = 100  # Change this to control how often the similarities are printed
+    
+    # Helper function to calculate and print similarity
+    def _print_similarity(self, old, new, block_name, depth):
+        similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
+        print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
+
+    def forward(self, patches, latents, print_similarities=False):
+        latents_initial = latents.clone().detach() 
+        patches_initial = patches.clone().detach()
+        
+        if self.counter % self.print_frequency == 0:
+            print("---Start of RIN Block---")
+
+        if self.first_block:
+            for i, read_block in enumerate(self.read_blocks):
+                latents_prev = latents.clone().detach()
+                latents = read_block(latents, patches)
+                if self.counter % self.print_frequency == 0:
+                    self._print_similarity(latents_prev, latents, 'Read latents', i+1)
+
+        elif self.last_block:
+            for i, write_block in enumerate(self.write_blocks):
+                patches_prev = patches.clone().detach() 
+                patches = write_block(patches, latents)
+                if self.counter % self.print_frequency == 0:
+                    self._print_similarity(patches_prev, patches, 'Write patches', i+1)
+        else:
+            for i, process_block in enumerate(self.process_blocks):
+                latents_prev = latents.clone().detach()
+                latents = process_block(latents)
+                if self.counter % self.print_frequency == 0:
+                    self._print_similarity(latents_prev, latents, 'Process latents', i+1)
+
+        # Print final similarity values
+        if self.counter % self.print_frequency == 0:
+            self._print_similarity(latents_initial, latents, 'Final vs Initial Latent', 1)
+            self._print_similarity(patches_initial, patches, 'Final vs Initial Patch', 1)
+        
+        self.counter += 1
+        
+        latents = self.latent_final_norm(latents)
+        
+        return patches, latents
 
 class FITBlockVIP(nn.Module):
     def __init__(self, dim, read_depth=1, process_depth=1, write_depth=1, **attn_kwargs):
