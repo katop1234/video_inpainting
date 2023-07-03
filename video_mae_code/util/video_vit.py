@@ -291,7 +291,7 @@ class FITBlockVIP(nn.Module):
         self.print_frequency = 100
         self.counter = 0
         
-    def _print_similarity(old, new, block_name, depth):
+    def _print_similarity(self, old, new, block_name, depth):
         similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
         print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
