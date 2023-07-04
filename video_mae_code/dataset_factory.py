@@ -7,6 +7,7 @@ from torchvision.transforms import transforms
 import numpy as np
 import torch
 from PIL import Image
+from torch.utils.data import DataLoader, SubsetRandomSampler
 
 class ImageNetDataset(Dataset):
     def __init__(self, root_dir):
@@ -40,6 +41,16 @@ class ImageNetDataset(Dataset):
         image = image.unsqueeze(0)  # Now image shape is (1, 3, 224, 224)
 
         return image, self.image_labels[idx]
+
+def get_imagenet_val_dataloader():
+    val_dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/val/')
+    num_val_samples = 1000  # The number of samples you want to evaluate
+    indices = list(range(len(val_dataset)))
+    np.random.seed(4)
+    np.random.shuffle(indices)
+    val_sampler = SubsetRandomSampler(indices[:num_val_samples])
+    val_loader = DataLoader(val_dataset, batch_size=64, sampler=val_sampler, num_workers=14)
+    return val_loader
 
 class VideoDataset(Kinetics):
     def __init__(self, path_to_data_dir):

@@ -15,8 +15,9 @@ import util.lr_sched as lr_sched
 import util.misc as misc
 import torch
 import numpy as np
-from dataset_factory import ImageNetDataset
+from dataset_factory import ImageNetDataset, get_imagenet_val_dataloader
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
+import wandb
 
 def train_one_epoch(
     model: torch.nn.Module,
@@ -25,9 +26,12 @@ def train_one_epoch(
     device: torch.device,
     epoch: int,
     loss_scaler,
+    imagenet_train_dataset: Dataset = None,
+    probe_optimizer: torch.optim.Optimizer = None,
     log_writer=None,
     args=None,
     fp32=False,
+    imagenet_val_dataloader: DataLoader = None,
 ):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -122,33 +126,31 @@ def train_one_epoch(
         if data_iter_step % 1000 == 0:
             print("Epoch: {}, Iter: {}, Loss: {}".format(epoch, data_iter_step, loss_value_reduce))
 
+    # Imagenet Probing
+    if epoch % 5 == 0:
         ### Imagenet probing training
-        dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/train/')
-        num_samples = 256  # The number of samples you want to load per epoch
-        indices = list(range(len(dataset)))
-        np.random.shuffle(indices)
-        sampler = SubsetRandomSampler(indices[:num_samples])
-        
         probe = model.module.imagenet_probe
-
-        data_loader = DataLoader(dataset, batch_size=64, sampler=sampler, num_workers=14)
-        probe_optimizer = torch.optim.Adam(probe.parameters(), lr=1e-4)
         
-        # Freeze all model parameters
+        num_samples = 512  # The number of samples you want to load per epoch
+        num_epochs = 5
+        
         for param in model.module.parameters():
             param.requires_grad = False
 
-        # Unfreeze the imagenet_probe parameters
         for param in probe.parameters():
             param.requires_grad = True
 
-        num_epochs = 1
         for epoch in range(num_epochs):
+            indices = list(range(len(imagenet_train_dataset)))
+            np.random.shuffle(indices)
+            sampler = SubsetRandomSampler(indices[:num_samples])
+            data_loader = DataLoader(imagenet_train_dataset, batch_size=64, sampler=sampler, num_workers=14)
+
             print("Linear probing Epoch: {}".format(epoch))
             for samples, labels in data_loader:
                 samples = samples.permute(0, 2, 1, 3, 4).to(device)  # Now samples shape is (B, C, T, H, W)
                 labels = labels.to(device)
-                    
+                        
                 probe_optimizer.zero_grad()
 
                 with torch.no_grad():
@@ -160,23 +162,15 @@ def train_one_epoch(
                 probe_optimizer.step()
 
         ### Imagenet evaluation
-        # Use the same image transformation for validation set
-        val_dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/val/')
-
-        num_val_samples = 1000  # The number of samples you want to evaluate
-        indices = list(range(len(val_dataset)))
-        np.random.shuffle(indices)
-        val_sampler = SubsetRandomSampler(indices[:num_val_samples])
-
-        val_loader = DataLoader(val_dataset, batch_size=64, sampler=val_sampler, num_workers=14)
-
+        if imagenet_val_dataloader is None:
+            imagenet_val_dataloader = get_imagenet_val_dataloader()
+            
         correct = 0
         total = 0
 
         model.eval()  # Set the model to evaluation mode
-
         with torch.no_grad():  # No need to track gradients
-            for samples, labels in val_loader:
+            for samples, labels in imagenet_val_dataloader:
                 samples = samples.permute(0, 2, 1, 3, 4).to(device)  # Now samples shape is (B, C, T, H, W)
                 labels = labels.to(device)
 
@@ -189,15 +183,15 @@ def train_one_epoch(
                 correct += (predicted == labels).sum().item()  # Increment the correct count
 
         accuracy = 100 * correct / total
-        print(f'Accuracy on the {num_val_samples} validation images: {accuracy}%')
+        print(f'Accuracy on the validation images: {accuracy}%')
+        wandb.log({"imagenet_val_accuracy": accuracy})
         
-        # Unfreeze all model parameters
         for param in model.module.parameters():
             param.requires_grad = True
 
-        # Unfreeze the imagenet_probe parameters
         for param in probe.parameters():
             param.requires_grad = False
+            
         model.train()
 
     # gather the stats from all processes
