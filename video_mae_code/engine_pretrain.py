@@ -184,7 +184,6 @@ def train_one_epoch(
 
         accuracy = 100 * correct / total
         print(f'Accuracy on the validation images: {accuracy}%')
-        wandb.log({"imagenet_val_accuracy": accuracy})
         
         for param in model.module.parameters():
             param.requires_grad = True
@@ -197,4 +196,6 @@ def train_one_epoch(
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
-    return {k: meter.global_avg for k, meter in metric_logger.meters.items()}
+    train_stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()} 
+    train_stats["imagenet_val_accuracy"] = accuracy
+    return train_stats
