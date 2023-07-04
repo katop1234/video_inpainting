@@ -709,10 +709,18 @@ class MaskedAutoencoderViT(nn.Module):
         if requires_t_shape:
             x = x.view([N, T, H * W, C])
 
-        # # apply Transformer blocks
+        # apply Transformer blocks
         if not self.use_rin and not self.use_naive_rin:
             for blk in self.decoder_blocks:
+                x_init = x.clone().detach()
                 x = blk(x)
+                x_final = x.clone().detach()
+
+                dot_product = torch.dot(x_init.flatten(), x_final.flatten())
+                norm_product = torch.norm(x_init) * torch.norm(x_final)
+                cosine_similarity = dot_product / norm_product
+
+                print("Cosine Similarity before and after encoder block: ", cosine_similarity.item())
         elif self.use_rin or self.use_naive_rin:
             batch = x.shape[0]
             
