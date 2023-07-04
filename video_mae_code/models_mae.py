@@ -615,10 +615,15 @@ class MaskedAutoencoderViT(nn.Module):
 
         x = x.view([N, -1, C]) + pos_embed
 
-        # # apply Transformer blocks
+        # apply Transformer blocks
+        i = 0
         for blk in self.encoder_blocks:
             x = blk(x)
+            # print memory allocated and cached after each block
+            print(f"After encoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+            i += 1
         x = self.norm(x)
+        print(f"After normalization, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
         
         if self.cls_embed:
             # remove cls token
@@ -711,6 +716,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         # apply Transformer blocks
         if not self.use_rin and not self.use_naive_rin:
+            i = 0
             for blk in self.decoder_blocks:
                 x_init = x.clone().detach()
                 x = blk(x)
@@ -721,6 +727,10 @@ class MaskedAutoencoderViT(nn.Module):
                 cosine_similarity = dot_product / norm_product
 
                 print("Cosine Similarity before and after encoder block: ", cosine_similarity.item())
+                
+                i += 1
+                print(f"After decoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+                
         elif self.use_rin or self.use_naive_rin:
             batch = x.shape[0]
             
@@ -731,15 +741,18 @@ class MaskedAutoencoderViT(nn.Module):
             latents = rin.repeat(self.decoder_latent, '1 d -> b l d', b = batch, l = l)
             
             # Apply RIN Blocks
-            print("about to call rin blocks")
+            i = 0
             for blk in self.decoder_blocks:
-                #print("calling blk", blk) if misc.is_main_process() else None
                 x, latents = blk(x, latents, print_similarities=True)
-        
+                print(f"After decoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+                i += 1
+                
         x = self.decoder_norm(x)
+        print(f"After decoder norm, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
 
         # predictor projection
         x = self.decoder_pred(x) # Linear into correct patchified dimensions
+        print(f"After decoder pred, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
         
         if requires_t_shape:
             x = x.view([N, T * H * W, -1])
@@ -781,6 +794,7 @@ class MaskedAutoencoderViT(nn.Module):
         with torch.no_grad():
             _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
             target = self.vae.get_codebook_indices(_imgs).flatten(1)
+            print("after get codebook indices, Memory allocated: ", torch.cuda.memory_allocated() / 1e6, "MB")
             target = torch.reshape(target, [N, T * 196])
 
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)

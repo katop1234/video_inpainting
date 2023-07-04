@@ -1164,6 +1164,7 @@ class VQModel(pl.LightningModule):
 
     def encode(self, x):
         h = self.encoder(x)
+        print(f"after encoder, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_cached() / 1e6}MB")
         h = self.quant_conv(h)
         quant, emb_loss, info = self.quantize(h)
         return quant, emb_loss, info
@@ -1267,6 +1268,8 @@ class VQModel(pl.LightningModule):
 
     def get_codebook_indices(self, x):
         x = self.map_pixels(x)
+        print(f"after map pixels,  Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_cached() / 1e6}MB")
+        exit()
         return self.encode(x)[-1][-1].view(x.shape[0], -1)
 
     def unmap_pixels(self, x: torch.Tensor) -> torch.Tensor:
