@@ -124,7 +124,7 @@ def train_one_epoch(
 
         ### Imagenet probing training
         dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/train/')
-        num_samples = 1000  # The number of samples you want to load per epoch
+        num_samples = 512  # The number of samples you want to load per epoch
         indices = list(range(len(dataset)))
         np.random.shuffle(indices)
         sampler = SubsetRandomSampler(indices[:num_samples])
@@ -134,8 +134,9 @@ def train_one_epoch(
         data_loader = DataLoader(dataset, batch_size=64, sampler=sampler, num_workers=14)
         probe_optimizer = torch.optim.Adam(probe.parameters(), lr=1e-4)
 
-        num_epochs = 64
+        num_epochs = 1
         for epoch in range(num_epochs):
+            print("Linear probing Epoch: {}".format(epoch))
             for samples, labels in data_loader:
                 samples = samples.permute(0, 2, 1, 3, 4).to(device)  # Now samples shape is (B, C, T, H, W)
                 labels = labels.to(device)
@@ -151,9 +152,10 @@ def train_one_epoch(
                     
                 probe_optimizer.zero_grad()
 
-                latents = model(samples, imagenet_probing=True)
+                with torch.no_grad():
+                    latents = model(samples, imagenet_probing=True)
                 output = probe(latents)
-
+                output = output.mean(dim=1)  # Take the mean across the patch dimension
                 loss = torch.nn.CrossEntropyLoss()(output, labels)
                 loss.backward()
                 probe_optimizer.step()
@@ -176,11 +178,12 @@ def train_one_epoch(
 
         with torch.no_grad():  # No need to track gradients
             for samples, labels in val_loader:
-                samples = samples.to(device)
+                samples = samples.permute(0, 2, 1, 3, 4).to(device)  # Now samples shape is (B, C, T, H, W)
                 labels = labels.to(device)
 
                 latents = model(samples, imagenet_probing=True)
                 output = probe(latents)
+                output = output.mean(dim=1)  # Take the mean across the patch dimension
 
                 _, predicted = torch.max(output.data, 1)  # Get the predicted classes
                 total += labels.size(0)  # Increment the total count
