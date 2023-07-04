@@ -580,8 +580,11 @@ class MaskedAutoencoderViT(nn.Module):
         x = x.view([N, -1, C]) + pos_embed
 
         # # apply Transformer blocks
+        i = 0
         for blk in self.encoder_blocks:
             x = blk(x)
+            print(f"After encoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+            i += 1
         x = self.norm(x)
         
         if self.cls_embed:
