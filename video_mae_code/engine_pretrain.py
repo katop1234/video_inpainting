@@ -118,7 +118,27 @@ def train_one_epoch(
         
         if data_iter_step % 1000 == 0:
             print("Epoch: {}, Iter: {}, Loss: {}".format(epoch, data_iter_step, loss_value_reduce))
+        
+        # Imagenet probing
+        # Freeze all model parameters
+        for param in model.parameters():
+            param.requires_grad = False
 
+        # Unfreeze the imagenet_probe parameters
+        for param in model.imagenet_probe.parameters():
+            param.requires_grad = True
+            
+        # Assuming labels are the ground truth labels for your batch of images
+        probe_optimizer = torch.optim.Adam(model.imagenet_probe.parameters(), lr=1e-4)
+        probe_optimizer.zero_grad()
+
+        labels = labels.to(device)
+        latents = model(samples, imagenet_probing=True)
+        output = model.imagenet_probe(latents)
+
+        loss = torch.nn.CrossEntropyLoss()(output, labels)
+        loss.backward()
+        probe_optimizer.step()
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()

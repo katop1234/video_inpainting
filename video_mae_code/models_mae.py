@@ -160,6 +160,8 @@ class MaskedAutoencoderViT(nn.Module):
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
         self.norm_pix_loss = norm_pix_loss
         
+        self.imagenet_probe = nn.Linear(embed_dim, 1000, bias=True)
+        
         if not self.use_rin and not self.use_naive_rin:
             self.decoder_blocks = nn.ModuleList(
                 [
@@ -787,12 +789,20 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
 
-    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
+    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, imagenet_probing=False,
+                test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
         self.vae.eval()
+        if imagenet_probing:
+            return self.forward_imagenet_probing(imgs, mask_ratio_image, mask_ratio_video)
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view, test_middle8)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
+    
+    def forward_imagenet_probing(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9):
+        latent, _, _ = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video)
+        return latent
+        
 
 def mae_vit_base_patch16(**kwargs):
     model = MaskedAutoencoderViT(
