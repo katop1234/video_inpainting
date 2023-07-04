@@ -124,7 +124,7 @@ def train_one_epoch(
 
         ### Imagenet probing training
         dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/train/')
-        num_samples = 512  # The number of samples you want to load per epoch
+        num_samples = 256  # The number of samples you want to load per epoch
         indices = list(range(len(dataset)))
         np.random.shuffle(indices)
         sampler = SubsetRandomSampler(indices[:num_samples])
@@ -133,6 +133,14 @@ def train_one_epoch(
 
         data_loader = DataLoader(dataset, batch_size=64, sampler=sampler, num_workers=14)
         probe_optimizer = torch.optim.Adam(probe.parameters(), lr=1e-4)
+        
+        # Freeze all model parameters
+        for param in model.module.parameters():
+            param.requires_grad = False
+
+        # Unfreeze the imagenet_probe parameters
+        for param in probe.parameters():
+            param.requires_grad = True
 
         num_epochs = 1
         for epoch in range(num_epochs):
@@ -140,15 +148,6 @@ def train_one_epoch(
             for samples, labels in data_loader:
                 samples = samples.permute(0, 2, 1, 3, 4).to(device)  # Now samples shape is (B, C, T, H, W)
                 labels = labels.to(device)
-
-                # Imagenet probing
-                # Freeze all model parameters
-                for param in model.module.parameters():
-                    param.requires_grad = False
-
-                # Unfreeze the imagenet_probe parameters
-                for param in probe.parameters():
-                    param.requires_grad = True
                     
                 probe_optimizer.zero_grad()
 
@@ -191,6 +190,15 @@ def train_one_epoch(
 
         accuracy = 100 * correct / total
         print(f'Accuracy on the {num_val_samples} validation images: {accuracy}%')
+        
+        # Unfreeze all model parameters
+        for param in model.module.parameters():
+            param.requires_grad = True
+
+        # Unfreeze the imagenet_probe parameters
+        for param in probe.parameters():
+            param.requires_grad = False
+        model.train()
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
