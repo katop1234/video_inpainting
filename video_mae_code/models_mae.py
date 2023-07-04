@@ -687,11 +687,12 @@ class MaskedAutoencoderViT(nn.Module):
             latents = rin.repeat(self.decoder_latent, '1 d -> b l d', b = batch, l = l)
             
             # Apply RIN Blocks
-            print("about to call rin blocks")
+            i = 0
             for blk in self.decoder_blocks:
                 #print("calling blk", blk) if misc.is_main_process() else None
                 x, latents = blk(x, latents, print_similarities=True)
-
+                print(f"After decoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+                i += 1
         x = self.decoder_norm(x)
 
         # predictor projection
