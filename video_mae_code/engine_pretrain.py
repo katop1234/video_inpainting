@@ -15,6 +15,9 @@ import util.lr_sched as lr_sched
 import util.misc as misc
 import torch
 import numpy as np
+from dataset_factory import ImageNetDataset
+from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
+
 def train_one_epoch(
     model: torch.nn.Module,
     data_loader: Iterable,
@@ -118,27 +121,73 @@ def train_one_epoch(
         
         if data_iter_step % 1000 == 0:
             print("Epoch: {}, Iter: {}, Loss: {}".format(epoch, data_iter_step, loss_value_reduce))
+
+        ### Imagenet probing training
+        dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/train/')
+        num_samples = 1000  # The number of samples you want to load per epoch
+        indices = list(range(len(dataset)))
+        np.random.shuffle(indices)
+        sampler = SubsetRandomSampler(indices[:num_samples])
         
-        # Imagenet probing
-        # Freeze all model parameters
-        for param in model.parameters():
-            param.requires_grad = False
+        probe = model.module.imagenet_probe
 
-        # Unfreeze the imagenet_probe parameters
-        for param in model.imagenet_probe.parameters():
-            param.requires_grad = True
-            
-        # Assuming labels are the ground truth labels for your batch of images
-        probe_optimizer = torch.optim.Adam(model.imagenet_probe.parameters(), lr=1e-4)
-        probe_optimizer.zero_grad()
+        data_loader = DataLoader(dataset, batch_size=64, sampler=sampler, num_workers=14)
+        probe_optimizer = torch.optim.Adam(probe.parameters(), lr=1e-4)
 
-        labels = labels.to(device)
-        latents = model(samples, imagenet_probing=True)
-        output = model.imagenet_probe(latents)
+        num_epochs = 64
+        for epoch in range(num_epochs):
+            for samples, labels in data_loader:
+                samples = samples.permute(0, 2, 1, 3, 4).to(device)  # Now samples shape is (B, C, T, H, W)
+                labels = labels.to(device)
 
-        loss = torch.nn.CrossEntropyLoss()(output, labels)
-        loss.backward()
-        probe_optimizer.step()
+                # Imagenet probing
+                # Freeze all model parameters
+                for param in model.module.parameters():
+                    param.requires_grad = False
+
+                # Unfreeze the imagenet_probe parameters
+                for param in probe.parameters():
+                    param.requires_grad = True
+                    
+                probe_optimizer.zero_grad()
+
+                latents = model(samples, imagenet_probing=True)
+                output = probe(latents)
+
+                loss = torch.nn.CrossEntropyLoss()(output, labels)
+                loss.backward()
+                probe_optimizer.step()
+
+        ### Imagenet evaluation
+        # Use the same image transformation for validation set
+        val_dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/val/')
+
+        num_val_samples = 1000  # The number of samples you want to evaluate
+        indices = list(range(len(val_dataset)))
+        np.random.shuffle(indices)
+        val_sampler = SubsetRandomSampler(indices[:num_val_samples])
+
+        val_loader = DataLoader(val_dataset, batch_size=64, sampler=val_sampler, num_workers=14)
+
+        correct = 0
+        total = 0
+
+        model.eval()  # Set the model to evaluation mode
+
+        with torch.no_grad():  # No need to track gradients
+            for samples, labels in val_loader:
+                samples = samples.to(device)
+                labels = labels.to(device)
+
+                latents = model(samples, imagenet_probing=True)
+                output = probe(latents)
+
+                _, predicted = torch.max(output.data, 1)  # Get the predicted classes
+                total += labels.size(0)  # Increment the total count
+                correct += (predicted == labels).sum().item()  # Increment the correct count
+
+        accuracy = 100 * correct / total
+        print(f'Accuracy on the {num_val_samples} validation images: {accuracy}%')
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()

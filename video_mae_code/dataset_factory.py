@@ -6,6 +6,40 @@ from torchvision import datasets
 from torchvision.transforms import transforms
 import numpy as np
 import torch
+from PIL import Image
+
+class ImageNetDataset(Dataset):
+    def __init__(self, root_dir):
+        self.root_dir = root_dir
+        self.transform = transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor()
+        ])
+
+        self.categories = [dir for dir in os.listdir(root_dir) if os.path.isdir(os.path.join(root_dir, dir)) and not dir.startswith('.fuse_hidden')]
+        self.image_paths = []
+        self.image_labels = []
+
+        for category in self.categories:
+            category_path = os.path.join(root_dir, category)
+            for image_name in os.listdir(category_path):
+                if image_name.startswith('.fuse_hidden'):  # Skip any hidden fuse files in the image level
+                    continue
+
+                self.image_paths.append(os.path.join(category_path, image_name))
+                self.image_labels.append(self.categories.index(category))
+
+    def __len__(self):
+        return len(self.image_paths)
+
+    def __getitem__(self, idx):
+        image = Image.open(self.image_paths[idx]).convert('RGB')
+        image = self.transform(image)
+        
+        # Add an additional dimension for time (T=1)
+        image = image.unsqueeze(0)  # Now image shape is (1, 3, 224, 224)
+
+        return image, self.image_labels[idx]
 
 class VideoDataset(Kinetics):
     def __init__(self, path_to_data_dir):
