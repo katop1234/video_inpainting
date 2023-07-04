@@ -731,9 +731,7 @@ class MaskedAutoencoderViT(nn.Module):
             latents = rin.repeat(self.decoder_latent, '1 d -> b l d', b = batch, l = l)
             
             # Apply RIN Blocks
-            print("about to call rin blocks")
             for blk in self.decoder_blocks:
-                #print("calling blk", blk) if misc.is_main_process() else None
                 x, latents = blk(x, latents, print_similarities=True)
         
         x = self.decoder_norm(x)
