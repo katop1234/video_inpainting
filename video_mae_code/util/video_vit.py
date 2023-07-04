@@ -227,26 +227,25 @@ class RINBlockVIP(nn.Module):
         print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
     def forward(self, patches, latents, print_similarities=False):
-        latents_initial = latents.clone().detach() 
-        patches_initial = patches.clone().detach()
-        
         if self.counter % self.print_frequency == 0:
             print("---Start of RIN Block---")
+            latents_initial = latents.clone().detach() 
+            patches_initial = patches.clone().detach()
 
         for i, read_block in enumerate(self.read_blocks):
-            latents_prev = latents.clone().detach()
+            latents_prev = latents.clone().detach() if self.counter % self.print_frequency == 0 else None
             latents = read_block(latents, patches)
             if self.counter % self.print_frequency == 0:
                 self._print_similarity(latents_prev, latents, 'Read latents', i+1)
                 
         for i, process_block in enumerate(self.process_blocks):
-            latents_prev = latents.clone().detach()
+            latents_prev = latents.clone().detach() if self.counter % self.print_frequency == 0 else None
             latents = process_block(latents)
             if self.counter % self.print_frequency == 0:
                 self._print_similarity(latents_prev, latents, 'Process latents', i+1)
 
         for i, write_block in enumerate(self.write_blocks):
-            patches_prev = patches.clone().detach() 
+            patches_prev = patches.clone().detach() if self.counter % self.print_frequency == 0 else None
             patches = write_block(patches, latents)
             if self.counter % self.print_frequency == 0:
                 self._print_similarity(patches_prev, patches, 'Write patches', i+1)

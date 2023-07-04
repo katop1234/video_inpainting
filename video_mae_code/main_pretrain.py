@@ -392,6 +392,9 @@ def main(args):
     )
     
     print("Total number of parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    model_memory = sum(p.numel() for p in model.parameters()) * 4 / (1024 ** 2)  # assuming parameters are float32, so 4 bytes each
+    print("Model memory (MB): ", model_memory)
+    exit()
 
     if misc.is_main_process():
         wandb_config = vars(args)
