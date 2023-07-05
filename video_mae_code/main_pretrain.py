@@ -222,16 +222,13 @@ def get_args_parser():
     parser.set_defaults(cls_embed=True)
 
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
-    parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
-    parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
+    parser.add_argument('--image_dataset_list', nargs='+', default=['cvf', 'imagenet'])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[1, 1]) 
     parser.add_argument('--video_dataset_list', nargs='+', default=["CrossTask", "kinetics", "Objectron", "SSV2", "UCF101", "CSV"])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[1, 1, 1, 1, 1, 1])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[1, 10, 1, 1, 1, 1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
     parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
-    parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
-                                                   'ImageSets, Annotations_unsupervised folders',
-                    default='/shared/dannyt123/Datasets/DAVIS')
     parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
 
@@ -455,16 +452,21 @@ def main(args):
                 store_path = os.path.join(args.output_dir, "davis_segs")
                 if not os.path.exists(store_path):
                     os.mkdir(store_path)
-                eval_name = "model_mae"
+            
                 parent = Path(__file__).parent.absolute()
                 prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
-                davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                davis_path = args.davis_path
-                generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
-                print("Finished Saving Davis Eval Segmentations")
                 
-                single_mean = run_evaluation_method(store_path, eval_name, davis_path)
-                log_stats["Davis_single_mean"] = single_mean
+                davis_prompt_path = os.path.join(args.video_prompts_dir, "davis_prompt")
+                davis_2x2_prompt_path = os.path.join(args.video_prompts_dir, "davis_2x2_prompt")
+                davis_image_prompt_path = '/shared/dannyt123/video_inpainting/test_images/davis_image_prompts'
+                
+                generate_segmentations(model, store_path, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path)
+                print("Finished Saving Davis Eval Segmentations")                
+                
+                single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
+                log_stats["Davis_single_mean_orig"] = single_mean_orig
+                log_stats["Davis_single_mean_2x2"] = single_mean_2x2
+                log_stats["Davis_single_mean_image"] = single_mean_image
                 model.train()
 
         if misc.is_main_process():
