@@ -318,6 +318,8 @@ class MaskedAutoencoderViT(nn.Module):
             condition = lambda row, col, frame: (1 < row < 12) and (1 < col < 12)
         elif type == "dynamic inpainting":
             condition = lambda row, col, frame: (1 < row < 12) and (col > frame and col < (frame + 9))
+        elif type == "2x2 tube":
+            condition = lambda row, col, frame: row >= (W // 2) and col >= (H // 2)
         elif type == "view":
             raise NotImplementedError
         else: 
