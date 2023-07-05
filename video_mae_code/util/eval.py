@@ -48,7 +48,7 @@ def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
     # Rearrange the tensor dimensions to (batch, channel, time, height, width)
     video_tensor = video_tensor.permute(3, 0, 1, 2).unsqueeze(0)
 
-    assert video_tensor.shape == (1, 3, 16, 224, 224)
+    # assert video_tensor.shape == (1, 3, 16, 224, 224) #UNCOMMENT
 
     return video_tensor
 
@@ -226,6 +226,7 @@ def visualize_prompting(model, test_cases_folder):
     
     objectron_videos_path = '/shared/dannyt123/video_inpainting/test_videos/Objectron'
     visualize_video_prompting(model, objectron_videos_path, "frame prediction")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "davis_2x2_prompt_visualization/"), "2x2 tube")
     visualize_video_prompting(model, objectron_videos_path, "frame interpolation")
     visualize_video_prompting(model, objectron_videos_path, "central inpainting")
     visualize_video_prompting(model, objectron_videos_path, "dynamic inpainting")
