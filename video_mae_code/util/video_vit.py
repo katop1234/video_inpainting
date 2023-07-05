@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from timm.models.layers import to_2tuple
 from timm.models.vision_transformer import DropPath, Mlp
+from torch.utils.checkpoint import checkpoint
 
 logger = logging.get_logger(__name__)
 
@@ -178,12 +179,15 @@ class TransformerBlock(nn.Module):
     def __init__(self, dim, heads=16, **attn_kwargs):
         super().__init__()
 
-        self.cross_attention = rin.CrossAttention(dim, heads=heads, norm=True, **attn_kwargs)
+        self.cross_attention = rin.CrossAttention(dim, heads=8, norm=True, **attn_kwargs)
         self.feed_forward = rin.FeedForward(dim)
 
     def forward(self, x, context=None):
-        x = self.cross_attention(x, context=context) + x
-        x = self.feed_forward(x) + x
+        def cross_attention_fn(x, context):
+            return self.cross_attention(x, context)
+
+        x = checkpoint(cross_attention_fn, x, x if context is None else context) + x
+        x = checkpoint(self.feed_forward, x) + x
         return x
 
 class RINBlockVIP(nn.Module):
@@ -218,7 +222,7 @@ class RINBlockVIP(nn.Module):
 
         self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
 
-        self.counter = 0
+        self.counter = 1
         self.print_frequency = 100  # Change this to control how often the similarities are printed
     
     # Helper function to calculate and print similarity

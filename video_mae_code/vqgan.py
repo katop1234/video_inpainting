@@ -52,6 +52,7 @@ def get_timestep_embedding(timesteps, embedding_dim):
 
 def nonlinearity(x):
     # swish
+    print(f"before calling sigmoid, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_cached() / 1e6}MB")
     return x * torch.sigmoid(x)
 
 
@@ -140,6 +141,7 @@ class ResnetBlock(nn.Module):
 
     def forward(self, x, temb):
         h = x
+        print(f"before calling norm1, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_cached() / 1e6}MB")
         h = self.norm1(h)
         h = nonlinearity(h)
         h = self.conv1(h)
@@ -434,7 +436,9 @@ class Encoder(nn.Module):
         hs = [self.conv_in(x)]
         for i_level in range(self.num_resolutions):
             for i_block in range(self.num_res_blocks):
+                print(f"before forward pass in encoder, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_cached() / 1e6}MB")
                 h = self.down[i_level].block[i_block](hs[-1], temb)
+                print("Memory after encoder forward")
                 if len(self.down[i_level].attn) > 0:
                     h = self.down[i_level].attn[i_block](h)
                 hs.append(h)
@@ -1269,7 +1273,6 @@ class VQModel(pl.LightningModule):
     def get_codebook_indices(self, x):
         x = self.map_pixels(x)
         print(f"after map pixels,  Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_cached() / 1e6}MB")
-        exit()
         return self.encode(x)[-1][-1].view(x.shape[0], -1)
 
     def unmap_pixels(self, x: torch.Tensor) -> torch.Tensor:
