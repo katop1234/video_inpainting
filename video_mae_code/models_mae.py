@@ -241,6 +241,10 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.target = None # We update this at runtime to store the vqgan target
         
+        # For debugging
+        self.current_mem_cached = 0
+        self.current_mem_allocated = 0
+        
         print("model initialized new code")
 
     def initialize_weights(self):
@@ -508,7 +512,20 @@ class MaskedAutoencoderViT(nn.Module):
         ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to(x.device)
 
         return x_masked, mask, ids_restore, ids_keep
-    
+
+    def print_memory_change(self, block_name, i):
+        new_mem_allocated = torch.cuda.memory_allocated() / 1e6
+        new_mem_cached = torch.cuda.memory_reserved() / 1e6
+
+        allocated_change = new_mem_allocated - self.current_mem_allocated
+        cached_change = new_mem_cached - self.current_mem_cached
+
+        print(f"After {block_name} {i+1}, Memory allocated change: {allocated_change}MB, Memory cached change: {cached_change}MB")
+
+        # update the current memory values for the next calculation
+        self.current_mem_allocated = new_mem_allocated
+        self.current_mem_cached = new_mem_cached
+
     def set_vqgan_target(self, imgs):
         # Deep copy the input tensor to avoid modifying the original
         imgs_copy = imgs.clone()
@@ -536,7 +553,7 @@ class MaskedAutoencoderViT(nn.Module):
         with torch.no_grad():
             _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
             target = self.vae.get_codebook_indices(_imgs).flatten(1)
-            print("after get codebook indices, Memory allocated: ", torch.cuda.memory_allocated() / 1e6, "MB")
+            self.print_memory_change("get codebook indices", 0)
             target = target.reshape([N, T * 196])
         
         self.target = target
@@ -665,11 +682,11 @@ class MaskedAutoencoderViT(nn.Module):
             cosine_similarity = dot_product / norm_product
             print("Cosine Similarity before and after encoder block: ", cosine_similarity.item())
 
-            print(f"After encoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+            self.print_memory_change("ViT Encoder block", i+1)
             i += 1
 
         x = self.norm(x)
-        print(f"After normalization, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+        self.print_memory_change("ViT Encoder norm", 1)
         
         if self.cls_embed:
             # remove cls token
@@ -772,11 +789,10 @@ class MaskedAutoencoderViT(nn.Module):
                 norm_product = torch.norm(x_init) * torch.norm(x_final)
                 cosine_similarity = dot_product / norm_product
 
-                print("Cosine Similarity before and after vit decoder block: ", cosine_similarity.item())
-                
-                i += 1
                 assert type(blk) is CheckpointBlock
-                print(f"After vit decoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+                print("Cosine Similarity before and after vit decoder block: ", cosine_similarity.item())
+                self.print_memory_change("ViT decoder block", i)
+                i += 1
                 
         elif self.use_rin or self.use_naive_rin:
             batch = x.shape[0]
@@ -791,16 +807,14 @@ class MaskedAutoencoderViT(nn.Module):
             i = 0
             for blk in self.decoder_blocks:
                 x, latents = blk(x, latents, print_similarities=True)
-                print(f"After rin decoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+                self.print_memory_change("RIN decoder block", i)
                 i += 1
                 
         x = self.decoder_norm(x)
-        print(f"After decoder norm, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
-
+        self.print_memory_change("Decoder norm", 0)
         # predictor projection
         x = self.decoder_pred(x) # Linear into correct patchified dimensions
-        print(f"After decoder pred, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
-        
+        self.print_memory_change("Decoder pred", 0)
         if requires_t_shape:
             x = x.view([N, T * H * W, -1])
         
