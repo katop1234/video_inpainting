@@ -172,6 +172,12 @@ class Block(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
     
+class CheckpointBlock(Block):
+    def forward(self, x):
+        x = checkpoint(self.attn, self.norm1(x)) + x
+        x = checkpoint(self.mlp, self.norm2(x)) + x
+        return x
+    
 ### RIN Implementation below ###
 import util.rin as rin
 
@@ -179,7 +185,7 @@ class TransformerBlock(nn.Module):
     def __init__(self, dim, heads=16, **attn_kwargs):
         super().__init__()
 
-        self.cross_attention = rin.CrossAttention(dim, heads=8, norm=True, **attn_kwargs)
+        self.cross_attention = rin.CrossAttention(dim, heads=16, norm=True, **attn_kwargs)
         self.feed_forward = rin.FeedForward(dim)
 
     def forward(self, x, context=None):

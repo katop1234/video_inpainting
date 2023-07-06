@@ -20,7 +20,7 @@ from util.logging import master_print as print
 from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
 
-from util.video_vit import RINBlockVIP, naiveRINBlockVIP
+from util.video_vit import RINBlockVIP, naiveRINBlockVIP, CheckpointBlock
 from util import rin
 import numpy as np
 
@@ -163,7 +163,7 @@ class MaskedAutoencoderViT(nn.Module):
         if not self.use_rin and not self.use_naive_rin:
             self.decoder_blocks = nn.ModuleList(
                 [
-                    video_vit.Block(
+                    CheckpointBlock(
                         decoder_embed_dim,
                         decoder_num_heads,
                         mlp_ratio,
@@ -174,7 +174,7 @@ class MaskedAutoencoderViT(nn.Module):
                     for i in range(decoder_depth)
                 ]
             )
-            
+        
         elif self.use_rin: 
             # Decoder
             self.decoder_dim = decoder_embed_dim # 512 works
@@ -653,10 +653,21 @@ class MaskedAutoencoderViT(nn.Module):
         # apply Transformer blocks
         i = 0
         for blk in self.encoder_blocks:
-            x = blk(x)
-            # print memory allocated and cached after each block
+            x_init = x.clone().detach() # store the initial state
+            x = blk(x) 
+            x_final = x.clone().detach() # store the final state after the block
+
+            # compute the dot product and the norm product
+            dot_product = torch.dot(x_init.flatten(), x_final.flatten())
+            norm_product = torch.norm(x_init) * torch.norm(x_final)
+            
+            # compute the cosine similarity
+            cosine_similarity = dot_product / norm_product
+            print("Cosine Similarity before and after encoder block: ", cosine_similarity.item())
+
             print(f"After encoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
             i += 1
+
         x = self.norm(x)
         print(f"After normalization, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
         
@@ -761,10 +772,11 @@ class MaskedAutoencoderViT(nn.Module):
                 norm_product = torch.norm(x_init) * torch.norm(x_final)
                 cosine_similarity = dot_product / norm_product
 
-                print("Cosine Similarity before and after decoder block: ", cosine_similarity.item())
+                print("Cosine Similarity before and after vit decoder block: ", cosine_similarity.item())
                 
                 i += 1
-                print(f"After decoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+                assert type(blk) is CheckpointBlock
+                print(f"After vit decoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
                 
         elif self.use_rin or self.use_naive_rin:
             batch = x.shape[0]
@@ -779,7 +791,7 @@ class MaskedAutoencoderViT(nn.Module):
             i = 0
             for blk in self.decoder_blocks:
                 x, latents = blk(x, latents, print_similarities=True)
-                print(f"After decoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
+                print(f"After rin decoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
                 i += 1
                 
         x = self.decoder_norm(x)
