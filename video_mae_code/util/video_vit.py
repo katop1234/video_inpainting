@@ -188,6 +188,10 @@ class TransformerBlock(nn.Module):
 
         x = checkpoint(cross_attention_fn, x, x if context is None else context) + x
         x = checkpoint(self.feed_forward, x) + x
+        
+        #x = self.cross_attention(x, context) + x
+        #x = self.feed_forward(x) + x
+        
         return x
 
 class RINBlockVIP(nn.Module):

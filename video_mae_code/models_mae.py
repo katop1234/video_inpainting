@@ -174,6 +174,7 @@ class MaskedAutoencoderViT(nn.Module):
                     for i in range(decoder_depth)
                 ]
             )
+            
         elif self.use_rin: 
             # Decoder
             self.decoder_dim = decoder_embed_dim # 512 works
@@ -237,6 +238,8 @@ class MaskedAutoencoderViT(nn.Module):
             
         self.initialize_weights()
         # --------------------------------------------------------------------------
+        
+        self.target = None # We update this at runtime to store the vqgan target
         
         print("model initialized new code")
 
@@ -505,6 +508,38 @@ class MaskedAutoencoderViT(nn.Module):
         ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to(x.device)
 
         return x_masked, mask, ids_restore, ids_keep
+    
+    def set_vqgan_target(self, imgs):
+        # Deep copy the input tensor to avoid modifying the original
+        imgs_copy = imgs.clone()
+
+        # Get VQGAN tokens before any expensive computation is done
+        if imgs_copy.shape[2] == 16:
+            # video
+            _imgs = torch.index_select(
+                imgs_copy,
+                2,
+                torch.linspace(
+                    0,
+                    imgs_copy.shape[2] - 1,
+                    self.pred_t_dim,
+                )
+                .long()
+                .to(imgs_copy.device)
+            )
+        else:
+            _imgs = imgs_copy
+
+        N = _imgs.shape[0]
+        T = _imgs.shape[2]
+        
+        with torch.no_grad():
+            _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
+            target = self.vae.get_codebook_indices(_imgs).flatten(1)
+            print("after get codebook indices, Memory allocated: ", torch.cuda.memory_allocated() / 1e6, "MB")
+            target = target.reshape([N, T * 196])
+        
+        self.target = target
 
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
         test_modes = [int(mode) for mode in [test_image, test_temporal, test_spatiotemporal, test_view, test_middle8]]
@@ -726,7 +761,7 @@ class MaskedAutoencoderViT(nn.Module):
                 norm_product = torch.norm(x_init) * torch.norm(x_final)
                 cosine_similarity = dot_product / norm_product
 
-                print("Cosine Similarity before and after encoder block: ", cosine_similarity.item())
+                print("Cosine Similarity before and after decoder block: ", cosine_similarity.item())
                 
                 i += 1
                 print(f"After decoder block {i+1}, Memory allocated: {torch.cuda.memory_allocated() / 1e6}MB, Memory cached: {torch.cuda.memory_reserved() / 1e6}MB")
@@ -771,38 +806,14 @@ class MaskedAutoencoderViT(nn.Module):
         pred: [N, t*h*w, u*p*p*3] pred: [N, t*h*w, u*1024] t*h*w ==196 for some reason not sure (u = 1)
         mask: [N*t, h*w], 0 is keep, 1 is remove,
         """
-        if imgs.shape[2] == 16:
-            # video
-            _imgs = torch.index_select(
-                imgs,
-                2,
-                torch.linspace(
-                    0,
-                    imgs.shape[2] - 1,
-                    self.pred_t_dim,
-                )
-                .long()
-                .to(imgs.device)
-            )
-        else:
-            # images
-            _imgs = imgs
-
-        N = _imgs.shape[0]
-        T = _imgs.shape[2]
-
-        with torch.no_grad():
-            _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
-            target = self.vae.get_codebook_indices(_imgs).flatten(1)
-            print("after get codebook indices, Memory allocated: ", torch.cuda.memory_allocated() / 1e6, "MB")
-            target = torch.reshape(target, [N, T * 196])
-
+        target = self.target
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
         self.vae.eval()
+        self.set_vqgan_target(imgs)
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view, test_middle8)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         loss = self.forward_loss(imgs, pred, mask)
