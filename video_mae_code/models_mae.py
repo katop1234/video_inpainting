@@ -45,6 +45,7 @@ class MaskedAutoencoderViT(nn.Module):
         trunc_init=False,
         cls_embed=True,
         pred_t_dim=16,
+        st_adapter=False, #False for regular training, True for training only st_adapters
         **kwargs,
     ):
         
@@ -110,6 +111,9 @@ class MaskedAutoencoderViT(nn.Module):
                     qkv_bias=not no_qkv_bias,
                     qk_scale=None,
                     norm_layer=norm_layer,
+                    # num_frames=self.patch_embed.t_grid_size, #might need to change
+                    adapter_pre_attn=st_adapter,
+                    adapter_pre_mlp=st_adapter,
                 )
                 for i in range(depth)
             ]
@@ -156,6 +160,9 @@ class MaskedAutoencoderViT(nn.Module):
                     qkv_bias=not no_qkv_bias,
                     qk_scale=None,
                     norm_layer=norm_layer,
+                    # num_frames=self.patch_embed.t_grid_size, #might need to change
+                    adapter_pre_attn=st_adapter,
+                    adapter_pre_mlp=st_adapter,
                 )
                 for i in range(decoder_depth)
             ]
@@ -164,6 +171,17 @@ class MaskedAutoencoderViT(nn.Module):
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
         # --------------------------------------------------------------------------
+        
+        # --------------------------------------------------------------------------
+        # st_adapter
+        if st_adapter:
+            for n, p in self.named_parameters():
+                if 'adapter' not in n:
+                    p.requires_grad_(False)
+                    print("p.requires_grad: ", p.requires_grad)
+                    # p.data = p.data.half()
+        # --------------------------------------------------------------------------
+
 
         self.norm_pix_loss = norm_pix_loss
 
@@ -394,8 +412,10 @@ class MaskedAutoencoderViT(nn.Module):
 
         # x .shape ==  (B, C, T, H, W). For image T == 1, for video T > 1
         x = self.patch_embed(x)
+        print("x.shape after patch_embed: ", x.shape)
         N, T, L, C = x.shape
         x = x.view(N, T * L, C)
+        print("x.shape after view: ", x.shape)
 
         if pretraining_mode:
             x, mask, ids_restore, ids_keep = self.random_masking(x, mask_ratio_image, mask_ratio_video)
@@ -407,6 +427,7 @@ class MaskedAutoencoderViT(nn.Module):
             raise NotImplementedError("Invalid mode.")
 
         x = x.view(N, -1, C)
+        print("x.shape after view in encoder: ", x.shape)
 
         # append cls token
         if self.cls_embed:
@@ -463,11 +484,16 @@ class MaskedAutoencoderViT(nn.Module):
                     1,
                 )
 
+        print("N: ", N)
+        print('x.shape before view: ', x.shape)
         x = x.view([N, -1, C]) + pos_embed
+        print("x.shape after view: ", x.shape)
 
         # apply Transformer blocks
+        print("x.shape in encoder: ", x.shape)
         for blk in self.blocks:
-            x = blk(x)
+            x = blk(x, T=T)
+            print("x.shape in encoder after a block: ", x.shape)
         x = self.norm(x)
 
         if self.cls_embed:
@@ -555,8 +581,10 @@ class MaskedAutoencoderViT(nn.Module):
             x = x.view([N, T, H * W, C])
 
         # apply Transformer blocks
+        print("x.shape in decoder before block: ", x.shape)
         for blk in self.decoder_blocks:
-            x = blk(x)
+            x = blk(x, T=T)
+            print("x.shape in decoder after block: ", x.shape)
         
         x = self.decoder_norm(x)
 

@@ -2,6 +2,8 @@
 # All rights reserved.
 
 from util import logging
+import math
+import functools
 import torch
 import torch.nn as nn
 from timm.models.layers import to_2tuple
@@ -144,6 +146,12 @@ class Block(nn.Module):
         act_layer=nn.GELU,
         norm_layer=nn.LayerNorm,
         attn_func=Attention,
+        # num_frames=8,
+        adapter_width=384,
+        # adapter_layers=12,
+        adapter_kernel_size=(3, 1, 1),
+        adapter_pre_attn=True,
+        adapter_pre_mlp=True,
     ):
         super().__init__()
         self.norm1 = norm_layer(dim)
@@ -165,8 +173,65 @@ class Block(nn.Module):
             act_layer=act_layer,
             drop=drop,
         )
+        # self.num_frames = num_frames
+        
+        adapter_class = functools.partial(
+            Adapter,
+            # in_channels=d_model,
+            in_channels=dim,
+            adapter_channels=adapter_width,
+            kernel_size=adapter_kernel_size,
+        )
+        self.adapter_pre_attn = \
+            adapter_class() if adapter_pre_attn else None
+        self.adapter_pre_mlp = \
+            adapter_class() if adapter_pre_mlp else None
 
-    def forward(self, x):
+    def forward(self, x, T):
+        print("x.shape: ", x.shape)
+        if self.adapter_pre_attn is not None:
+            x = self.adapter_pre_attn(x, T=T)
         x = x + self.drop_path(self.attn(self.norm1(x)))
+        if self.adapter_pre_mlp is not None:
+            x = self.adapter_pre_mlp(x, T=T)
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
+
+class Adapter(nn.Module):
+
+    def __init__(self, in_channels, adapter_channels, kernel_size):
+        super().__init__()
+        self.fc1 = nn.Linear(in_channels, adapter_channels)
+        self.conv = nn.Conv3d(
+            adapter_channels, adapter_channels,
+            kernel_size=kernel_size,
+            stride=(1, 1, 1),
+            padding=tuple(x // 2 for x in kernel_size),
+            groups=adapter_channels,
+        )
+        self.fc2 = nn.Linear(adapter_channels, in_channels)
+        nn.init.constant_(self.conv.weight, 0.)
+        nn.init.constant_(self.conv.bias, 0.)
+        nn.init.constant_(self.fc1.bias, 0.)
+        nn.init.constant_(self.fc2.bias, 0.)
+
+    def forward(self, x, T):
+        BT, L, C = x.size()
+        B = BT // T
+        Ca = self.conv.in_channels
+        H = W = round(math.sqrt(L - 1))
+        assert L - 1 == H * W
+        x_id = x
+        x = x[:, 1:, :]
+        x = self.fc1(x)
+        x = x.view(B, T, H, W, Ca).permute(0, 4, 1, 2, 3).contiguous()
+
+        cudnn_enabled = torch.backends.cudnn.enabled
+        torch.backends.cudnn.enabled = cudnn_enabled #and DWCONV3D_DISABLE_CUDNN
+        x = self.conv(x)
+        torch.backends.cudnn.enabled = cudnn_enabled
+
+        x = x.permute(0, 2, 3, 4, 1).contiguous().view(BT, L - 1, Ca)
+        x = self.fc2(x)
+        x_id[:, 1:, :] += x
+        return x_id

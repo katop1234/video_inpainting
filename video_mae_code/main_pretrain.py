@@ -50,6 +50,12 @@ def get_args_parser():
         action='store_true',
         help="Provide for restarting the optimizer and epoch count",
     )
+    
+    parser.add_argument(
+        "--st_adapter",
+        action='store_true',
+        help="Provide for pretrained image model to video training with st_adapters",
+    )
 
     # Model parameters
     parser.add_argument(
@@ -222,8 +228,8 @@ def get_args_parser():
     parser.set_defaults(cls_embed=True)
 
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
-    parser.add_argument('--image_dataset_list', nargs='+', default=['cvf', 'imagenet'])
-    parser.add_argument('--image_dataset_conf', nargs='+', default=[1, 1]) 
+    parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
     parser.add_argument('--video_dataset_list', nargs='+', default=["CrossTask", "kinetics", "Objectron", "SSV2", "UCF101", "CSV"])
     parser.add_argument('--video_dataset_conf', nargs='+', default=[1, 10, 1, 1, 1, 1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
