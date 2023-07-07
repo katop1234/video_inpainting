@@ -470,6 +470,38 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore, ids_keep
 
+    def set_vqgan_target(self, imgs):
+        # Deep copy the input tensor to avoid modifying the original
+        imgs_copy = imgs.clone()
+
+        # Get VQGAN tokens before any expensive computation is done
+        if imgs_copy.shape[2] == 16:
+            # video
+            _imgs = torch.index_select(
+                imgs_copy,
+                2,
+                torch.linspace(
+                    0,
+                    imgs_copy.shape[2] - 1,
+                    self.pred_t_dim,
+                )
+                .long()
+                .to(imgs_copy.device)
+            )
+        else:
+            _imgs = imgs_copy
+
+        N = _imgs.shape[0]
+        T = _imgs.shape[2]
+        
+        with torch.no_grad():
+            _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
+            target = self.vae.get_codebook_indices(_imgs).flatten(1)
+            self.print_memory_change("get codebook indices", 0)
+            target = target.reshape([N, T * 196])
+        
+        self.target = target
+
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
         test_modes = [int(mode) for mode in [test_image, test_temporal, test_spatiotemporal, test_view, test_middle8]]
         assert sum(test_modes) <= 1, "Only one or zero test modes can be active at a time"
