@@ -200,6 +200,7 @@ class MaskedAutoencoderViT(nn.Module):
             self.decoder_latent = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
             
         self.initialize_weights()
+        self.target = None
         # --------------------------------------------------------------------------
         
         print("model initialized new code")
@@ -750,37 +751,14 @@ class MaskedAutoencoderViT(nn.Module):
         pred: [N, t*h*w, u*p*p*3] pred: [N, t*h*w, u*1024] t*h*w ==196 for some reason not sure (u = 1)
         mask: [N*t, h*w], 0 is keep, 1 is remove,
         """
-        if imgs.shape[2] == 16:
-            # video
-            _imgs = torch.index_select(
-                imgs,
-                2,
-                torch.linspace(
-                    0,
-                    imgs.shape[2] - 1,
-                    self.pred_t_dim,
-                )
-                .long()
-                .to(imgs.device)
-            )
-        else:
-            # images
-            _imgs = imgs
-
-        N = _imgs.shape[0]
-        T = _imgs.shape[2]
-
-        with torch.no_grad():
-            _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
-            target = self.vae.get_codebook_indices(_imgs).flatten(1)
-            target = torch.reshape(target, [N, T * 196])
-
+        target = imgs
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
         self.vae.eval()
+        self.set_vqgan_target(imgs) # TODO uncomment later once we know it's not the bottleneck
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view, test_middle8)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         loss = self.forward_loss(imgs, pred, mask)
