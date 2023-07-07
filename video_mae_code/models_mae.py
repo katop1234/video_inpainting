@@ -715,6 +715,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         # embed tokens
         x = self.decoder_embed(x)
+        self.print_memory_change("ViT Decoder embed", 0)
         C = x.shape[-1]
 
         # append mask tokens to sequence
@@ -799,6 +800,7 @@ class MaskedAutoencoderViT(nn.Module):
             
             N = x.shape[1]
             l = int(N // 3.5)
+            l = int(N ** 0.5)
 
             # prepare latents across batches and length
             latents = rin.repeat(self.decoder_latent, '1 d -> b l d', b = batch, l = l)
@@ -839,7 +841,7 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
         self.vae.eval()
-        self.set_vqgan_target(imgs)
+        self.set_vqgan_target(imgs) # TODO uncomment later once we know it's not the bottleneck
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view, test_middle8)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         loss = self.forward_loss(imgs, pred, mask)

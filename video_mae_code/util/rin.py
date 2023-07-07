@@ -194,6 +194,7 @@ class CrossAttention(nn.Module):
         self.heads = heads
 
         self.norm = LayerNorm(dim) if norm else nn.Identity()
+        self.norm = nn.LayerNorm(dim_context) # TODO seeing if this affects memory usage (pick one later)
 
         self.norm_context = LayerNorm(dim_context) if norm_context else nn.Identity()
 
@@ -255,6 +256,7 @@ class FeedForward(nn.Module):
     def __init__(self, dim, mult = 4, time_cond_dim = None):
         super().__init__()
         self.norm = LayerNorm(dim)
+        self.norm = nn.LayerNorm(dim) # TODO seeing if this affects memory usage (pick one later)
 
         self.time_cond = None
 

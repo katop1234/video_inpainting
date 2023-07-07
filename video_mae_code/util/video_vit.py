@@ -160,6 +160,7 @@ class Block(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
+        # TODO see if this MLP can be replaced with default pytroch implementation, maybe thats why RIN and ViT are the same.
         self.mlp = Mlp(
             in_features=dim,
             hidden_features=mlp_hidden_dim,
@@ -174,10 +175,20 @@ class Block(nn.Module):
     
 class CheckpointBlock(Block):
     def forward(self, x):
+        memory_before = torch.cuda.memory_allocated()
         x = checkpoint(self.attn, self.norm1(x)) + x
+        #x = x + self.drop_path(self.attn(self.norm1(x)))
+        memory_after = torch.cuda.memory_allocated()
+        print(f"Attention - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
+
+        memory_before = torch.cuda.memory_allocated()
         x = checkpoint(self.mlp, self.norm2(x)) + x
+        #x = x + self.drop_path(self.mlp(self.norm2(x)))
+        memory_after = torch.cuda.memory_allocated()
+        print(f"MLP - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
+
         return x
-    
+
 ### RIN Implementation below ###
 import util.rin as rin
 
@@ -192,12 +203,21 @@ class TransformerBlock(nn.Module):
         def cross_attention_fn(x, context):
             return self.cross_attention(x, context)
 
+        def feed_forward_fn(x):
+            return self.feed_forward(x)
+
+        memory_before = torch.cuda.memory_allocated()
         x = checkpoint(cross_attention_fn, x, x if context is None else context) + x
-        x = checkpoint(self.feed_forward, x) + x
-        
-        #x = self.cross_attention(x, context) + x
-        #x = self.feed_forward(x) + x
-        
+        #x = cross_attention_fn(x, x if context is None else context) + x
+        memory_after = torch.cuda.memory_allocated()
+        print(f"Cross attention - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
+
+        memory_before = torch.cuda.memory_allocated()
+        x = checkpoint(feed_forward_fn, x) + x
+        #x = feed_forward_fn(x) + x
+        memory_after = torch.cuda.memory_allocated()
+        print(f"Feed forward - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
+
         return x
 
 class RINBlockVIP(nn.Module):
