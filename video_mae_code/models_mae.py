@@ -526,6 +526,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.current_mem_allocated = new_mem_allocated
         self.current_mem_cached = new_mem_cached
 
+    @torch.no_grad()
     def set_vqgan_target(self, imgs):
         # Deep copy the input tensor to avoid modifying the original
         imgs_copy = imgs.clone()
