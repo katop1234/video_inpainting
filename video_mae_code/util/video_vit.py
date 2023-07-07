@@ -188,7 +188,6 @@ class Block(nn.Module):
             adapter_class() if adapter_pre_mlp else None
 
     def forward(self, x, T):
-        print("x.shape: ", x.shape)
         if self.adapter_pre_attn is not None:
             x = self.adapter_pre_attn(x, T=T)
         x = x + self.drop_path(self.attn(self.norm1(x)))
@@ -215,12 +214,14 @@ class Adapter(nn.Module):
         nn.init.constant_(self.fc1.bias, 0.)
         nn.init.constant_(self.fc2.bias, 0.)
 
-    def forward(self, x, T):
-        BT, L, C = x.size()
-        B = BT // T
+    def forward(self, x, T):        
+        B, TL, C = x.size()
+        BT = B * T
+        L = (TL - 1) // T
         Ca = self.conv.in_channels
-        H = W = round(math.sqrt(L - 1))
-        assert L - 1 == H * W
+        H = W = round(math.sqrt(L))
+        assert L == H * W
+        
         x_id = x
         x = x[:, 1:, :]
         x = self.fc1(x)
@@ -231,7 +232,7 @@ class Adapter(nn.Module):
         x = self.conv(x)
         torch.backends.cudnn.enabled = cudnn_enabled
 
-        x = x.permute(0, 2, 3, 4, 1).contiguous().view(BT, L - 1, Ca)
+        x = x.permute(0, 2, 3, 4, 1).contiguous().view(B, TL - 1, Ca)
         x = self.fc2(x)
         x_id[:, 1:, :] += x
         return x_id

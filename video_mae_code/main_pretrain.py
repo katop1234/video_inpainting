@@ -52,7 +52,13 @@ def get_args_parser():
     )
     
     parser.add_argument(
-        "--st_adapter",
+        "--st_adapter_encoder",
+        action='store_true',
+        help="Provide for pretrained image model to video training with st_adapters",
+    )
+    
+    parser.add_argument(
+        "--st_adapter_decoder",
         action='store_true',
         help="Provide for pretrained image model to video training with st_adapters",
     )
