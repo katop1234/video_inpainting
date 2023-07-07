@@ -125,7 +125,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         # --------------------------------------------------------------------------
         # MAE cct specifics
-        self.cct = CrossFrameCommunicationTransformer(input_resolution=img_size, patch_size=patch_size, width=4, layers=4, heads=4, output_dim=157) #Temporarily hard code
+        self.cct = CrossFrameCommunicationTransformer(input_resolution=img_size, patch_size=patch_size, width=12, layers=4, heads=4, output_dim=157) #Temporarily hard code
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
@@ -629,6 +629,8 @@ class MaskedAutoencoderViT(nn.Module):
             repeat = self.patch_embed.t_patch_size
             imgs = imgs.repeat(1, 1, repeat, 1, 1)
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, video_test_type)
+        print('latent.shape: ', latent.shape)
+        # latent = self.cct(latent)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
         
