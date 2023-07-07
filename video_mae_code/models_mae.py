@@ -20,6 +20,8 @@ from util.logging import master_print as print
 from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
 
+from X_CLIP.cct import CrossFrameCommunicationTransformer
+
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
 
@@ -45,6 +47,7 @@ class MaskedAutoencoderViT(nn.Module):
         trunc_init=False,
         cls_embed=True,
         pred_t_dim=16,
+        X_CLIP=False, #False for regular training, True for training only X-CLIP
         **kwargs,
     ):
         
@@ -118,6 +121,11 @@ class MaskedAutoencoderViT(nn.Module):
         self.norm = norm_layer(embed_dim)
         self.vae = get_vq_model().eval() 
         vocab_size = 1024 * self.patch_embed.t_patch_size 
+        # --------------------------------------------------------------------------
+
+        # --------------------------------------------------------------------------
+        # MAE cct specifics
+        self.cct = CrossFrameCommunicationTransformer(input_resolution=img_size, patch_size=patch_size, width=4, layers=4, heads=4, output_dim=157) #Temporarily hard code
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------

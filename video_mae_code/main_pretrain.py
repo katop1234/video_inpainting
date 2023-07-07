@@ -50,6 +50,12 @@ def get_args_parser():
         action='store_true',
         help="Provide for restarting the optimizer and epoch count",
     )
+    
+    parser.add_argument(
+        "--X_CLIP",
+        action='store_true',
+        help="Provide for pretrained image model to video training with X-CLIP",
+    )
 
     # Model parameters
     parser.add_argument(
