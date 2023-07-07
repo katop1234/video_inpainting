@@ -195,7 +195,7 @@ class MaskedAutoencoderViT(nn.Module):
             self.decoder_latent = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
         elif self.use_fit:
             self.decoder_dim_latent = decoder_embed_dim
-            self.decoder_depth = 4 # Num of FIT blocks
+            self.decoder_depth = 8 # Num of FIT blocks
             self.decoder_blocks = nn.ModuleList([FITBlockVIP(decoder_embed_dim).cuda() for _ in range(self.decoder_depth)])
             self.decoder_latent = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
             

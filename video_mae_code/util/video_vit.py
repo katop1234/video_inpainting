@@ -370,7 +370,7 @@ class naiveRINBlockVIP(nn.Module):
         return patches, latents
 
 class FITBlockVIP(nn.Module):
-    def __init__(self, dim, read_depth=1, process_depth=1, write_depth=1, **attn_kwargs):
+    def __init__(self, dim, read_depth=2, process_depth=2, write_depth=1, **attn_kwargs):
         super().__init__()
         self.group_size = 196 // 4 # Patches per group
         self.l = self.group_size // 4 # Num latents per group
@@ -402,48 +402,58 @@ class FITBlockVIP(nn.Module):
         print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
     def forward(self, x, latents, print_similarities=False):
-        # TODO have the leftovers passed in together, don't just sequentially pass them in cuz runtime
         B, N, D = x.shape
 
-        # calculate the number of groups and leftovers
         G = N // self.group_size
         leftover = N % self.group_size
 
-        # Latents per group
         L = self.l
 
         grouped_count = G * self.group_size
 
         x_grouped = x[:, :grouped_count, :]
         x_leftover = x[:, grouped_count:, :]
-        latents = latents[:, :G*L, :] if leftover else latents # only want latents corresponding to groups
+        latents = latents[:, :G*L, :] if leftover else latents 
 
-        # Step 1: (GROUP) Each group attends to itself
         x_grouped = x_grouped.reshape(B*G, self.group_size, D)
+        x_grouped_prev = x_grouped.clone().detach() if print_similarities and self.counter % self.print_frequency == 0 else None
         x_grouped = self.group_block(x_grouped)
-        x_leftover = self.group_block(x_leftover) if leftover else x_leftover
+        if print_similarities and self.counter % self.print_frequency == 0:
+            self._print_similarity(x_grouped_prev, x_grouped, 'Group x_grouped', 1)
+        if leftover:
+            x_leftover = self.group_block(x_leftover)
 
-        # Step 2: (READ) Each group cross attends to its own latent vectors
         latents = latents.reshape(B*G, L, D)
         for i, read_block in enumerate(self.read_blocks):
+            latents_prev = latents.clone().detach() if print_similarities and self.counter % self.print_frequency == 0 else None
             latents = read_block(latents, x_grouped)
-            x_leftover = read_block(x_leftover) if leftover else x_leftover
+            if print_similarities and self.counter % self.print_frequency == 0:
+                self._print_similarity(latents_prev, latents, f'Read latents', i+1)
+            if leftover:
+                x_leftover = read_block(x_leftover)
 
-        # Step 3: (PROCESS) Concat all the latents and do self attention globally
         latents = latents.reshape(B, G*L, D)
-        x_leftover = x_leftover.reshape(B, leftover, D)
+        x_leftover = x_leftover.reshape(B, leftover, D) if leftover else x_leftover
         latents_concat = torch.cat((latents, x_leftover), dim=1)
         for i, process_block in enumerate(self.process_blocks):
+            latents_concat_prev = latents_concat.clone().detach() if print_similarities and self.counter % self.print_frequency == 0 else None
             latents_concat = process_block(latents_concat)
+            if print_similarities and self.counter % self.print_frequency == 0:
+                self._print_similarity(latents_concat_prev, latents_concat, 'Process latents_concat', i+1)
 
-        # Step 4: (WRITE) Write back to x in the reverse process as 2
         latents, x_leftover = latents_concat[:, :G*L, :], latents_concat[:, G*L:, :]
         latents = latents.reshape(B*G, L, D)
         for i, write_block in enumerate(self.write_blocks):
+            x_grouped_prev = x_grouped.clone().detach() if print_similarities and self.counter % self.print_frequency == 0 else None
             x_grouped = write_block(x_grouped, latents)
-            x_leftover = write_block(x_leftover) if leftover else x_leftover
-        
+            if print_similarities and self.counter % self.print_frequency == 0:
+                self._print_similarity(x_grouped_prev, x_grouped, 'Write x_grouped', i+1)
+            if leftover:
+                x_leftover = write_block(x_leftover)
+
         x_grouped = x_grouped.reshape(B, G*self.group_size, D)
         x = torch.cat((x_grouped, x_leftover), dim=1)
+
+        self.counter += 1  # don't forget to increment the counter!
 
         return x, latents
