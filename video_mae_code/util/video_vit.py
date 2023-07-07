@@ -253,7 +253,7 @@ class RINBlockVIP(nn.Module):
         self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
 
         self.counter = 1
-        self.print_frequency = 100  # Change this to control how often the similarities are printed
+        self.print_frequency = 1  # Change this to control how often the similarities are printed
     
     # Helper function to calculate and print similarity
     def _print_similarity(self, old, new, block_name, depth):
