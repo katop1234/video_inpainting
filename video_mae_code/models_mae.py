@@ -574,11 +574,11 @@ class MaskedAutoencoderViT(nn.Module):
         if requires_t_shape:
             x = x.view([N, T * H * W, -1])
 
-        if self.cls_embed:
-            # remove cls token
-            x = x[:, 1:, :]
-        else:
-            x = x[:, :, :]
+        # if self.cls_embed:
+        #     # remove cls token
+        #     x = x[:, 1:, :]
+        # else:
+        #     x = x[:, :, :]
 
         return x
 
@@ -629,8 +629,9 @@ class MaskedAutoencoderViT(nn.Module):
             repeat = self.patch_embed.t_patch_size
             imgs = imgs.repeat(1, 1, repeat, 1, 1)
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, video_test_type)
-        print('latent.shape: ', latent.shape)
-        # latent = self.cct(latent)
+        
+        latent = self.cct(latent)
+        
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
         
