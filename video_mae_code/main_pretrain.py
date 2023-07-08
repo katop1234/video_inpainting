@@ -234,7 +234,7 @@ def get_args_parser():
     parser.add_argument('--eval_freq', default=5, help='frequency of computing davis eval metrics')
     parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
                                                    'ImageSets, Annotations_unsupervised folders',
-                    default='/shared/dannyt123/Datasets/DAVIS_video_1')
+                    default='shared/dannyt123/Datasets/DAVIS_video_1')
     parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
     
