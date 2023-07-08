@@ -125,7 +125,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         # --------------------------------------------------------------------------
         # MAE cct specifics
-        self.cct = CrossFrameCommunicationTransformer(input_resolution=img_size, patch_size=patch_size, width=12, layers=4, heads=4, output_dim=157) #Temporarily hard code
+        self.cct = CrossFrameCommunicationTransformer(input_resolution=img_size, patch_size=patch_size, width=embed_dim, layers=24, heads=16, output_dim=decoder_embed_dim) #Temporarily hard code
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
