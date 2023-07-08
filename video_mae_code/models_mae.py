@@ -20,7 +20,7 @@ from util.logging import master_print as print
 from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
 
-from util.video_vit import RINBlockVIP, naiveRINBlockVIP, CheckpointBlock
+from util.video_vit import RINBlockVIP, FITBlockVIP, CheckpointBlock
 from util import rin
 import numpy as np
 
@@ -50,7 +50,7 @@ class MaskedAutoencoderViT(nn.Module):
         cls_embed=True,
         pred_t_dim=16,
         use_rin=False,
-        use_naive_rin=False,
+        use_fit=False,
         **kwargs,
     ):
         
@@ -60,7 +60,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.cls_embed = cls_embed
         self.pred_t_dim = pred_t_dim
         self.use_rin = use_rin
-        self.use_naive_rin = use_naive_rin
+        self.use_fit = use_fit
 
         # t_patch_size is how many consecutive video frames are grouped together to form a single temporal patch
         # pred_t_dim is how many consecutive temporal patches are predicted
@@ -160,7 +160,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
         self.norm_pix_loss = norm_pix_loss
         
-        if not self.use_rin and not self.use_naive_rin:
+        if not self.use_rin and not self.use_fit:
             self.decoder_blocks = nn.ModuleList(
                 [
                     CheckpointBlock(
@@ -194,46 +194,10 @@ class MaskedAutoencoderViT(nn.Module):
                                                             ).cuda() for _ in range(self.decoder_depth)])
             
             self.decoder_latent = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
-        elif self.use_naive_rin:
-            # Decoder
-            self.decoder_dim = decoder_embed_dim # 512 works
-            self.decoder_dim_latent = self.decoder_dim
-            self.read_depth = 2
-            self.process_depth = 1 # number of self-attention layers in the latent space.
-            self.write_depth = 2
-            self.decoder_MHA_heads = 16
-            self.decoder_depth = 4 # Num of RIN blocks
-            
-            naiveRIN_blocks = []
-            naiveRIN_blocks += [naiveRINBlockVIP(
-                                self.decoder_dim,
-                                dim_latent=self.decoder_dim_latent,
-                                process_depth=self.process_depth,
-                                heads=self.decoder_MHA_heads,
-                                read_depth=self.read_depth,
-                                write_depth=self.write_depth,
-                                first_block=True
-                                ).cuda()]
-            naiveRIN_blocks += [naiveRINBlockVIP(
-                                self.decoder_dim,
-                                dim_latent=self.decoder_dim_latent,
-                                process_depth=self.process_depth,
-                                heads=self.decoder_MHA_heads,
-                                read_depth=self.read_depth,
-                                write_depth=self.write_depth,
-                                ).cuda() for _ in range(self.decoder_depth)]
-            naiveRIN_blocks += [naiveRINBlockVIP(
-                                self.decoder_dim,
-                                dim_latent=self.decoder_dim_latent,
-                                process_depth=self.process_depth,
-                                heads=self.decoder_MHA_heads,
-                                read_depth=self.read_depth,
-                                write_depth=self.write_depth,
-                                last_block=True
-                                ).cuda()]
-
-            self.decoder_blocks = nn.ModuleList(naiveRIN_blocks)
-            
+        elif self.use_fit:
+            self.decoder_dim_latent = decoder_embed_dim
+            self.decoder_depth = 8 # Num of FIT blocks
+            self.decoder_blocks = nn.ModuleList([FITBlockVIP(decoder_embed_dim).cuda() for _ in range(self.decoder_depth)])
             self.decoder_latent = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
             
         self.initialize_weights()
@@ -780,7 +744,7 @@ class MaskedAutoencoderViT(nn.Module):
             x = x.view([N, T, H * W, C])
 
         # apply Transformer blocks
-        if not self.use_rin and not self.use_naive_rin:
+        if not self.use_rin and not self.use_fit:
             i = 0
             for blk in self.decoder_blocks:
                 x_init = x.clone().detach()
@@ -796,7 +760,7 @@ class MaskedAutoencoderViT(nn.Module):
                 self.print_memory_change("ViT decoder block", i)
                 i += 1
                 
-        elif self.use_rin or self.use_naive_rin:
+        elif self.use_rin or self.use_fit:
             batch = x.shape[0]
             
             N = x.shape[1]
@@ -829,7 +793,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x
 
-    def forward_loss(self, imgs, pred, mask):
+    def forward_loss(self, pred, mask):
         """
         imgs: [N, 3, T, H, W]
         pred: [N, t*h*w, u*p*p*3] pred: [N, t*h*w, u*1024] t*h*w ==196 for some reason not sure (u = 1)
@@ -845,7 +809,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.set_vqgan_target(imgs) # TODO uncomment later once we know it's not the bottleneck
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view, test_middle8)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
-        loss = self.forward_loss(imgs, pred, mask)
+        loss = self.forward_loss(pred, mask)
         return loss, pred, mask
 
 def mae_vit_base_patch16(**kwargs):
