@@ -174,10 +174,14 @@ class MaskedAutoencoderViT(nn.Module):
         
         # --------------------------------------------------------------------------
         # st_adapter
+        parameters_required = ['temporal', 'adapter']
         if st_adapter_encoder or st_adapter_decoder:
             for n, p in self.named_parameters():
-                if 'adapter' not in n:
-                    p.requires_grad_(False)
+                requires = False
+                for parameter in parameters_required:
+                    if parameter in n:
+                        requires = True
+                p.requires_grad_(requires)
         # --------------------------------------------------------------------------
 
 
