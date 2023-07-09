@@ -765,7 +765,7 @@ class MaskedAutoencoderViT(nn.Module):
             
             N = x.shape[1]
             l = int(N // 3.5)
-            l = int(N ** 0.5)
+            l = 2 * int(N ** 0.5)
 
             # prepare latents across batches and length
             latents = rin.repeat(self.decoder_latent, '1 d -> b l d', b = batch, l = l)
