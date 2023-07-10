@@ -107,7 +107,7 @@ class CrossFrameCommunicationTransformer(nn.Module):
             nn.init.constant_(m.weight, 1.0)
 
     def forward(self, x: torch.Tensor):
-        # print("x.shape in cct forward: ", x.shape)
+        print("x.shape in cct forward: ", x.shape)
         
         
         # x = self.conv1(x)  # shape = [*, width, grid, grid]
@@ -116,7 +116,7 @@ class CrossFrameCommunicationTransformer(nn.Module):
         # x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
         # x = x + self.positional_embedding.to(x.dtype)
         
-        # x = self.ln_pre(x)
+        x = self.ln_pre(x)
 
         x = x.permute(1, 0, 2)
         x = self.transformer(x)

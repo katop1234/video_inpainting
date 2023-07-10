@@ -176,7 +176,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
         # --------------------------------------------------------------------------
         # CCT requires_grad
-        parameters_required = ['temporal', 'cct', 'cls_token'] #LOOK FOR CCT_MASK_TOKEN
+        parameters_required = ['temporal', 'cct', 'cls_token']
         if X_CLIP:
             for n, p in self.named_parameters():
                 requires = False
@@ -660,6 +660,11 @@ class MaskedAutoencoderViT(nn.Module):
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, video_test_type=""):
         self.vae.eval()
         
+        if video_test_type: 
+            print("video_test_type: ", video_test_type)
+        else:
+            print("video_test_type: random")    
+        
         # print("imgs.shape: ", imgs.shape)
         if not self.X_CLIP:
             if imgs.shape[2] == 1: #images
@@ -667,8 +672,10 @@ class MaskedAutoencoderViT(nn.Module):
             
             latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, video_test_type)
             # print("latent.shape: ", latent.shape)
-            # print("ids_restore.shape: ", ids_restore.shape)
-            # print("mask.shape: ", mask.shape)
+            print("ids_restore.shape: ", ids_restore.shape)
+            print("mask.shape: ", mask.shape)
+            print("ids_restore in normal: ", ids_restore)
+            print("mask in normal: ", mask)
             
         else:
             if imgs.shape[2] == 16:
@@ -685,6 +692,8 @@ class MaskedAutoencoderViT(nn.Module):
                     print("ids_restore.shape after forward encoder: ", ids_restore.shape)
                     latents.append(latent)
                     masks.append(mask)
+                    print("mask in encoder: ", mask)
+                    print("ids_restore: ", ids_restore)
                     ids_restores.append(ids_restore)
                     
                 latent = torch.cat(latents, dim=0)
@@ -694,7 +703,7 @@ class MaskedAutoencoderViT(nn.Module):
                 # print("mask.shape before cct: ", mask.shape)
                 # print("latent.shape before cct: ", latent.shape)
                 cls_x, latent = self.cct(latent)
-                # print("latent.shape after cct: ", latent.shape)
+                print("latent.shape after cct: ", latent.shape)
                 latent = latent.contiguous().view(B, -1, self.embed_dim)
                 # print("latent.shape after view: ", latent.shape)
                 #CODE FOR MASK AND IDS_RESTORE
