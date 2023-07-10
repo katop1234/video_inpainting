@@ -655,6 +655,31 @@ class MaskedAutoencoderViT(nn.Module):
         repeat = self.patch_embed.t_patch_size
         imgs = imgs.repeat(1, 1, repeat, 1, 1)
         return imgs
+    
+    
+    def X_CLIP_combine(latents, masks, ids_restores):
+        max_tokens = 0
+        pad = torch.zeros()
+        for latent in latents:
+            num_tokens = latent.shape[1]
+            if num_tokens > max_tokens:
+                max_tokens = num_tokens
+        
+        for latent in latents:
+            num_tokens = latent.shape[1]
+            if num_tokens > max_tokens:
+                print("latent.shape before padding: ", latent.shape)
+                latent = torch.nn.functional.pad(latent, (0, 0, 0, max_tokens - num_tokens, 0, 0))
+                print("latent.shape after padding: ", latent.shape)
+                
+        mask = torch.cat(masks, dim=1)
+        
+        for ids_restore in ids_restores:
+            i = ___
+            
+        attn_mask = ___
+        
+        return latent, mask, ids_restore, attn_mask
         
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, video_test_type=""):
