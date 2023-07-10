@@ -486,8 +486,12 @@ class MaskedAutoencoderViT(nn.Module):
         x = x.view([N, -1, C]) + pos_embed
 
         # apply Transformer blocks
+        if self.st_adapter:
+            self.train()
         for blk in self.blocks:
             x = blk(x, T=T)
+        if self.st_adapter:
+            self.eval()
         x = self.norm(x)
 
         if self.cls_embed:
@@ -575,8 +579,12 @@ class MaskedAutoencoderViT(nn.Module):
             x = x.view([N, T, H * W, C])
 
         # apply Transformer blocks
+        if self.st_adapter:
+            self.train()
         for blk in self.decoder_blocks:
             x = blk(x, T=T)
+        if self.st_adapter:
+            self.eval()
         
         x = self.decoder_norm(x)
 
@@ -637,9 +645,13 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, video_test_type=""):
         self.vae.eval()
+        if self.st_adapter:
+            self.eval()
+        
         if imgs.shape[2] == 1: #images
             repeat = self.patch_embed.t_patch_size
             imgs = imgs.repeat(1, 1, repeat, 1, 1)
+        
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, video_test_type)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
