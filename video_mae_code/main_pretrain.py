@@ -454,6 +454,9 @@ def main(args):
 
         if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
             with torch.no_grad():
+                if args.test_mode:
+                    log_stats = {}
+                    
                 model.eval()
                 store_path = os.path.join(args.output_dir, "davis_segs")
                 if not os.path.exists(store_path):
