@@ -25,9 +25,7 @@ from iopath.common.file_io import g_pathmgr as pathmgr
 from util.logging import master_print as print
 from torch import inf
 
-
 logger = logging.get_logger(__name__)
-
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -189,7 +187,6 @@ class MetricLogger(object):
                 header, total_time_str, total_time / len(iterable)
             )
         )
-
 
 def setup_for_distributed(is_master):
     """

@@ -52,13 +52,36 @@ def get_timestep_embedding(timesteps, embedding_dim):
 
 def nonlinearity(x):
     # swish
+    print("Memory usage before nonlinearity: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB")
     return x * torch.sigmoid(x)
 
+# def nonlinearity(x):
+#     # swish
+#     print("Memory usage before nonlinearity: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB")
+#     B = x.shape[0]
+#     chunk_size = 32
+#     for i in range(0, B, chunk_size):
+#         x[i:i+32] = x[i:i+32] * torch.sigmoid(x[i:i+32])
+#     return x
 
-def Normalize(in_channels):
+# def Normalize(in_channels, chunk_size=32):
+#     norm_layer = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True).cuda()
+    
+#     def func(input_tensor):
+#         B = input_tensor.shape[0]
+#         assert B % chunk_size == 0, f'Batch size {B} must be divisible by chunk size {chunk_size}'
+#         out = []
+#         for i in range(0, B, chunk_size):
+#             out.append(norm_layer(input_tensor[i:i+chunk_size]))
+        
+#         return torch.cat(out, dim=0).cuda()
+            
+#     return func
+
+def Normalize(in_channels, chunk_size=32):
     return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
-
+    
 class Upsample(nn.Module):
     def __init__(self, in_channels, with_conv):
         super().__init__()
@@ -139,27 +162,66 @@ class ResnetBlock(nn.Module):
                                                     padding=0)
 
     def forward(self, x, temb):
-        h = x
-        h = self.norm1(h)
-        h = nonlinearity(h)
-        h = self.conv1(h)
+        with torch.no_grad():
+            print("Memory usage entering resnet block: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Memory cached: ", torch.cuda.memory_cached() / 1024 ** 3, "GB")
+            h = x
+            h = self.norm1(h)
+            print("Memory usage after norm 1: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Memory cached: ", torch.cuda.memory_cached() / 1024 ** 3, "GB")
+            h = nonlinearity(h)
+            print("Memory usage after nonlinearity: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Memory cached: ", torch.cuda.memory_cached() / 1024 ** 3, "GB")
+            h = self.conv1(h)
+            torch.cuda.empty_cache()
+            print("Memory usage after conv1: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Memory cached: ", torch.cuda.memory_cached() / 1024 ** 3, "GB")
+            if temb is not None:
+                h = h + self.temb_proj(nonlinearity(temb))[:, :, None, None]
 
-        if temb is not None:
-            h = h + self.temb_proj(nonlinearity(temb))[:, :, None, None]
+            h = self.norm2(h)
+            h = nonlinearity(h)
+            h = self.dropout(h)
+            h = self.conv2(h)
 
-        h = self.norm2(h)
-        h = nonlinearity(h)
-        h = self.dropout(h)
-        h = self.conv2(h)
+            if self.in_channels != self.out_channels:
+                if self.use_conv_shortcut:
+                    x = self.conv_shortcut(x)
+                else:
+                    x = self.nin_shortcut(x)
 
-        if self.in_channels != self.out_channels:
-            if self.use_conv_shortcut:
-                x = self.conv_shortcut(x)
-            else:
-                x = self.nin_shortcut(x)
+            return x + h
+    
+    def forward(self, x, temb=None):
+        B, C, H, W = x.shape
+        chunk_size = 32
+        assert B % chunk_size == 0, f'Batch size {B} must be divisible by chunk size {chunk_size}'
+        
+        out = []
+        for i in range(0, B, chunk_size):
+            x_chunk = x[i:i+chunk_size]
+            h = x_chunk
+            
+            h = self.norm1(h)
+            h = nonlinearity(h)
+            h = self.conv1(h)
 
-        return x + h
+            if temb is not None:
+                temb_chunk = temb[i:i+chunk_size]
+                h = h + self.temb_proj(nonlinearity(temb_chunk))[:, :, None, None]
 
+            h = self.norm2(h)
+            h = nonlinearity(h)
+            h = self.dropout(h)
+            h = self.conv2(h)
+
+            if self.in_channels != self.out_channels:
+                if self.use_conv_shortcut:
+                    x_chunk = self.conv_shortcut(x_chunk)
+                else:
+                    x_chunk = self.nin_shortcut(x_chunk)
+
+            out.append(x_chunk + h)
+            del x_chunk, h
+            torch.cuda.empty_cache()
+
+        return torch.cat(out, dim=0)
 
 class AttnBlock(nn.Module):
     def __init__(self, in_channels):
