@@ -480,6 +480,7 @@ class MaskedAutoencoderViT(nn.Module):
         return x_masked, mask, ids_restore, ids_keep
     
     def print_cosine_similarity(self, block_name, depth, a, b):
+        # Use for ablation, if the cosine similarity > 0.99, remove the block
         if self.forward_counts % self.print_every == 0:
             dot_product = torch.dot(a.flatten(), b.flatten())
             norm_product = torch.norm(a) * torch.norm(b)
@@ -488,17 +489,24 @@ class MaskedAutoencoderViT(nn.Module):
 
     def print_memory_change(self, block_name, i):
         if self.forward_counts % self.print_every:
-            new_mem_allocated = torch.cuda.memory_allocated() / 1e6
-            new_mem_cached = torch.cuda.memory_reserved() / 1e6
+            new_mem_allocated_mb = torch.cuda.memory_allocated() / 1e6
+            new_mem_cached_mb = torch.cuda.memory_reserved() / 1e6
 
-            allocated_change = new_mem_allocated - self.current_mem_allocated
-            cached_change = new_mem_cached - self.current_mem_cached
+            allocated_change_mb = round(new_mem_allocated_mb - self.current_mem_allocated)
+            cached_change_mb = round(new_mem_cached_mb - self.current_mem_cached)
 
-            print(f"After {block_name} {i+1}, Memory allocated change: {allocated_change}MB, Memory cached change: {cached_change}MB")
+            total_allocated_gb = round(new_mem_allocated_mb / 1024, 2)  # MB to GB
+            total_cached_gb = round(new_mem_cached_mb / 1024, 2)  # MB to GB
+
+            print(f"After {block_name} {i+1}, "
+                f"Memory allocated change: {allocated_change_mb}MB, "
+                f"Memory cached change: {cached_change_mb}MB, "
+                f"Total memory allocated: {total_allocated_gb}GB, "
+                f"Total memory cached: {total_cached_gb}GB")
 
             # update the current memory values for the next calculation
-            self.current_mem_allocated = new_mem_allocated
-            self.current_mem_cached = new_mem_cached
+            self.current_mem_allocated = new_mem_allocated_mb
+            self.current_mem_cached = new_mem_cached_mb
 
     @torch.no_grad()
     def set_vqgan_target(self, imgs):
