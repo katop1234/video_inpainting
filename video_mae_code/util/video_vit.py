@@ -476,4 +476,3 @@ class FITBlockVIP(nn.Module):
         self.counter += 1
 
         return x.view(B, N, -1)
-
