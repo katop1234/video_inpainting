@@ -175,10 +175,11 @@ class ResnetBlock(nn.Module):
                     
                 out[i:min(i+chunk_size, B)] = x_chunk + h
 
+        # If we run out of memory, reduce the chunk size and try again
         except RuntimeError as e:
             if "out of memory" in str(e):
-                if self.chunk_size_factor >= 16:
-                    print(f"RuntimeError: CUDA out of memory. Reduced batch size by 16, but still not enough. Reduce the overall batch size now.")
+                if self.chunk_size_factor >= 8:
+                    print(f"RuntimeError: CUDA out of memory. Reduced batch size by 8, but still not enough. Reduce the overall batch size now.")
                     exit()
                 else:
                     # Reduce chunk size and try again
