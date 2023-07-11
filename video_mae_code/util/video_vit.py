@@ -175,7 +175,7 @@ class Block(nn.Module):
 class CheckpointBlock(Block):
     def forward(self, x):
         norm1_x = self.norm1(x)
-        x = x + self.drop_path(checkpoint.checkpoint(self.attn, norm1_x))
+        x = x + self.drop_path(checkpoint(self.attn, norm1_x))
         norm2_x = self.norm2(x)
-        x = x + self.drop_path(checkpoint.checkpoint(self.mlp, norm2_x))
+        x = x + self.drop_path(checkpoint(self.mlp, norm2_x))
         return x
