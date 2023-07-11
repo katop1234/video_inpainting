@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from timm.models.layers import to_2tuple
 from timm.models.vision_transformer import DropPath, Mlp
+from torch.utils.checkpoint import checkpoint
 
 logger = logging.get_logger(__name__)
 
@@ -169,4 +170,12 @@ class Block(nn.Module):
     def forward(self, x):
         x = x + self.drop_path(self.attn(self.norm1(x)))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
+        return x
+
+class CheckpointBlock(Block):
+    def forward(self, x):
+        norm1_x = self.norm1(x)
+        x = x + self.drop_path(checkpoint.checkpoint(self.attn, norm1_x))
+        norm2_x = self.norm2(x)
+        x = x + self.drop_path(checkpoint.checkpoint(self.mlp, norm2_x))
         return x
