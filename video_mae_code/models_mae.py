@@ -488,7 +488,7 @@ class MaskedAutoencoderViT(nn.Module):
             print(f"Cosine Similarity before and after {block_name} at depth {depth}", cosine_similarity.item())
 
     def print_memory_change(self, block_name, i):
-        if self.forward_counts % self.print_every:
+        if self.forward_counts % self.print_every == 0:
             new_mem_allocated_mb = torch.cuda.memory_allocated() / 1e6
             new_mem_cached_mb = torch.cuda.memory_reserved() / 1e6
 
