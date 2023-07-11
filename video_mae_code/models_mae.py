@@ -726,6 +726,8 @@ class MaskedAutoencoderViT(nn.Module):
         pred: [N, t*h*w, u*p*p*3] pred: [N, t*h*w, u*1024] t*h*w ==196 for some reason not sure (u = 1)
         mask: [N*t, h*w], 0 is keep, 1 is remove,
         """
+        
+        target = self.target.detach()
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         self.forward_counts += 1 # for debugging
