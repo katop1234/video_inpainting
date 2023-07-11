@@ -363,6 +363,7 @@ def main(args):
             model,
             device_ids=[torch.cuda.current_device()],
             find_unused_parameters=True,
+            statich_graph=True,
         )
         model_without_ddp = model.module
 
