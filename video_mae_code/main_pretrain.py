@@ -394,7 +394,6 @@ def main(args):
     print("Total number of parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
     model_memory = sum(p.numel() for p in model.parameters()) * 4 / (1024 ** 2)  # assuming parameters are float32, so 4 bytes each
     print("Model memory (MB): ", model_memory)
-    model._set_static_graph() # Or else gradient checkpointing on RIN doesn't work.
 
     if misc.is_main_process():
         wandb_config = vars(args)
@@ -405,13 +404,12 @@ def main(args):
             project="video_inpainting2",
             config=wandb_config)
     
-    if args.detect_anomaly:
+    if args.detect_anomaly: # useful for debugging
         torch.autograd.set_detect_anomaly(True)
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
-    model._set_static_graph()
 
     combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
     log_stats = {}
