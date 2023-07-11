@@ -209,13 +209,13 @@ class TransformerBlock(nn.Module):
         x = checkpoint(cross_attention_fn, x, x if context is None else context) + x
         #x = cross_attention_fn(x, x if context is None else context) + x
         memory_after = torch.cuda.memory_allocated()
-        print(f"Cross attention - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
+       # print(f"Cross attention - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
 
         memory_before = torch.cuda.memory_allocated()
         x = checkpoint(feed_forward_fn, x) + x
         #x = feed_forward_fn(x) + x
         memory_after = torch.cuda.memory_allocated()
-        print(f"Feed forward - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
+       # print(f"Feed forward - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
 
         return x
 
@@ -252,7 +252,7 @@ class RINBlockVIP(nn.Module):
         self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
 
         self.counter = 1
-        self.print_frequency = 1  # Change this to control how often the similarities are printed
+        self.print_frequency = 100  # Change this to control how often the similarities are printed
     
     # Helper function to calculate and print similarity
     def _print_similarity(self, old, new, block_name, depth):

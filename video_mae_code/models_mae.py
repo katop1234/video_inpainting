@@ -163,7 +163,7 @@ class MaskedAutoencoderViT(nn.Module):
         if not self.use_rin and not self.use_fit:
             self.decoder_blocks = nn.ModuleList(
                 [
-                    CheckpointBlock(
+                    video_vit.CheckpointBlock(
                         decoder_embed_dim,
                         decoder_num_heads,
                         mlp_ratio,
@@ -645,7 +645,7 @@ class MaskedAutoencoderViT(nn.Module):
             
             # compute the cosine similarity
             cosine_similarity = dot_product / norm_product
-            print("Cosine Similarity before and after encoder block: ", cosine_similarity.item())
+            #print("Cosine Similarity before and after encoder block: ", cosine_similarity.item())
 
             self.print_memory_change("ViT Encoder block", i+1)
             i += 1
@@ -755,7 +755,7 @@ class MaskedAutoencoderViT(nn.Module):
                 norm_product = torch.norm(x_init) * torch.norm(x_final)
                 cosine_similarity = dot_product / norm_product
 
-                assert type(blk) is CheckpointBlock
+                assert type(blk) in [CheckpointBlock, video_vit.Block]
                 print("Cosine Similarity before and after vit decoder block: ", cosine_similarity.item())
                 self.print_memory_change("ViT decoder block", i)
                 i += 1
@@ -765,7 +765,7 @@ class MaskedAutoencoderViT(nn.Module):
             
             N = x.shape[1]
             l = int(N // 3.5)
-            l = 2 * int(N ** 0.5)
+            #l = 4 * int(N ** 0.5)
 
             # prepare latents across batches and length
             latents = rin.repeat(self.decoder_latent, '1 d -> b l d', b = batch, l = l)

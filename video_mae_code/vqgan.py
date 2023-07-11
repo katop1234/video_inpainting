@@ -52,7 +52,7 @@ def get_timestep_embedding(timesteps, embedding_dim):
 
 def nonlinearity(x):
     # swish
-    print("Memory usage before nonlinearity: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB")
+    #print("Memory usage before nonlinearity: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB")
     return x * torch.sigmoid(x)
 
 # def nonlinearity(x):
@@ -190,12 +190,12 @@ class ResnetBlock(nn.Module):
     
     def forward(self, x, temb=None):
         B, C, H, W = x.shape
-        chunk_size = 32
-        assert B % chunk_size == 0, f'Batch size {B} must be divisible by chunk size {chunk_size}'
-        
+        chunk_size = 64
+        print("Calling VQGAN with chunk_size: ", chunk_size, " and batch size: ", B)
+        memory_before = torch.cuda.memory_allocated() / 1024 ** 3
         out = []
         for i in range(0, B, chunk_size):
-            x_chunk = x[i:i+chunk_size]
+            x_chunk = x[i:min(B, i+chunk_size)]
             h = x_chunk
             
             h = self.norm1(h)
@@ -220,8 +220,9 @@ class ResnetBlock(nn.Module):
             out.append(x_chunk + h)
             del x_chunk, h
             torch.cuda.empty_cache()
+            print("Memory usage after iteration ", i // chunk_size, ": ", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Memory cached: ", torch.cuda.memory_cached() / 1024 ** 3, "GB. Increase in memory usage (MB): ", (torch.cuda.memory_allocated() / 1024 ** 2) - memory_before)
 
-        return torch.cat(out, dim=0)
+        return torch.cat(out, dim=0)   
 
 class AttnBlock(nn.Module):
     def __init__(self, in_channels):
