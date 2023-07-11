@@ -138,27 +138,41 @@ class ResnetBlock(nn.Module):
                                                     stride=1,
                                                     padding=0)
 
-    def forward(self, x, temb):
-        h = x
-        h = self.norm1(h)
-        h = nonlinearity(h)
-        h = self.conv1(h)
+    def forward(self, x, temb=None):
+        B, C, H, W = x.shape
+        chunk_size = 32
+        assert B % chunk_size == 0, f'Batch size {B} must be divisible by chunk size {chunk_size}'
+        
+        out = []
+        for i in range(0, B, chunk_size):
+            x_chunk = x[i:i+chunk_size]
+            h = x_chunk
+            
+            h = self.norm1(h)
+            h = nonlinearity(h)
+            h = self.conv1(h)
 
-        if temb is not None:
-            h = h + self.temb_proj(nonlinearity(temb))[:, :, None, None]
+            if temb is not None:
+                temb_chunk = temb[i:i+chunk_size]
+                h = h + self.temb_proj(nonlinearity(temb_chunk))[:, :, None, None]
 
-        h = self.norm2(h)
-        h = nonlinearity(h)
-        h = self.dropout(h)
-        h = self.conv2(h)
+            h = self.norm2(h)
+            h = nonlinearity(h)
+            h = self.dropout(h)
+            h = self.conv2(h)
 
-        if self.in_channels != self.out_channels:
-            if self.use_conv_shortcut:
-                x = self.conv_shortcut(x)
-            else:
-                x = self.nin_shortcut(x)
+            if self.in_channels != self.out_channels:
+                if self.use_conv_shortcut:
+                    x_chunk = self.conv_shortcut(x_chunk)
+                else:
+                    x_chunk = self.nin_shortcut(x_chunk)
 
-        return x + h
+            out.append(x_chunk + h)
+            del x_chunk, h
+            torch.cuda.empty_cache()
+
+        return torch.cat(out, dim=0)
+    
 
 
 class AttnBlock(nn.Module):
