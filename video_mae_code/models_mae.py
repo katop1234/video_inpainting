@@ -731,11 +731,16 @@ class MaskedAutoencoderViT(nn.Module):
         self.forward_counts += 1 # for debugging
         return loss
 
-    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
+    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, video_test_type=""):
         self.vae.eval()
         self.set_vqgan_target(imgs)
-        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view, test_middle8)
+        if imgs.shape[2] == 1: #images
+            repeat = self.patch_embed.t_patch_size
+            imgs = imgs.repeat(1, 1, repeat, 1, 1)
+        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, video_test_type)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
+        mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
+        
         loss = self.forward_loss(pred, mask)
         return loss, pred, mask
 
