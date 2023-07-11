@@ -25,9 +25,7 @@ from iopath.common.file_io import g_pathmgr as pathmgr
 from util.logging import master_print as print
 from torch import inf
 
-
 logger = logging.get_logger(__name__)
-
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -190,7 +188,6 @@ class MetricLogger(object):
             )
         )
 
-
 def setup_for_distributed(is_master):
     """
     This function disables printing when not in master process
@@ -301,11 +298,18 @@ class NativeScalerWithGradNormCount:
         parameters=None,
         create_graph=False,
         update_grad=True,
-    ):  
-        
+    ):
+
         self._scaler.scale(loss).backward(create_graph=create_graph)
 
         if update_grad:
+            
+            params_with_grads = [(p, p.grad) for p in parameters if p.requires_grad and p.grad is not None]
+            sorted_params_with_grads = sorted(params_with_grads, key=lambda x: x[1].abs().max().item(), reverse=True)
+            top_gradients = []
+            for idx, (param, grad) in enumerate(sorted_params_with_grads[:10]):
+                top_gradients.append(grad.abs().max().item())
+            
             if clip_grad is not None:
                 assert parameters is not None
                 self._scaler.unscale_(
@@ -319,6 +323,7 @@ class NativeScalerWithGradNormCount:
             self._scaler.update()
         else:
             norm = None
+
         return norm
 
     def state_dict(self):
@@ -384,6 +389,7 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
     if not args.resume:
         args.resume = get_last_checkpoint(args)
     if args.resume:
+        args.resume = os.path.join(args.output_dir, f"checkpoint-{int(args.resume):05d}.pth") if args.resume.isdigit() else args.resume
         if args.resume.startswith("https"):
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location="cpu", check_hash=True
@@ -404,7 +410,7 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
             if "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
             print("With optim & sched!")
-        elif args.no_cont_pretrain:
+        elif (args.no_cont_pretrain):
             args.start_epoch = 0
             
     return args.resume

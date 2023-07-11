@@ -14,11 +14,15 @@ from functools import partial
 
 import torch
 import torch.nn as nn
-from util import video_vit
+from util import video_vit, misc
 import random
 from util.logging import master_print as print
 from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
+
+from util.video_vit import RINBlockVIP, FITBlockVIP, CheckpointBlock
+from util import rin
+import numpy as np
 
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
@@ -45,6 +49,8 @@ class MaskedAutoencoderViT(nn.Module):
         trunc_init=False,
         cls_embed=True,
         pred_t_dim=16,
+        use_rin=False,
+        use_fit=False,
         **kwargs,
     ):
         
@@ -53,6 +59,8 @@ class MaskedAutoencoderViT(nn.Module):
         self.sep_pos_embed = sep_pos_embed
         self.cls_embed = cls_embed
         self.pred_t_dim = pred_t_dim
+        self.use_rin = use_rin
+        self.use_fit = use_fit
 
         # t_patch_size is how many consecutive video frames are grouped together to form a single temporal patch
         # pred_t_dim is how many consecutive temporal patches are predicted
@@ -101,7 +109,8 @@ class MaskedAutoencoderViT(nn.Module):
                 torch.zeros(1, _num_patches, embed_dim),
             )
 
-        self.blocks = nn.ModuleList(
+        # ViT Implementation 
+        self.encoder_blocks = nn.ModuleList(
             [
                 video_vit.Block(
                     embed_dim,
@@ -163,12 +172,57 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
-        # --------------------------------------------------------------------------
-
         self.norm_pix_loss = norm_pix_loss
-
+        
+        if not self.use_rin and not self.use_fit:
+            self.decoder_blocks = nn.ModuleList(
+                [
+                    video_vit.CheckpointBlock(
+                        decoder_embed_dim,
+                        decoder_num_heads,
+                        mlp_ratio,
+                        qkv_bias=not no_qkv_bias,
+                        qk_scale=None,
+                        norm_layer=norm_layer,
+                    )
+                    for i in range(decoder_depth)
+                ]
+            )
+        
+        elif self.use_rin: 
+            # Decoder
+            self.decoder_dim = decoder_embed_dim # 512 works
+            self.decoder_dim_latent = self.decoder_dim
+            self.read_depth = 1
+            self.process_depth = 1 # number of self-attention layers in the latent space.
+            self.write_depth = 1
+            self.decoder_MHA_heads = 16
+            self.decoder_depth = 4 # Num of RIN blocks
+            
+            self.decoder_blocks = nn.ModuleList([RINBlockVIP(self.decoder_dim, 
+                                                            dim_latent = self.decoder_dim_latent, 
+                                                            process_depth = self.process_depth, 
+                                                            heads = self.decoder_MHA_heads,
+                                                            read_depth=self.read_depth,
+                                                            write_depth=self.write_depth,
+                                                            ).cuda() for _ in range(self.decoder_depth)])
+            
+            self.decoder_latent = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
+        elif self.use_fit:
+            self.decoder_dim_latent = decoder_embed_dim
+            self.decoder_depth = 8 # Num of FIT blocks
+            self.decoder_blocks = nn.ModuleList([FITBlockVIP(decoder_embed_dim).cuda() for _ in range(self.decoder_depth)])
+            self.decoder_latent = nn.Parameter(torch.randn(1, self.decoder_dim_latent) * 0.02).cuda()
+            
         self.initialize_weights()
-
+        # --------------------------------------------------------------------------
+        
+        self.target = None # We update this at runtime to store the vqgan target
+        
+        # For debugging
+        self.current_mem_cached = 0
+        self.current_mem_allocated = 0
+        
         print("model initialized new code")
 
     def initialize_weights(self):
@@ -332,7 +386,7 @@ class MaskedAutoencoderViT(nn.Module):
 
     def mask_temporal(self, x):
         """
-        Mask the last 7 frames of the video patches.
+        Mask the last 8 frames of the video patches.
         x: [N, L, D], sequence
         """
         N, L, D = x.shape  # batch, length, dim
@@ -346,7 +400,7 @@ class MaskedAutoencoderViT(nn.Module):
         for frame in range(F):
             for row in range(H):
                 for col in range(W):
-                    if frame > (F - 8):
+                    if frame >= (F - 8):
                         mask[:, frame * H * W + row * W + col] = 1
 
         # Apply the mask to the input tensor
@@ -399,16 +453,99 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x_masked, mask, ids_restore, ids_keep
 
+    def mask_middle8(self, x):
+        """
+        Mask the middle 8 frames of the video patches.
+        x: [N, L, D], sequence
+        """
+        N, L, D = x.shape  # batch, length, dim
 
-    def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
-        test_modes = [int(mode) for mode in [test_image, test_temporal, test_spatiotemporal, test_view]]
+        assert L == 196 * 16, "This only works for L = 196 * 16 (video)"
+
+        F, H, W = 16, 14, 14  # F is the number of frames
+
+        # Define the starting frame for masking (F//2 - 4) 
+        # and the ending frame for masking (F//2 + 4)
+        start_frame, end_frame = F // 2 - 4, F // 2 + 4
+
+        # Create the binary mask: 0 is keep, 1 is remove
+        mask = torch.zeros([N, L], device=x.device)
+        for frame in range(F):
+            for row in range(H):
+                for col in range(W):
+                    if start_frame <= frame < end_frame:
+                        mask[:, frame * H * W + row * W + col] = 1
+
+        # Apply the mask to the input tensor
+        x_masked = x[mask == 0].view(N, -1, D)
+        
+        ids_keep = torch.nonzero(mask == 0)[:, 1] # Get only the indices of the kept elements
+        ids_remove = torch.nonzero(mask == 1)[:, 1] # Get only the indices of the removed elements
+
+        # Create ids_restore by concatenating ids_keep and ids_remove
+        ids_shuffle = torch.cat((ids_keep, ids_remove), dim=0)
+        ids_restore = torch.argsort(ids_shuffle, dim=0)
+        
+        ids_keep = ids_keep.unsqueeze(0).repeat(N, 1).to(x.device)
+        ids_restore = ids_restore.unsqueeze(0).repeat(N, 1).to(x.device)
+
+        return x_masked, mask, ids_restore, ids_keep
+
+    def print_memory_change(self, block_name, i):
+        new_mem_allocated = torch.cuda.memory_allocated() / 1e6
+        new_mem_cached = torch.cuda.memory_reserved() / 1e6
+
+        allocated_change = new_mem_allocated - self.current_mem_allocated
+        cached_change = new_mem_cached - self.current_mem_cached
+
+        print(f"After {block_name} {i+1}, Memory allocated change: {allocated_change}MB, Memory cached change: {cached_change}MB")
+
+        # update the current memory values for the next calculation
+        self.current_mem_allocated = new_mem_allocated
+        self.current_mem_cached = new_mem_cached
+
+    @torch.no_grad()
+    def set_vqgan_target(self, imgs):
+        # Deep copy the input tensor to avoid modifying the original
+        imgs_copy = imgs.clone()
+
+        # Get VQGAN tokens before any expensive computation is done
+        if imgs_copy.shape[2] == 16:
+            # video
+            _imgs = torch.index_select(
+                imgs_copy,
+                2,
+                torch.linspace(
+                    0,
+                    imgs_copy.shape[2] - 1,
+                    self.pred_t_dim,
+                )
+                .long()
+                .to(imgs_copy.device)
+            )
+        else:
+            _imgs = imgs_copy
+
+        N = _imgs.shape[0]
+        T = _imgs.shape[2]
+        
+        with torch.no_grad():
+            _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
+            target = self.vae.get_codebook_indices(_imgs).flatten(1)
+            self.print_memory_change("get codebook indices", 0)
+            target = target.reshape([N, T * 196])
+        
+        self.target = target
+
+    def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
+        test_modes = [int(mode) for mode in [test_image, test_temporal, test_spatiotemporal, test_view, test_middle8]]
         assert sum(test_modes) <= 1, "Only one or zero test modes can be active at a time"
         
         mask_ratio_image = int(mask_ratio_image * 14 ** 2) / (14 ** 2 * 1) # quantizes it 
         mask_ratio_video = int(mask_ratio_video * 14 ** 2 * 16) / (14 ** 2 * 16) # quantizes it
 
         pretraining_mode = True
-        if test_image or test_temporal or test_spatiotemporal or test_view:
+        if sum(test_modes) == 1:
             pretraining_mode = False
 
         # x .shape ==  (B, C, T, H, W). For image T == 1, for video T > 1
@@ -427,6 +564,9 @@ class MaskedAutoencoderViT(nn.Module):
 
         elif test_spatiotemporal:
             x, mask, ids_restore, ids_keep = self.mask_spatiotemporal(x)
+        
+        elif test_middle8:
+            x, mask, ids_restore, ids_keep = self.mask_middle8(x)
 
         elif test_view:
             raise NotImplementedError
@@ -448,7 +588,7 @@ class MaskedAutoencoderViT(nn.Module):
                 raise ValueError("The output tensor shapes do not match expected shapes for video or image tensors.")
 
         x = x.view(N, -1, C)
-
+        
         # append cls token
         if self.cls_embed:
             cls_token = self.cls_token
@@ -507,16 +647,32 @@ class MaskedAutoencoderViT(nn.Module):
         x = x.view([N, -1, C]) + pos_embed
 
         # apply Transformer blocks
-        for blk in self.blocks:
-            x = blk(x)
-        x = self.norm(x)
+        i = 0
+        for blk in self.encoder_blocks:
+            x_init = x.clone().detach() # store the initial state
+            x = blk(x) 
+            x_final = x.clone().detach() # store the final state after the block
 
+            # compute the dot product and the norm product
+            dot_product = torch.dot(x_init.flatten(), x_final.flatten())
+            norm_product = torch.norm(x_init) * torch.norm(x_final)
+            
+            # compute the cosine similarity
+            cosine_similarity = dot_product / norm_product
+            #print("Cosine Similarity before and after encoder block: ", cosine_similarity.item())
+
+            self.print_memory_change("ViT Encoder block", i+1)
+            i += 1
+
+        x = self.norm(x)
+        self.print_memory_change("ViT Encoder norm", 1)
+        
         if self.cls_embed:
             # remove cls token
             x = x[:, 1:, :]
         else:
             x = x[:, :, :]
-
+        
         return x, mask, ids_restore
 
     def forward_decoder(self, x, ids_restore, mask_ratio_image=0.75, mask_ratio_video=0.9):
@@ -528,7 +684,7 @@ class MaskedAutoencoderViT(nn.Module):
             T = 1 
         elif x.shape[1] == 14 ** 2 * (1 - mask_ratio_video) * 16: # video
             T = 16
-        elif x.shape[1] == 3136 * 9 / 16 or x.shape[1] == 3136 * 12 / 16: # video temporal inference
+        elif x.shape[1] == 3136 * 9 / 16 or x.shape[1] == 3136 * 12 / 16 or x.shape[1] == 3136 * 12 / 16 or x.shape[1] == 3136 * 1/2: # video temporal inference or video mask middle 8
             T = 16
         else:
             raise NotImplementedError("got unsupported x, x shape was " + str(x.shape))
@@ -538,6 +694,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         # embed tokens
         x = self.decoder_embed(x)
+        self.print_memory_change("ViT Decoder embed", 0)
         C = x.shape[-1]
 
         # append mask tokens to sequence
@@ -594,23 +751,54 @@ class MaskedAutoencoderViT(nn.Module):
             print("got bad x shape when adding decoder pos emb", x.shape)
             raise NotImplementedError 
     
-        attn = self.decoder_blocks[0].attn
-        requires_t_shape = hasattr(attn, "requires_t_shape") and attn.requires_t_shape
+        # attn = self.decoder_blocks[0].attn
+        # requires_t_shape = hasattr(attn, "requires_t_shape") and attn.requires_t_shape
+        requires_t_shape = False # We use RIN attention instead of Transformer
         if requires_t_shape:
             x = x.view([N, T, H * W, C])
 
         # apply Transformer blocks
-        for blk in self.decoder_blocks:
-            x = blk(x)
-        
-        x = self.decoder_norm(x)
+        if not self.use_rin and not self.use_fit:
+            i = 0
+            for blk in self.decoder_blocks:
+                x_init = x.clone().detach()
+                x = blk(x)
+                x_final = x.clone().detach()
 
+                dot_product = torch.dot(x_init.flatten(), x_final.flatten())
+                norm_product = torch.norm(x_init) * torch.norm(x_final)
+                cosine_similarity = dot_product / norm_product
+
+                assert type(blk) in [CheckpointBlock, video_vit.Block]
+                print("Cosine Similarity before and after vit decoder block: ", cosine_similarity.item())
+                self.print_memory_change("ViT decoder block", i)
+                i += 1
+                
+        elif self.use_rin or self.use_fit:
+            batch = x.shape[0]
+            
+            N = x.shape[1]
+            l = int(N // 3.5)
+            #l = 4 * int(N ** 0.5)
+
+            # prepare latents across batches and length
+            latents = rin.repeat(self.decoder_latent, '1 d -> b l d', b = batch, l = l)
+            
+            # Apply RIN Blocks
+            i = 0
+            for blk in self.decoder_blocks:
+                x, latents = blk(x, latents, print_similarities=True)
+                self.print_memory_change("RIN decoder block", i)
+                i += 1
+                
+        x = self.decoder_norm(x)
+        self.print_memory_change("Decoder norm", 0)
         # predictor projection
         x = self.decoder_pred(x) # Linear into correct patchified dimensions
-        
+        self.print_memory_change("Decoder pred", 0)
         if requires_t_shape:
             x = x.view([N, T * H * W, -1])
-
+        
         if self.cls_embed:
             # remove cls token
             x = x[:, 1:, :]
@@ -619,47 +807,23 @@ class MaskedAutoencoderViT(nn.Module):
 
         return x
 
-    def forward_loss(self, imgs, pred, mask):
+    def forward_loss(self, pred, mask):
         """
         imgs: [N, 3, T, H, W]
         pred: [N, t*h*w, u*p*p*3] pred: [N, t*h*w, u*1024] t*h*w ==196 for some reason not sure (u = 1)
         mask: [N*t, h*w], 0 is keep, 1 is remove,
         """
-        if imgs.shape[2] == 16:
-            # video
-            _imgs = torch.index_select(
-                imgs,
-                2,
-                torch.linspace(
-                    0,
-                    imgs.shape[2] - 1,
-                    self.pred_t_dim,
-                )
-                .long()
-                .to(imgs.device)
-            )
-        else:
-            # images
-            _imgs = imgs
-
-        N = _imgs.shape[0]
-        T = _imgs.shape[2]
-
-        with torch.no_grad():
-            _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
-            target = self.vae.get_codebook_indices(_imgs).flatten(1)
-            target = torch.reshape(target, [N, T * 196]).detach()
-
+        target = self.target.detach()
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
 
-
-    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False):
+    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, test_temporal=False, test_spatiotemporal=False, test_view=False, test_middle8=False):
         self.vae.eval()
-        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view)
+        self.set_vqgan_target(imgs) # TODO uncomment later once we know it's not the bottleneck
+        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, test_temporal, test_spatiotemporal, test_view, test_middle8)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
-        loss = self.forward_loss(imgs, pred, mask)
+        loss = self.forward_loss(pred, mask)
         return loss, pred, mask
 
 def mae_vit_base_patch16(**kwargs):

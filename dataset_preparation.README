@@ -1,6 +1,8 @@
-# Datasets 
+# Datasets
 
-In this repository, we provide details about each dataset we used along with instructions for acquiring them. All datasets are stored in the `/shared/katop1234/Datasets/` directory. Each video is in mp4 format.
+To automatically download the data, run `.get_data/get_all_data.sh`. All datasets will be downloaded to `data/`.
+
+In this repository, we provide details about each dataset we used along with instructions for acquiring them. Each video is in mp4 format.
 
 ## Objectron
 

@@ -52,13 +52,36 @@ def get_timestep_embedding(timesteps, embedding_dim):
 
 def nonlinearity(x):
     # swish
+    #print("Memory usage before nonlinearity: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB")
     return x * torch.sigmoid(x)
 
+# def nonlinearity(x):
+#     # swish
+#     print("Memory usage before nonlinearity: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB")
+#     B = x.shape[0]
+#     chunk_size = 32
+#     for i in range(0, B, chunk_size):
+#         x[i:i+32] = x[i:i+32] * torch.sigmoid(x[i:i+32])
+#     return x
 
-def Normalize(in_channels):
+# def Normalize(in_channels, chunk_size=32):
+#     norm_layer = torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True).cuda()
+    
+#     def func(input_tensor):
+#         B = input_tensor.shape[0]
+#         assert B % chunk_size == 0, f'Batch size {B} must be divisible by chunk size {chunk_size}'
+#         out = []
+#         for i in range(0, B, chunk_size):
+#             out.append(norm_layer(input_tensor[i:i+chunk_size]))
+        
+#         return torch.cat(out, dim=0).cuda()
+            
+#     return func
+
+def Normalize(in_channels, chunk_size=32):
     return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
-
+    
 class Upsample(nn.Module):
     def __init__(self, in_channels, with_conv):
         super().__init__()
@@ -168,12 +191,11 @@ class ResnetBlock(nn.Module):
                     x_chunk = self.nin_shortcut(x_chunk)
 
             out.append(x_chunk + h)
-            print("After ResnetBlock chunk, Memory allocated: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Cached: ", torch.cuda.memory_cached() / 1024 ** 3, "GB")
             del x_chunk, h
             torch.cuda.empty_cache()
-        
-        print("After ResnetBlock, Memory allocated: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Cached: ", torch.cuda.memory_cached() / 1024 ** 3, "GB")
-        return torch.cat(out, dim=0)
+            print("Memory usage after iteration ", i // chunk_size, ": ", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Memory cached: ", torch.cuda.memory_cached() / 1024 ** 3, "GB. Increase in memory usage (MB): ", (torch.cuda.memory_allocated() / 1024 ** 2) - memory_before)
+
+        return torch.cat(out, dim=0)   
     
 class AttnBlock(nn.Module):
     def __init__(self, in_channels):
