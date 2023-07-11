@@ -173,8 +173,6 @@ class ResnetBlock(nn.Module):
 
         return torch.cat(out, dim=0)
     
-
-
 class AttnBlock(nn.Module):
     def __init__(self, in_channels):
         super().__init__()

@@ -103,7 +103,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.blocks = nn.ModuleList(
             [
-                video_vit.Block(
+                video_vit.CheckpointBlock(
                     embed_dim,
                     num_heads,
                     mlp_ratio,
