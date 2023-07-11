@@ -726,8 +726,18 @@ class MaskedAutoencoderViT(nn.Module):
         pred: [N, t*h*w, u*p*p*3] pred: [N, t*h*w, u*1024] t*h*w ==196 for some reason not sure (u = 1)
         mask: [N*t, h*w], 0 is keep, 1 is remove,
         """
+        if self.is_video:
+            N = pred.shape[0]
+            pred = pred.view(N, -1, 196, 2, 1024)
+            pred = pred.permute(0, 1, 3, 2, 4)
+            pred = pred.flatten(1, 2)
+            pred = pred.flatten(1, 2)
+        elif self.is_image:
+            pass
         
         target = self.target.detach()
+        print("pred shape", pred.shape, "target shape", target.shape)
+
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         self.forward_counts += 1 # for debugging
@@ -737,8 +747,11 @@ class MaskedAutoencoderViT(nn.Module):
         self.vae.eval()
         self.set_vqgan_target(imgs)
         if imgs.shape[2] == 1: #images
+            self.is_image, self.is_video = True, False
             repeat = self.patch_embed.t_patch_size
             imgs = imgs.repeat(1, 1, repeat, 1, 1)
+        else:
+            self.is_image, self.is_video = False, True
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, video_test_type)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
