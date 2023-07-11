@@ -461,24 +461,25 @@ class MaskedAutoencoderViT(nn.Module):
     @torch.no_grad()
     def set_vqgan_target(self, imgs):
         # Deep copy the input tensor to avoid modifying the original
-        imgs_copy = imgs.clone()
-
+        imgs = imgs.clone()
+        
         # Get VQGAN tokens before any expensive computation is done
-        if imgs_copy.shape[2] == 16:
+        if imgs.shape[2] == 16:
             # video
             _imgs = torch.index_select(
-                imgs_copy,
+                imgs,
                 2,
                 torch.linspace(
                     0,
-                    imgs_copy.shape[2] - 1,
+                    imgs.shape[2] - 1,
                     self.pred_t_dim,
                 )
                 .long()
-                .to(imgs_copy.device)
+                .to(imgs.device)
             )
         else:
-            _imgs = imgs_copy
+            # images
+            _imgs = imgs
 
         N = _imgs.shape[0]
         T = _imgs.shape[2]
@@ -725,7 +726,6 @@ class MaskedAutoencoderViT(nn.Module):
         pred: [N, t*h*w, u*p*p*3] pred: [N, t*h*w, u*1024] t*h*w ==196 for some reason not sure (u = 1)
         mask: [N*t, h*w], 0 is keep, 1 is remove,
         """
-        target = self.target.detach()
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         self.forward_counts += 1 # for debugging
