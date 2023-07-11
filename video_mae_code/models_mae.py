@@ -182,6 +182,9 @@ class MaskedAutoencoderViT(nn.Module):
                     if parameter in n:
                         requires = True
                 p.requires_grad_(requires)
+                
+        self.st_adapter_encoder = st_adapter_encoder
+        self.st_adapter_decoder = st_adapter_decoder
         # --------------------------------------------------------------------------
 
 
@@ -486,11 +489,11 @@ class MaskedAutoencoderViT(nn.Module):
         x = x.view([N, -1, C]) + pos_embed
 
         # apply Transformer blocks
-        if self.st_adapter:
+        if self.st_adapter_encoder:
             self.train()
         for blk in self.blocks:
             x = blk(x, T=T)
-        if self.st_adapter:
+        if self.st_adapter_encoder:
             self.eval()
         x = self.norm(x)
 
@@ -579,11 +582,11 @@ class MaskedAutoencoderViT(nn.Module):
             x = x.view([N, T, H * W, C])
 
         # apply Transformer blocks
-        if self.st_adapter:
+        if self.st_adapter_decoder:
             self.train()
         for blk in self.decoder_blocks:
             x = blk(x, T=T)
-        if self.st_adapter:
+        if self.st_adapter_decoder:
             self.eval()
         
         x = self.decoder_norm(x)
@@ -645,7 +648,7 @@ class MaskedAutoencoderViT(nn.Module):
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, video_test_type=""):
         self.vae.eval()
-        if self.st_adapter:
+        if self.st_adapter_encoder or self.st_adapter_decoder:
             self.eval()
         
         if imgs.shape[2] == 1: #images

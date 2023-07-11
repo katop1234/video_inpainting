@@ -232,6 +232,8 @@ def decode(
         # Print duration of the video in seconds
         video_stream = container.streams.video[0]
         video_duration_sec = video_stream.duration * float(video_stream.time_base)
+        if video_duration_sec > 250:
+            raise ValueError("Video is too long")
 
         decode_all_video = True
         video_start_pts, video_end_pts = 0, -1
