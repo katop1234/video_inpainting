@@ -103,7 +103,7 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.blocks = nn.ModuleList(
             [
-                video_vit.CheckpointBlock(
+                video_vit.Block(
                     embed_dim,
                     num_heads,
                     mlp_ratio,
@@ -648,7 +648,7 @@ class MaskedAutoencoderViT(nn.Module):
         with torch.no_grad():
             _imgs = _imgs.permute(0, 2, 1, 3, 4).flatten(0, 1)
             target = self.vae.get_codebook_indices(_imgs).flatten(1)
-            target = torch.reshape(target, [N, T * 196])
+            target = torch.reshape(target, [N, T * 196]).detach()
 
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches

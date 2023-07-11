@@ -140,12 +140,12 @@ class ResnetBlock(nn.Module):
 
     def forward(self, x, temb=None):
         B, C, H, W = x.shape
-        chunk_size = 32
-        assert B % chunk_size == 0, f'Batch size {B} must be divisible by chunk size {chunk_size}'
+        chunk_size = 64
         
         out = []
         for i in range(0, B, chunk_size):
-            x_chunk = x[i:i+chunk_size]
+            x_chunk = x[i:min(i+chunk_size, B)]
+            print("using B", B, "and chunk size", chunk_size, "and i", i, "and x_chunk", x_chunk.shape)
             h = x_chunk
             
             h = self.norm1(h)
@@ -168,9 +168,11 @@ class ResnetBlock(nn.Module):
                     x_chunk = self.nin_shortcut(x_chunk)
 
             out.append(x_chunk + h)
+            print("After ResnetBlock chunk, Memory allocated: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Cached: ", torch.cuda.memory_cached() / 1024 ** 3, "GB")
             del x_chunk, h
             torch.cuda.empty_cache()
-
+        
+        print("After ResnetBlock, Memory allocated: ", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Cached: ", torch.cuda.memory_cached() / 1024 ** 3, "GB")
         return torch.cat(out, dim=0)
     
 class AttnBlock(nn.Module):

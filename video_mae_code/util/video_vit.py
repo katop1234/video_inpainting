@@ -178,4 +178,5 @@ class CheckpointBlock(Block):
         x = x + self.drop_path(checkpoint(self.attn, norm1_x))
         norm2_x = self.norm2(x)
         x = x + self.drop_path(checkpoint(self.mlp, norm2_x))
+        print("After decoder block - Memory allocated", torch.cuda.memory_allocated() / 1024 ** 3, "GB", "Memory cached", torch.cuda.memory_cached() / 1024 ** 3, "GB")
         return x

@@ -399,6 +399,7 @@ def main(args):
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
     start_time = time.time()
+    model._set_static_graph()
 
     combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
     log_stats = {}
