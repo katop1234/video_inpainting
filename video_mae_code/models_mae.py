@@ -736,11 +736,14 @@ class MaskedAutoencoderViT(nn.Module):
             pass
         
         target = self.target.detach()
-        print("pred shape", pred.shape, "target shape", target.shape)
-
-        loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
-        loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
-        self.forward_counts += 1 # for debugging
+        print("pred shape", pred.shape, "target shape", target.shape, "mask shape", mask.shape)
+        try:
+            loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
+            loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
+            self.forward_counts += 1 # for debugging
+        except:
+            print("pred shape", pred.shape, "target shape", target.shape, "mask shape", mask.shape)
+            exit()
         return loss
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, video_test_type=""):
