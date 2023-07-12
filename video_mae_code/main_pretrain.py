@@ -390,9 +390,10 @@ def main(args):
         loss_scaler=loss_scaler,
     )
     
-    print("Total number of parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
-    model_memory = sum(p.numel() for p in model.parameters()) * 4 / (1024 ** 2)  # assuming parameters are float32, so 4 bytes each
-    print("Model memory (MB): ", model_memory)
+    if misc.is_main_process():
+        print("Total number of parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
+        model_memory = sum(p.numel() for p in model.parameters()) * 4 / (1024 ** 2)  # assuming parameters are float32, so 4 bytes each
+        print("Model memory (MB): ", model_memory)
 
     if misc.is_main_process():
         wandb_config = vars(args)
