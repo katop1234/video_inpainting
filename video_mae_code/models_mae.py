@@ -742,12 +742,14 @@ class MaskedAutoencoderViT(nn.Module):
 
         return loss
 
-    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, video_test_type=""):
+    def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, video_test_type="", imagenet_probing=False):
         self.vae.eval()
         if imgs.shape[2] == 1: #images
             repeat = self.patch_embed.t_patch_size
             imgs = imgs.repeat(1, 1, repeat, 1, 1)
         self.set_vqgan_target(imgs)
+        if imagenet_probing:
+            return self.forward_imagenet_probing(imgs, mask_ratio_image, mask_ratio_video)
         latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, video_test_type)
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
         mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
