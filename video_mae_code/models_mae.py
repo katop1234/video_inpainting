@@ -19,6 +19,7 @@ import random
 from util.logging import master_print as print
 from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
+from dataset_factory import ImageNetDataset
 
 from util.video_vit import RINBlockVIP, FITBlockVIP, CheckpointBlock
 from util import rin
@@ -160,8 +161,6 @@ class MaskedAutoencoderViT(nn.Module):
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
         self.norm_pix_loss = norm_pix_loss
         
-        self.imagenet_probe = nn.Linear(embed_dim, 1000, bias=True)
-        
         if not self.use_rin and not self.use_fit:
             self.decoder_blocks = nn.ModuleList(
                 [
@@ -206,6 +205,11 @@ class MaskedAutoencoderViT(nn.Module):
         # --------------------------------------------------------------------------
         
         self.target = None # We update this at runtime to store the vqgan target
+        
+        # Initialize imagenet probing
+        self.imagenet_probe = nn.Linear(embed_dim, 1000, bias=True) # don't want a new one each time
+        self.probe_optimizer = torch.optim.Adam(self.imagenet_probe.parameters(), lr=1e-4)
+        self.train_dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/train/')
         
         # For debugging
         self.current_mem_cached = 0
@@ -288,7 +292,7 @@ class MaskedAutoencoderViT(nn.Module):
         x = torch.einsum("nthwupqc->nctuhpwq", x)
         imgs = x.reshape(shape=(N, 3, T, H, W))
         return imgs
-
+        
     def random_masking(self, x, mask_ratio_image=0.75, mask_ratio_video=0.9):
         """
         Perform per-sample random masking by per-sample shuffling.
@@ -590,7 +594,6 @@ class MaskedAutoencoderViT(nn.Module):
             i += 1
 
         x = self.norm(x)
-        self.print_memory_change("ViT Encoder norm", 1)
         
         if self.cls_embed:
             # remove cls token
@@ -707,10 +710,8 @@ class MaskedAutoencoderViT(nn.Module):
                 i += 1
                 
         x = self.decoder_norm(x)
-        self.print_memory_change("Decoder norm", 0)
         # predictor projection
         x = self.decoder_pred(x) # Linear into correct patchified dimensions
-        self.print_memory_change("Decoder pred", 0)
         if requires_t_shape:
             x = x.view([N, T * H * W, -1])
         

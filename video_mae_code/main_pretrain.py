@@ -16,7 +16,7 @@ import datetime
 import wandb
 import os
 import time
-from dataset_factory import MergedDataset, CombinedGen, get_imagenet_val_dataloader, ImageNetDataset
+from dataset_factory import MergedDataset, CombinedGen, ImageNetDataset
 from util.eval import visualize_prompting
 import util.env  # do not uncomment
 import util.misc as misc
@@ -405,9 +405,6 @@ def main(args):
     
     if args.detect_anomaly: # useful for debugging
         torch.autograd.set_detect_anomaly(True)
-    
-    probe_optimizer = torch.optim.Adam(model.module.imagenet_probe.parameters(), lr=1e-4)
-    train_dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/train/')
 
     checkpoint_path = ""
     if misc.is_main_process():
@@ -434,12 +431,9 @@ def main(args):
                 device,
                 epoch,
                 loss_scaler,
-                imagenet_train_dataset=train_dataset,
-                probe_optimizer=probe_optimizer,
                 log_writer=log_writer,
                 args=args,
                 fp32=args.fp32,
-                imagenet_val_dataloader=get_imagenet_val_dataloader()
             )
 
             if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):

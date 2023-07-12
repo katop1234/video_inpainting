@@ -15,7 +15,7 @@ import util.lr_sched as lr_sched
 import util.misc as misc
 import torch
 import numpy as np
-from dataset_factory import ImageNetDataset, get_imagenet_val_dataloader
+from dataset_factory import get_imagenet_val_dataloader
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 import wandb
 
@@ -26,12 +26,9 @@ def train_one_epoch(
     device: torch.device,
     epoch: int,
     loss_scaler,
-    imagenet_train_dataset: Dataset = None,
-    probe_optimizer: torch.optim.Optimizer = None,
     log_writer=None,
     args=None,
     fp32=False,
-    imagenet_val_dataloader: DataLoader = None,
 ):
     model.train(True)
     metric_logger = misc.MetricLogger(delimiter="  ")
@@ -127,12 +124,14 @@ def train_one_epoch(
             print("Epoch: {}, Iter: {}, Loss: {}".format(epoch, data_iter_step, loss_value_reduce))
 
     # Imagenet Probing
-    if epoch % 5 == 0:
+    imagenet_probing_freq = 1
+    num_epochs = 5
+    num_samples = 512
+    if epoch % imagenet_probing_freq == 0:
         ### Imagenet probing training
         probe = model.module.imagenet_probe
-        
-        num_samples = 512  # The number of samples you want to load per epoch
-        num_epochs = 5
+        probe_optimizer = model.module.probe_optimizer
+        imagenet_train_dataset = model.module.train_dataset
         
         for param in model.module.parameters():
             param.requires_grad = False
@@ -146,7 +145,7 @@ def train_one_epoch(
             sampler = SubsetRandomSampler(indices[:num_samples])
             data_loader = DataLoader(imagenet_train_dataset, batch_size=64, sampler=sampler, num_workers=14)
 
-            print("Linear probing Epoch: {}".format(epoch))
+            print("Linear probing Epoch: {}".format(epoch)) if misc.is_main_process() else None
             for samples, labels in data_loader:
                 samples = samples.permute(0, 2, 1, 3, 4).to(device)  # Now samples shape is (B, C, T, H, W)
                 labels = labels.to(device)
@@ -162,8 +161,7 @@ def train_one_epoch(
                 probe_optimizer.step()
 
         ### Imagenet evaluation
-        if imagenet_val_dataloader is None:
-            imagenet_val_dataloader = get_imagenet_val_dataloader()
+        imagenet_val_dataloader = get_imagenet_val_dataloader()
             
         correct = 0
         total = 0
@@ -183,7 +181,7 @@ def train_one_epoch(
                 correct += (predicted == labels).sum().item()  # Increment the correct count
 
         accuracy = 100 * correct / total
-        print(f'Accuracy on the validation images: {accuracy}%')
+        print(f'Accuracy on the validation images: {accuracy}%') if misc.is_main_process() else None
         
         for param in model.module.parameters():
             param.requires_grad = True
@@ -197,5 +195,5 @@ def train_one_epoch(
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     train_stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()} 
-    train_stats["imagenet_val_accuracy"] = accuracy if epoch % 5 == 0 else None
+    train_stats["imagenet_val_accuracy"] = accuracy if epoch % imagenet_probing_freq == 0 else None
     return train_stats
