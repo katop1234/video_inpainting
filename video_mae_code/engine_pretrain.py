@@ -13,6 +13,7 @@
 from typing import Iterable
 import util.lr_sched as lr_sched
 import util.misc as misc
+import util.video_vit as video_vit
 import torch
 import numpy as np
 from dataset_factory import get_imagenet_val_dataloader
@@ -129,8 +130,10 @@ def train_one_epoch(
     num_samples = 512
     if epoch % imagenet_probing_freq == 0:
         ### Imagenet probing training
-        probe = model.module.imagenet_probe
-        probe_optimizer = model.module.probe_optimizer
+        probe = torch.nn.Linear(512, 1000)  # initialize the linear layer
+        torch.nn.init.trunc_normal_(probe.weight, std=0.01)  # initialize weights using a truncated normal distribution
+        probe = torch.nn.Sequential(torch.nn.BatchNorm1d(512, affine=False, eps=1e-6), probe)  # wrap the linear layer with BatchNorm1d
+        probe_optimizer = probe_optimizer = video_vit.LARS(probe.parameters(), lr=1.5e-4, weight_decay=0.05)
         imagenet_train_dataset = model.module.train_dataset
         
         for param in model.module.parameters():

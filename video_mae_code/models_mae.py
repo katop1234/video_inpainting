@@ -207,8 +207,6 @@ class MaskedAutoencoderViT(nn.Module):
         self.target = None # We update this at runtime to store the vqgan target
         
         # Initialize imagenet probing
-        self.imagenet_probe = nn.Linear(embed_dim, 1000, bias=True) # don't want a new one each time
-        self.probe_optimizer = torch.optim.Adam(self.imagenet_probe.parameters(), lr=1e-4)
         self.train_dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/train/')
         
         # For debugging
