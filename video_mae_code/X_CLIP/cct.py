@@ -3,14 +3,11 @@ from timm.models.layers import trunc_normal_
 import torch
 from torch import nn
 from torch.utils.checkpoint import checkpoint_sequential
-# import sys
-# sys.path.append("../")
-# from clip.model import LayerNorm, QuickGELU, DropPath
 from X_CLIP.model import LayerNorm, QuickGELU, DropPath
 
 
 class CrossFramelAttentionBlock(nn.Module):
-    def __init__(self, d_model: int, n_head: int, attn_mask: torch.Tensor = None, droppath = 0., T=0, ):
+    def __init__(self, d_model: int, n_head: int, droppath = 0., T=0, ): #, attn_mask: torch.Tensor = None
         super().__init__()
         self.T = T
 
@@ -28,14 +25,18 @@ class CrossFramelAttentionBlock(nn.Module):
             ("c_proj", nn.Linear(d_model * 4, d_model))
         ]))
         self.ln_2 = LayerNorm(d_model)
-        self.attn_mask = attn_mask
+        # self.attn_mask = attn_mask
 
-    def attention(self, x: torch.Tensor):
-        self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
-        return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
+    def attention(self, x: torch.Tensor, attn_mask: torch.Tensor):
+        # self.attn_mask = self.attn_mask.to(dtype=x.dtype, device=x.device) if self.attn_mask is not None else None
+        print("in attention forward")
+        print('x.shape: ', x.shape)
+        return self.attn(x, x, x, need_weights=False, attn_mask=attn_mask)[0]
 
 
-    def forward(self, x):
+    def forward(self, x, attn_mask):
+        print("in crossframe forward")
+        print('x.size(): ', x.size())
         l, bt, d = x.size()
         b = bt // self.T
         x = x.view(l, b, self.T, d) 
@@ -50,14 +51,16 @@ class CrossFramelAttentionBlock(nn.Module):
         x = torch.cat([x, msg_token], dim=0)
         
         x = x.view(l+1, -1, d)
-        x = x + self.drop_path(self.attention(self.ln_1(x)))
+        x_store = self.ln_1(x)
+        print('x_store.shape: ', x_store.shape)
+        x = x + self.drop_path(self.attention(self.ln_1(x), attn_mask=attn_mask))
         x = x[:l,:,:]
         x = x + self.drop_path(self.mlp(self.ln_2(x)))
         return x
 
 
 class Transformer(nn.Module):
-    def __init__(self, width: int, layers: int, heads: int, attn_mask: torch.Tensor = None, droppath=None, use_checkpoint=False, T=8):
+    def __init__(self, width: int, layers: int, heads: int, droppath=None, use_checkpoint=False, T=8): #attn_mask: torch.Tensor = None,
         super().__init__()
         self.use_checkpoint = use_checkpoint
         if droppath is None:
@@ -65,13 +68,16 @@ class Transformer(nn.Module):
         self.width = width
         self.layers = layers
         
-        self.resblocks = nn.Sequential(*[CrossFramelAttentionBlock(width, heads, attn_mask, droppath[i], T) for i in range(layers)])
+        self.resblocks = nn.Sequential(*[CrossFramelAttentionBlock(width, heads, droppath[i], T) for i in range(layers)]) #attn_mask,
        
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, attn_mask: torch.Tensor):
         if not self.use_checkpoint:
-            return self.resblocks(x)
+            print("in transformer forward")
+            # return self.resblocks(x=x, attn_mask=attn_mask)
+            for block in self.resblocks:
+                    x = block(x, attn_mask=attn_mask)
         else:
-            return checkpoint_sequential(self.resblocks, 3, x)
+            return checkpoint_sequential(self.resblocks, 3, x, attn_mask)
 
 
 class CrossFrameCommunicationTransformer(nn.Module):
@@ -81,17 +87,17 @@ class CrossFrameCommunicationTransformer(nn.Module):
         self.input_resolution = input_resolution
         self.output_dim = output_dim
 
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=width, kernel_size=patch_size, stride=patch_size, bias=False)
+        # self.conv1 = nn.Conv2d(in_channels=3, out_channels=width, kernel_size=patch_size, stride=patch_size, bias=False)
 
-        scale = width ** -0.5
-        self.class_embedding = nn.Parameter(scale * torch.randn(width))
-        self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
+        # scale = width ** -0.5
+        # self.class_embedding = nn.Parameter(scale * torch.randn(width))
+        # self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
         self.ln_pre = LayerNorm(width)
 
         ## Attention Blocks
         self.transformer = Transformer(width, layers, heads, droppath=droppath, use_checkpoint=use_checkpoint, T=T,)
-        self.ln_post = LayerNorm(width)
-        self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
+        # self.ln_post = LayerNorm(width)
+        # self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
 
 
     def init_weights(self):
@@ -106,7 +112,7 @@ class CrossFrameCommunicationTransformer(nn.Module):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x: torch.Tensor, attn_mask=None):
         print("x.shape in cct forward: ", x.shape)
         
         
@@ -119,12 +125,12 @@ class CrossFrameCommunicationTransformer(nn.Module):
         x = self.ln_pre(x)
 
         x = x.permute(1, 0, 2)
-        x = self.transformer(x)
+        x = self.transformer(x, attn_mask=attn_mask)
         x = x.permute(1, 0, 2)
 
         cls_x = self.ln_post(x[:, 0, :])
 
-        if self.proj is not None:
-            cls_x = cls_x @ self.proj
+        # if self.proj is not None:
+        #     cls_x = cls_x @ self.proj
         
         return cls_x, x[:,1:,:]
