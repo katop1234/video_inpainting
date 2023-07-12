@@ -43,6 +43,17 @@ def get_random_file(data_dir):
     return os.path.join(data_dir, random_file)
 
 def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
+    resized_frames = video_to_array(video_path, target_size, num_frames)
+    video_tensor = torch.tensor(resized_frames, dtype=torch.float32)
+
+    # Rearrange the tensor dimensions to (batch, channel, time, height, width)
+    video_tensor = video_tensor.permute(3, 0, 1, 2).unsqueeze(0)
+
+    # assert video_tensor.shape == (1, 3, 16, 224, 224) #UNCOMMENT
+
+    return video_tensor
+
+def video_to_array(video_path, target_size=(224, 224), num_frames=16):
     '''
     Converts a given video mp4 file to a PyTorch tensor
     NOT normalized
@@ -94,14 +105,8 @@ def video_to_tensor(video_path, target_size=(224, 224), num_frames=16):
 
     # Convert the list of frames to a PyTorch tensor
     resized_frames = np.array(resized_frames)
-    video_tensor = torch.tensor(resized_frames, dtype=torch.float32)
 
-    # Rearrange the tensor dimensions to (batch, channel, time, height, width)
-    video_tensor = video_tensor.permute(3, 0, 1, 2).unsqueeze(0)
-
-    assert video_tensor.shape == (1, 3, 16, 224, 224)
-
-    return video_tensor
+    return resized_frames
 
 def check_folder_equality(str1, str2):
     n = len(str2)
@@ -173,6 +178,11 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     N = orig_image.shape[0]
     T = orig_image.shape[2]
 
+    if T == 1: #Image
+        repeat = model.patch_embed.t_patch_size
+        orig_image = orig_image.repeat(1, 1, repeat, 1, 1)
+        T = repeat
+    
     y = torch.reshape(y, [N * T, 196])
 
     if type(model) is torch.nn.parallel.DistributedDataParallel:
@@ -208,18 +218,24 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
     return im_paste, mask, orig_image
 
 @torch.no_grad()
-def visualize_prompting(model, epoch, test_cases_folder):
-    visualize_image_prompting(model, epoch, os.path.join(test_cases_folder, "test_images/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "random_masked_videos/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "temporally_masked_videos/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"))
-    visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "mask_middle_8_frames_videos/"))
-    # visualize_video_prompting(model, epoch, os.path.join(test_cases_folder, "view_videos/")) # TODO
+def visualize_prompting(model, test_cases_folder):
+    visualize_image_prompting(model, os.path.join(test_cases_folder, "test_images/"))
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "random")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "temporally_masked_videos/"), "temporal")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"), "spatiotemporal")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"), "spatiotemporal")
+    
+    objectron_videos_path = '/shared/dannyt123/video_inpainting/test_videos/Objectron'
+    visualize_video_prompting(model, objectron_videos_path, "frame prediction")
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "davis_2x2_prompt_visualization/"), "2x2 tube")
+    visualize_video_prompting(model, objectron_videos_path, "frame interpolation")
+    visualize_video_prompting(model, objectron_videos_path, "central inpainting")
+    visualize_video_prompting(model, objectron_videos_path, "dynamic inpainting")
+    
+    # visualize_video_prompting(model, os.path.join(test_cases_folder, "view_videos/"), "view") # TODO
 
 @torch.no_grad()
-
-def visualize_image_prompting(model, epoch, input_image_viz_dir):
+def visualize_image_prompting(model, input_image_viz_dir):
     ### Test on images
 
     '''
@@ -237,10 +253,20 @@ def visualize_image_prompting(model, epoch, input_image_viz_dir):
         _, test_model_output, mask = model(test_model_input, test_image=True)
 
         num_patches = 14
+        N = test_model_input.shape[0]
+
+        test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
+        test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
+        test_model_output = test_model_output.flatten(1, 2)
+        test_model_output = test_model_output.flatten(1, 2)
+    
         y = test_model_output.argmax(dim=-1)
         im_paste, _, _ = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
         im_paste = im_paste.squeeze()
         im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+        if im_paste.shape[0] > 1:
+            im_paste = im_paste[0]
+            # im_paste = im_paste[1]
 
         img_file = os.path.basename(os.path.normpath(img_file))
         img_file = os.path.basename(os.path.normpath(img_file))
@@ -250,7 +276,7 @@ def visualize_image_prompting(model, epoch, input_image_viz_dir):
         wandb.log({output_img_name: image})
 
 @torch.no_grad()
-def visualize_video_prompting(model, epoch, input_video_viz_dir):
+def visualize_video_prompting(model, input_video_viz_dir, test_type=""):
 
     if type(model) is torch.nn.parallel.DistributedDataParallel:
         model = model.module
@@ -260,38 +286,35 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
 
     print("prompting video with", input_video_viz_dir)
 
-    input_folder_name = basename(input_video_viz_dir.rstrip('/'))
-    
-    print("input_folder_name", input_folder_name)
-
-    if "random_masked_videos" == input_folder_name:
+    if test_type == "random":
         _, test_model_output, mask = model(test_model_input)
-    elif "temporally_masked_videos" == input_folder_name:
-        _, test_model_output, mask = model(test_model_input, test_temporal=True)
-    elif "spatiotemporally_masked_1_video" == input_folder_name:
-        _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
-    elif "spatiotemporally_masked_2_videos" == input_folder_name:
-        _, test_model_output, mask = model(test_model_input, test_spatiotemporal=True)
-    elif "view_videos" == input_folder_name:
-        _, test_model_output, mask = model(test_model_input, test_view=True)
-    elif "mask_middle_8_frames_videos" == input_folder_name:
-        _, test_model_output, mask = model(test_model_input, test_middle8=True)
+    elif test_type:
+        _, test_model_output, mask = model(test_model_input, video_test_type=test_type)
     else:
         raise ValueError("Invalid input_video_viz_dir")
     
-    num_patches = 14
-    y = test_model_output.argmax(dim=-1)
-    im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+    # num_patches = 14
+    # N = test_model_input.shape[0]
 
-    im_paste = im_paste.permute((0, 1, 4, 2, 3))
-    orig_video = orig_video.permute((0, 1, 4, 2, 3))
-    im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
-    orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
+    # test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
+    # test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
+    # test_model_output = test_model_output.flatten(1, 2)
+    # test_model_output = test_model_output.flatten(1, 2)
+    
+    # y = test_model_output.argmax(dim=-1)
+    # im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+
+    # im_paste = im_paste.permute((0, 1, 4, 2, 3))
+    # orig_video = orig_video.permute((0, 1, 4, 2, 3))
+    # im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+    # orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
+    
+    im_paste, orig_video = video_generation(model, mask, test_model_input, test_model_output)
 
     folder_name = os.path.basename(os.path.normpath(input_video_viz_dir))
-    video_title = "{type}_{folder_name}"
-    input_video_title = video_title.format(type="input", folder_name=folder_name)
-    output_video_title = video_title.format(type="output", folder_name=folder_name)
+    video_title = "{type}_{test_type}_{folder_name}"
+    input_video_title = video_title.format(type="input", test_type=test_type, folder_name=folder_name)
+    output_video_title = video_title.format(type="output", test_type=test_type, folder_name=folder_name)
     
     wandb_video_object = wandb.Video(
         data_or_path=orig_video,
@@ -307,3 +330,21 @@ def visualize_video_prompting(model, epoch, input_video_viz_dir):
     )
     wandb.log({output_video_title: wandb_video_object})
     
+def video_generation(model, mask, test_model_input, test_model_output):
+    num_patches = 14
+    N = test_model_input.shape[0]
+
+    test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
+    test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
+    test_model_output = test_model_output.flatten(1, 2)
+    test_model_output = test_model_output.flatten(1, 2)
+
+    y = test_model_output.argmax(dim=-1)
+    im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
+
+    im_paste = im_paste.permute((0, 1, 4, 2, 3))
+    orig_video = orig_video.permute((0, 1, 4, 2, 3))
+    im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+    orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
+
+    return im_paste, orig_video

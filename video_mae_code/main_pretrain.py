@@ -170,7 +170,7 @@ def get_args_parser():
     parser.add_argument("--decoder_embed_dim", default=512, type=int)
     parser.add_argument("--decoder_depth", default=4, type=int)
     parser.add_argument("--decoder_num_heads", default=16, type=int)
-    parser.add_argument("--t_patch_size", default=1, type=int)
+    parser.add_argument("--t_patch_size", default=2, type=int)
     parser.add_argument("--num_frames", default=16, type=int)
     parser.add_argument("--checkpoint_period", default=5, type=int)
     parser.add_argument("--sampling_rate", default=4, type=int)
@@ -225,16 +225,13 @@ def get_args_parser():
     parser.add_argument('--use_naive_rin', action='store_true', help='activate naive RIN')
 
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
-    parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
-    parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
-    parser.add_argument('--video_dataset_list', nargs='+', default=["CrossTask", "kinetics", "Objectron", "SSV2", "UCF101"])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[8, 1, 1, 1, 1])
+    parser.add_argument('--image_dataset_list', nargs='+', default=['cvf', 'imagenet'])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[1, 1]) 
+    parser.add_argument('--video_dataset_list', nargs='+', default=["CrossTask", "kinetics", "Objectron", "SSV2", "UCF101", "CSV"])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[1, 10, 1, 1, 1, 1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
     parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
-    parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
-                                                   'ImageSets, Annotations_unsupervised folders',
-                    default='/shared/dannyt123/Datasets/DAVIS_video_1')
     parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
     
@@ -264,6 +261,8 @@ def main(args):
         dataset_image_train = None
     
     if args.video_itr > 0:
+        print("creating video merged dataset")
+        print("args.video_dataset_list: ", args.video_dataset_list)
         dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video')
     else:
         dataset_video_train = None
@@ -361,7 +360,7 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            find_unused_parameters=True,
+            static_graph=True
         )
         model_without_ddp = model.module
 
@@ -392,6 +391,8 @@ def main(args):
     )
     
     print("Total number of parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    model_memory = sum(p.numel() for p in model.parameters()) * 4 / (1024 ** 2)  # assuming parameters are float32, so 4 bytes each
+    print("Model memory (MB): ", model_memory)
 
     if misc.is_main_process():
         wandb_config = vars(args)
@@ -402,7 +403,7 @@ def main(args):
             project="video_inpainting2",
             config=wandb_config)
     
-    if args.detect_anomaly:
+    if args.detect_anomaly: # useful for debugging
         torch.autograd.set_detect_anomaly(True)
     
     probe_optimizer = torch.optim.Adam(model.module.imagenet_probe.parameters(), lr=1e-4)
@@ -469,27 +470,28 @@ def main(args):
                 store_path = os.path.join(args.output_dir, "davis_segs")
                 if not os.path.exists(store_path):
                     os.mkdir(store_path)
-                eval_name = "model_mae"
+            
                 parent = Path(__file__).parent.absolute()
                 prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
-                davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                davis_path = args.davis_path
-                generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
-                print("Finished Saving Davis Eval Segmentations")
                 
-                single_mean = run_evaluation_method(store_path, eval_name, davis_path)
-                log_stats["Davis_single_mean"] = single_mean
-                    
+                davis_prompt_path = os.path.join(args.video_prompts_dir, "davis_prompt")
+                davis_2x2_prompt_path = os.path.join(args.video_prompts_dir, "davis_2x2_prompt")
+                davis_image_prompt_path = '/shared/dannyt123/video_inpainting/test_images/davis_image_prompts'
+                
+                generate_segmentations(model, store_path, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path)
+                print("Finished Saving Davis Eval Segmentations")                
+                
+                single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
+                log_stats["Davis_single_mean_orig"] = single_mean_orig
+                log_stats["Davis_single_mean_2x2"] = single_mean_2x2
+                log_stats["Davis_single_mean_image"] = single_mean_image
                 model.train()
 
         if misc.is_main_process():
             if not args.test_mode:
                 wandb.log(log_stats)
             model.eval()
-            try:
-                visualize_prompting(model, epoch, args.video_prompts_dir)
-            except Exception as e:
-                print("Error in visualization:", e)
+            visualize_prompting(model, args.video_prompts_dir)
             model.train()
         print("Done loop on epoch {}".format(epoch))
 

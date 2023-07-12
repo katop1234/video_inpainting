@@ -25,9 +25,7 @@ from iopath.common.file_io import g_pathmgr as pathmgr
 from util.logging import master_print as print
 from torch import inf
 
-
 logger = logging.get_logger(__name__)
-
 
 class SmoothedValue(object):
     """Track a series of values and provide access to smoothed values over a
@@ -190,7 +188,6 @@ class MetricLogger(object):
             )
         )
 
-
 def setup_for_distributed(is_master):
     """
     This function disables printing when not in master process
@@ -312,7 +309,6 @@ class NativeScalerWithGradNormCount:
             top_gradients = []
             for idx, (param, grad) in enumerate(sorted_params_with_grads[:10]):
                 top_gradients.append(grad.abs().max().item())
-            print("Before running backprop, largest gradients are:", top_gradients)
             
             if clip_grad is not None:
                 assert parameters is not None

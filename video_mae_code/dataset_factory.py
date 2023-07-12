@@ -78,7 +78,7 @@ def get_dataset(name, root_path, ds_type):
             dataset_train = datasets.ImageFolder(os.path.join(root_path, 'arxiv_resized_train_val_split/train/'),
                                                  transform=transforms_train)
         elif name == 'imagenet':
-            dataset_train = datasets.ImageFolder(os.path.join(root_path, 'ilsvrc/train'), 
+            dataset_train = datasets.ImageFolder('/shared/group/ilsvrc/train', 
                                                  transform=transforms_train)
         else:
             raise ValueError("Wrong dataset name.")
@@ -105,6 +105,8 @@ def get_dataset(name, root_path, ds_type):
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos/") 
         elif name == "UCF101":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/UCF101/") 
+        elif name == "CSV":
+            dataset_train = VideoDataset(path_to_data_dir="/shared/dannyt123/Datasets/CSV")
         else:
             raise NotImplementedError()
     else:
@@ -172,7 +174,6 @@ class CombinedGen:
             self.num_iter_per_epoch = 96*(accum_iter_img*image_itr)
         else:
             self.num_iter_per_epoch = 24*(accum_iter_img*image_itr + accum_iter_vid*video_itr)
-
 
     def __iter__(self):
         return combined_gen(self.image_gen, self.video_gen, self.accum_iter_img, self.accum_iter_vid, self.image_itr, self.video_itr, len(self))

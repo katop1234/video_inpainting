@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from timm.models.layers import to_2tuple
 from timm.models.vision_transformer import DropPath, Mlp
+from torch.utils.checkpoint import checkpoint
 
 logger = logging.get_logger(__name__)
 
@@ -66,7 +67,7 @@ class PatchEmbed(nn.Module):
             H == self.img_size[0] and W == self.img_size[1]
         ), f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
 
-        assert T == self.frames or T == 1
+        assert T == self.frames or T == 2 or T == 1 #1
         x = self.proj(x)
         x = x.flatten(3)
         x = torch.einsum("ncts->ntsc", x)  # [N, T, H*W, C]
@@ -117,7 +118,6 @@ class Attention(nn.Module):
         )
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
-
         attn = attn.softmax(dim=-1)
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
@@ -159,6 +159,7 @@ class Block(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
+        # TODO see if this MLP can be replaced with default pytroch implementation, maybe thats why RIN and ViT are the same.
         self.mlp = Mlp(
             in_features=dim,
             hidden_features=mlp_hidden_dim,
@@ -171,6 +172,14 @@ class Block(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
     
+class CheckpointBlock(Block):
+    def forward(self, x):
+        norm1_x = self.norm1(x)
+        x = x + self.drop_path(checkpoint(self.attn, norm1_x))
+        norm2_x = self.norm2(x)
+        x = x + self.drop_path(checkpoint(self.mlp, norm2_x))
+        return x
+
 ### RIN Implementation below ###
 import util.rin as rin
 
@@ -178,12 +187,28 @@ class TransformerBlock(nn.Module):
     def __init__(self, dim, heads=16, **attn_kwargs):
         super().__init__()
 
-        self.cross_attention = rin.CrossAttention(dim, heads=heads, norm=True, **attn_kwargs)
+        self.cross_attention = rin.CrossAttention(dim, heads=16, norm=True, **attn_kwargs)
         self.feed_forward = rin.FeedForward(dim)
 
     def forward(self, x, context=None):
-        x = self.cross_attention(x, context=context) + x
-        x = self.feed_forward(x) + x
+        def cross_attention_fn(x, context):
+            return self.cross_attention(x, context)
+
+        def feed_forward_fn(x):
+            return self.feed_forward(x)
+
+        memory_before = torch.cuda.memory_allocated()
+        x = checkpoint(cross_attention_fn, x, x if context is None else context) + x
+        #x = cross_attention_fn(x, x if context is None else context) + x
+        memory_after = torch.cuda.memory_allocated()
+       # print(f"Cross attention - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
+
+        memory_before = torch.cuda.memory_allocated()
+        x = checkpoint(feed_forward_fn, x) + x
+        #x = feed_forward_fn(x) + x
+        memory_after = torch.cuda.memory_allocated()
+       # print(f"Feed forward - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
+
         return x
 
 class RINBlockVIP(nn.Module):
@@ -218,7 +243,7 @@ class RINBlockVIP(nn.Module):
 
         self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
 
-        self.counter = 0
+        self.counter = 1
         self.print_frequency = 100  # Change this to control how often the similarities are printed
     
     # Helper function to calculate and print similarity
@@ -227,26 +252,25 @@ class RINBlockVIP(nn.Module):
         print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
 
     def forward(self, patches, latents, print_similarities=False):
-        latents_initial = latents.clone().detach() 
-        patches_initial = patches.clone().detach()
-        
         if self.counter % self.print_frequency == 0:
             print("---Start of RIN Block---")
+            latents_initial = latents.clone().detach() 
+            patches_initial = patches.clone().detach()
 
         for i, read_block in enumerate(self.read_blocks):
-            latents_prev = latents.clone().detach()
+            latents_prev = latents.clone().detach() if self.counter % self.print_frequency == 0 else None
             latents = read_block(latents, patches)
             if self.counter % self.print_frequency == 0:
                 self._print_similarity(latents_prev, latents, 'Read latents', i+1)
                 
         for i, process_block in enumerate(self.process_blocks):
-            latents_prev = latents.clone().detach()
+            latents_prev = latents.clone().detach() if self.counter % self.print_frequency == 0 else None
             latents = process_block(latents)
             if self.counter % self.print_frequency == 0:
                 self._print_similarity(latents_prev, latents, 'Process latents', i+1)
 
         for i, write_block in enumerate(self.write_blocks):
-            patches_prev = patches.clone().detach() 
+            patches_prev = patches.clone().detach() if self.counter % self.print_frequency == 0 else None
             patches = write_block(patches, latents)
             if self.counter % self.print_frequency == 0:
                 self._print_similarity(patches_prev, patches, 'Write patches', i+1)
@@ -444,4 +468,3 @@ class FITBlockVIP(nn.Module):
         self.counter += 1
 
         return x.view(B, N, -1)
-
