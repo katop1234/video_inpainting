@@ -231,7 +231,7 @@ def get_args_parser():
     parser.add_argument('--video_dataset_conf', nargs='+', default=[8, 1, 1, 1, 1])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
-    parser.add_argument('--eval_freq', default=5, help='frequency of computing davis eval metrics')
+    parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
     parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
                                                    'ImageSets, Annotations_unsupervised folders',
                     default='/shared/dannyt123/Datasets/DAVIS_video_1')
@@ -398,7 +398,7 @@ def main(args):
         base_lr = (args.lr * 256 / eff_batch_size)
         wandb_config['base_lr'] = base_lr
         wandb.init(
-            #resume="gjajyjpj",
+            resume="191c0ic5",
             project="video_inpainting2",
             config=wandb_config)
     
@@ -463,7 +463,7 @@ def main(args):
                 ) as f:
                     f.write(json.dumps(log_stats) + "\n")
 
-        if epoch % int(args.eval_freq) == 0 and misc.is_main_process():
+        if epoch % int(args.davis_eval_freq) == 0 and misc.is_main_process():
             with torch.no_grad():
                 model.eval()
                 store_path = os.path.join(args.output_dir, "davis_segs")
