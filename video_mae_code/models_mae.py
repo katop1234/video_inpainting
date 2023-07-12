@@ -19,6 +19,7 @@ import random
 from util.logging import master_print as print
 from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
+from util.video_vit import CheckpointBlock
 
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
@@ -149,7 +150,7 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.decoder_blocks = nn.ModuleList(
             [
-                video_vit.Block(
+                video_vit.CheckpointBlock(
                     decoder_embed_dim,
                     decoder_num_heads,
                     mlp_ratio,
