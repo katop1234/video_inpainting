@@ -408,12 +408,14 @@ def main(args):
         torch.autograd.set_detect_anomaly(True)
 
     checkpoint_path = ""
-    print(f"Start training for {args.epochs} epochs")
+    if misc.is_main_process():
+        print(f"Start training for {args.epochs} epochs")
+        print("args.start_epoch: ", args.start_epoch)
     start_time = time.time()
 
     combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
     log_stats = {}
-    print("args.start_epoch: ", args.start_epoch)
+    
     for epoch in range(args.start_epoch, args.epochs):
 
         if args.distributed:
