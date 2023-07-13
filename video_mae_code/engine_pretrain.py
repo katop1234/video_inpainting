@@ -130,9 +130,10 @@ def train_one_epoch(
     num_samples = 512
     if epoch % imagenet_probing_freq == 0 and misc.is_main_process():
         ### Imagenet probing training
+        probe = torch.nn.Linear(1024, 1000)  # initialize the linear layer
+        torch.nn.init.trunc_normal_(probe.weight, std=0.01)  # initialize weights using a truncated normal distribution
         probe = torch.nn.Sequential(torch.nn.BatchNorm1d(49, affine=False, eps=1e-6), probe).to(device)  # wrap the linear layer with BatchNorm1d
-        torch.nn.init.trunc_normal_(probe.weight, std=0.01)
-        probe_optimizer = probe_optimizer = video_vit.LARS(probe.parameters(), lr=1.5e-4, weight_decay=0.05).to(device) # params from MAE
+        probe_optimizer = probe_optimizer = video_vit.LARS(probe.parameters(), lr=1.5e-4, weight_decay=0.05)
         imagenet_train_dataset = get_linprobe_train_dataset()
         
         for param in model.module.parameters():
