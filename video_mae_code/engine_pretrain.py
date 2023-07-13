@@ -198,5 +198,5 @@ def train_one_epoch(
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     train_stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()} 
-    train_stats["imagenet_val_accuracy"] = accuracy if epoch % imagenet_probing_freq == 0 else None
+    train_stats["imagenet_val_accuracy"] = accuracy if epoch % imagenet_probing_freq == 0 and misc.is_main_process() else None
     return train_stats
