@@ -52,6 +52,9 @@ def get_imagenet_val_dataloader():
     val_loader = DataLoader(val_dataset, batch_size=64, sampler=val_sampler, num_workers=14)
     return val_loader
 
+def get_linprobe_train_dataset():
+    return ImageNetDataset('/home/katop1234/Datasets/ilsvrc/train/')
+
 class VideoDataset(Kinetics):
     def __init__(self, path_to_data_dir):
         super().__init__(path_to_data_dir=path_to_data_dir,

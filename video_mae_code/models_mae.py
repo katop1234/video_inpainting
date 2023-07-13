@@ -206,9 +206,6 @@ class MaskedAutoencoderViT(nn.Module):
         
         self.target = None # We update this at runtime to store the vqgan target
         
-        # Initialize imagenet probing
-        self.train_dataset = ImageNetDataset('/home/katop1234/Datasets/ilsvrc/train/')
-        
         # For debugging
         self.current_mem_cached = 0
         self.current_mem_allocated = 0

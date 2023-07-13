@@ -16,7 +16,7 @@ import util.misc as misc
 import util.video_vit as video_vit
 import torch
 import numpy as np
-from dataset_factory import get_imagenet_val_dataloader
+from dataset_factory import get_imagenet_val_dataloader, get_linprobe_train_dataset
 from torch.utils.data import Dataset, DataLoader, SubsetRandomSampler
 import wandb
 
@@ -126,15 +126,15 @@ def train_one_epoch(
 
     # Imagenet Probing
     imagenet_probing_freq = 1
-    num_epochs = 5
+    num_epochs = 90 # from MAE 
     num_samples = 512
-    if epoch % imagenet_probing_freq == 0:
+    if epoch % imagenet_probing_freq == 0 and misc.is_main_process():
         ### Imagenet probing training
         probe = torch.nn.Linear(512, 1000)  # initialize the linear layer
         torch.nn.init.trunc_normal_(probe.weight, std=0.01)  # initialize weights using a truncated normal distribution
         probe = torch.nn.Sequential(torch.nn.BatchNorm1d(512, affine=False, eps=1e-6), probe)  # wrap the linear layer with BatchNorm1d
         probe_optimizer = probe_optimizer = video_vit.LARS(probe.parameters(), lr=1.5e-4, weight_decay=0.05)
-        imagenet_train_dataset = model.module.train_dataset
+        imagenet_train_dataset = get_linprobe_train_dataset()
         
         for param in model.module.parameters():
             param.requires_grad = False
@@ -148,7 +148,7 @@ def train_one_epoch(
             sampler = SubsetRandomSampler(indices[:num_samples])
             data_loader = DataLoader(imagenet_train_dataset, batch_size=64, sampler=sampler, num_workers=14)
 
-            print("Linear probing Epoch: {}".format(epoch)) if misc.is_main_process() else None
+            print("Linear probing Epoch: {}".format(epoch))
             for samples, labels in data_loader:
                 samples = samples.permute(0, 2, 1, 3, 4).to(device)  # Now samples shape is (B, C, T, H, W)
                 labels = labels.to(device)
@@ -184,7 +184,7 @@ def train_one_epoch(
                 correct += (predicted == labels).sum().item()  # Increment the correct count
 
         accuracy = 100 * correct / total
-        print(f'Accuracy on the validation images: {accuracy}%') if misc.is_main_process() else None
+        print(f'Accuracy on the validation images: {accuracy}%')
         
         for param in model.module.parameters():
             param.requires_grad = True
