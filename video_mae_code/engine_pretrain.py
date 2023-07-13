@@ -124,15 +124,16 @@ def train_one_epoch(
         if data_iter_step % 1000 == 0:
             print("Epoch: {}, Iter: {}, Loss: {}".format(epoch, data_iter_step, loss_value_reduce))
 
-    # Imagenet Probing
-    imagenet_probing_freq = 5
-    num_epochs = 90 # from MAE 
+    ### Imagenet Probing
+    # see MAE code for hyperparams and other miscellany
+    imagenet_probing_freq = 1
+    num_epochs = 4 # TODO change this and above before running!!!!!!! To 5 and 90
     num_samples = 512
-    if epoch % imagenet_probing_freq == 0 and misc.is_main_process():
-        ### Imagenet probing training
-        probe = torch.nn.Linear(1024, 1000)  # initialize the linear layer
-        torch.nn.init.trunc_normal_(probe.weight, std=0.01)  # initialize weights using a truncated normal distribution
-        probe = torch.nn.Sequential(torch.nn.BatchNorm1d(49, affine=False, eps=1e-6), probe).to(device)  # wrap the linear layer with BatchNorm1d
+    if epoch % imagenet_probing_freq == 0:
+        # Train the linear probe
+        probe = torch.nn.Linear(1024, 1000) 
+        torch.nn.init.trunc_normal_(probe.weight, std=0.01)
+        probe = torch.nn.Sequential(torch.nn.BatchNorm1d(49, affine=False, eps=1e-6), probe).to(device)
         probe_optimizer = probe_optimizer = video_vit.LARS(probe.parameters(), lr=1.5e-4, weight_decay=0.05)
         imagenet_train_dataset = get_linprobe_train_dataset()
         
@@ -143,34 +144,40 @@ def train_one_epoch(
             param.requires_grad = True
 
         for epoch in range(num_epochs):
+            import time
+            start = time.time() # TODO delete all these time print statements
             indices = list(range(len(imagenet_train_dataset)))
             np.random.shuffle(indices)
             sampler = SubsetRandomSampler(indices[:num_samples])
-            data_loader = DataLoader(imagenet_train_dataset, batch_size=64, sampler=sampler, num_workers=14)
+            data_loader = DataLoader(imagenet_train_dataset, batch_size=64, sampler=sampler, num_workers=14, pin_memory=True)
+            print("Time to get data loader: {}".format(time.time() - start))
 
             print("Linear probing Epoch: {}".format(epoch))
             for samples, labels in data_loader:
-                samples = samples.permute(0, 2, 1, 3, 4).to(device)  # Now samples shape is (B, C, T, H, W)
-                labels = labels.to(device)
+                samples = samples.permute(0, 2, 1, 3, 4).to(device, non_blocking=True)  # Now samples shape is (B, C, T, H, W)
+                labels = labels.to(device, non_blocking=True)
                         
                 probe_optimizer.zero_grad()
-
+                start = time.time()
                 with torch.no_grad():
                     latents = model(samples, imagenet_probing=True)
+                print("Time to get latents: {}".format(time.time() - start))
+                start = time.time()
                 output = probe(latents)
                 output = output.mean(dim=1)  # Take the mean across the patch dimension
                 loss = torch.nn.CrossEntropyLoss()(output, labels)
                 loss.backward()
                 probe_optimizer.step()
+                print("Time to do backward: {}".format(time.time() - start))
 
-        ### Imagenet evaluation
+        # Evaluate the linear probe
         imagenet_val_dataloader = get_imagenet_val_dataloader()
             
         correct = 0
         total = 0
 
-        model.eval()  # Set the model to evaluation mode
-        with torch.no_grad():  # No need to track gradients
+        model.eval()
+        with torch.no_grad(): 
             for samples, labels in imagenet_val_dataloader:
                 samples = samples.permute(0, 2, 1, 3, 4).to(device)  # Now samples shape is (B, C, T, H, W)
                 labels = labels.to(device)
@@ -180,8 +187,8 @@ def train_one_epoch(
                 output = output.mean(dim=1)  # Take the mean across the patch dimension
 
                 _, predicted = torch.max(output.data, 1)  # Get the predicted classes
-                total += labels.size(0)  # Increment the total count
-                correct += (predicted == labels).sum().item()  # Increment the correct count
+                total += labels.size(0)
+                correct += (predicted == labels).sum().item()
 
         accuracy = 100 * correct / total
         print(f'Accuracy on the validation images: {accuracy}%')
@@ -198,5 +205,5 @@ def train_one_epoch(
     metric_logger.synchronize_between_processes()
     print("Averaged stats:", metric_logger)
     train_stats = {k: meter.global_avg for k, meter in metric_logger.meters.items()} 
-    train_stats["imagenet_val_accuracy"] = accuracy if epoch % imagenet_probing_freq == 0 and misc.is_main_process() else None
+    train_stats["imagenet_val_accuracy"] = accuracy if epoch % imagenet_probing_freq == 0 else None
     return train_stats
