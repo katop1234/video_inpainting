@@ -36,7 +36,7 @@ class MaskedAutoencoderViT(nn.Module):
         depth=24,
         num_heads=16,
         decoder_embed_dim=512,
-        decoder_depth=4,
+        decoder_depth=8,
         decoder_num_heads=16,
         mlp_ratio=4.0,
         norm_layer=nn.LayerNorm,
@@ -61,6 +61,10 @@ class MaskedAutoencoderViT(nn.Module):
         self.pred_t_dim = pred_t_dim
         self.use_rin = use_rin
         self.use_fit = use_fit
+        
+        # WARNING manually set
+        depth = 8
+        decoder_depth = 8
 
         # t_patch_size is how many consecutive video frames are grouped together to form a single temporal patch
         # pred_t_dim is how many consecutive temporal patches are predicted
