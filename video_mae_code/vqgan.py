@@ -137,7 +137,7 @@ class ResnetBlock(nn.Module):
                                                     stride=1,
                                                     padding=0)
         
-        self.chunk_size_factor = 1
+        self.chunk_size_factor = 2
     
     def forward(self, x, temb=None):
         B, C, H, W = x.shape

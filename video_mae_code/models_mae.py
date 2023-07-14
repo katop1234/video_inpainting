@@ -491,6 +491,7 @@ class MaskedAutoencoderViT(nn.Module):
             target = target.reshape([N, T * 196])
         
         self.target = target
+        self.print_memory_change("set vqgan target", 0)
 
     def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, video_test_type= ""):
         test_modes = not test_image or not video_test_type
