@@ -241,6 +241,9 @@ def get_args_parser():
 
 def main(args):
     misc.init_distributed_mode(args)
+    
+    #os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+    #os.environ["CUDA_VISIBLE_DEVICES"]="0,1,2,4,5,6,7"
 
     print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
     print("{}".format(args).replace(", ", ",\n"))
