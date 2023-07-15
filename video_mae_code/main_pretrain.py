@@ -458,8 +458,10 @@ def main(args):
                 prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
                 
                 davis_prompt_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                davis_2x2_prompt_path = os.path.join(args.video_prompts_dir, "davis_2x2_prompt")
-                davis_image_prompt_path = '/shared/dannyt123/video_inpainting/test_images/davis_image_prompts'
+                # davis_2x2_prompt_path = os.path.join(args.video_prompts_dir, "davis_2x2_prompt")
+                davis_2x2_prompt_path = '/shared/dannyt123/video_inpainting/test_videos/davis_2x2_single_prompt'
+                davis_image_prompt_path = '/shared/dannyt123/video_inpainting/test_images/single_davis_image_prompts'
+            
                 
                 generate_segmentations(model, store_path, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path)
                 print("Finished Saving Davis Eval Segmentations")                
