@@ -299,7 +299,7 @@ class NativeScalerWithGradNormCount:
         create_graph=False,
         update_grad=True,
     ):
-
+        
         self._scaler.scale(loss).backward(create_graph=create_graph)
 
         if update_grad:
@@ -321,6 +321,7 @@ class NativeScalerWithGradNormCount:
                 norm = get_grad_norm_(parameters)
             self._scaler.step(optimizer)
             self._scaler.update()
+            
         else:
             norm = None
 
