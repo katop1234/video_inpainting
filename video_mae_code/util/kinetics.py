@@ -226,8 +226,6 @@ class Kinetics(torch.utils.data.Dataset):
                 index of the video replacement that can be decoded.
         """
         
-        # print("self mode is ", self.mode, "in kinetics, getting item at index", index)
-        
         if self.mode in ["pretrain", "finetune", "val"]:
             # -1 indicates random sampling.
             temporal_sample_index = -1
@@ -268,20 +266,19 @@ class Kinetics(torch.utils.data.Dataset):
         for i_try in range(self._num_retries):
             video_container = None
             
-            # print('entering the try loop', "i_try is", i_try)
             try:
                 video_container = container.get_video_container(
                     self._path_to_videos[index],
                     self._enable_multi_thread_decode,
                 )
                 
-                # print("got video container")
             except Exception as e:
                 print(
                     "Failed to load video from {} with error {}".format(
                         self._path_to_videos[index], e
                     )
                 )
+                exit()
             # Select a random video if the current video was not able to access.
             if video_container is None:
                 print(
