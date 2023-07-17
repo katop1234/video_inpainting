@@ -184,12 +184,19 @@ def image_video_generation(prompt_path, model, mask_test_type):
     return im_paste
                 
 def run_evaluation_method(store_path):
-    # davis_path_orig = '/shared/dannyt123/Datasets/DAVIS_video_1'
-    davis_path_orig = '/shared/dannyt123/video_inpainting/DAVIS_datasets/DAVIS_video_1'
-    # davis_path_2x2 = '/shared/dannyt123/Datasets/DAVIS_video_2x2_single'
-    davis_path_2x2 = '/shared/dannyt123/video_inpainting/DAVIS_datasets/DAVIS_video_2x2_single'
-    # davis_path_image = '/shared/dannyt123/Datasets/DAVIS_image_single'
-    davis_path_image = '/shared/dannyt123/video_inpainting/DAVIS_datasets/DAVIS_image_single'
+    curr_dir = os.path.dirname(os.path.abspath(__file__))
+    DAVIS_datasets_dir = os.path.join(curr_dir, 'DAVIS_datasets')
+    
+    davis_path_orig = os.path.join(DAVIS_datasets_dir, 'DAVIS_video_1')
+    davis_path_2x2 = os.path.join(DAVIS_datasets_dir, 'DAVIS_video_2x2_single')
+    davis_path_image = os.path.join(DAVIS_datasets_dir, 'DAVIS_image_single')
+    
+    # # davis_path_orig = '/shared/dannyt123/Datasets/DAVIS_video_1'
+    # davis_path_orig = '/shared/dannyt123/video_inpainting/DAVIS_datasets/DAVIS_video_1'
+    # # davis_path_2x2 = '/shared/dannyt123/Datasets/DAVIS_video_2x2_single'
+    # davis_path_2x2 = '/shared/dannyt123/video_inpainting/DAVIS_datasets/DAVIS_video_2x2_single'
+    # # davis_path_image = '/shared/dannyt123/Datasets/DAVIS_image_single'
+    # davis_path_image = '/shared/dannyt123/video_inpainting/DAVIS_datasets/DAVIS_image_single'
     
     results_orig_path = get_results_path(store_path, 'orig')
     results_2x2_path = get_results_path(store_path, '2x2')
