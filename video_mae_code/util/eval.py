@@ -218,13 +218,16 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y):
 
 @torch.no_grad()
 def visualize_prompting(model, test_cases_folder):
+    test = os.path.join(test_cases_folder, "test_images/")
+    print('test: ', test)
     visualize_image_prompting(model, os.path.join(test_cases_folder, "test_images/"))
     visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "random")
     visualize_video_prompting(model, os.path.join(test_cases_folder, "temporally_masked_videos/"), "temporal")
     visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"), "spatiotemporal")
     visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"), "spatiotemporal")
     
-    objectron_videos_path = '/shared/dannyt123/video_inpainting/test_videos/Objectron'
+    objectron_videos_path = os.path.join(test_cases_folder, "Objectron/")
+    print('objectron_videos_path: ', objectron_videos_path)
     visualize_video_prompting(model, objectron_videos_path, "frame prediction")
     visualize_video_prompting(model, os.path.join(test_cases_folder, "davis_2x2_prompt_visualization/"), "2x2 tube")
     visualize_video_prompting(model, objectron_videos_path, "frame interpolation")
@@ -292,22 +295,6 @@ def visualize_video_prompting(model, input_video_viz_dir, test_type=""):
         _, test_model_output, mask = model(test_model_input, video_test_type=test_type)
     else:
         raise ValueError("Invalid input_video_viz_dir")
-    
-    # num_patches = 14
-    # N = test_model_input.shape[0]
-
-    # test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
-    # test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
-    # test_model_output = test_model_output.flatten(1, 2)
-    # test_model_output = test_model_output.flatten(1, 2)
-    
-    # y = test_model_output.argmax(dim=-1)
-    # im_paste, _, orig_video = decode_raw_prediction(mask, model, num_patches, test_model_input, y)
-
-    # im_paste = im_paste.permute((0, 1, 4, 2, 3))
-    # orig_video = orig_video.permute((0, 1, 4, 2, 3))
-    # im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
-    # orig_video = (orig_video.cpu().numpy()).astype(np.uint8)
     
     im_paste, orig_video = video_generation(model, mask, test_model_input, test_model_output)
 

@@ -118,7 +118,7 @@ def get_args_parser():
 
     parser.add_argument(
         "--video_prompts_dir",
-        default="/shared/dannyt123/video_inpainting/test_cases",
+        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases",
         help="Folder containing video visualization examples.",
     )
 
@@ -458,10 +458,13 @@ def main(args):
                 prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
                 single_prompt_csv = os.path.join(parent, "datasets/davis_single_prompt.csv") 
                 
-                davis_prompt_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                davis_2x2_prompt_path = '/shared/dannyt123/video_inpainting/test_videos/davis_2x2_single_prompt'
-                davis_image_prompt_path = '/shared/dannyt123/video_inpainting/test_images/single_davis_image_prompts'
-            
+                curr_dir = os.path.dirname(os.path.abspath(__file__))
+                parent_dir = os.path.dirname(curr_dir)
+                test_videos_path = os.path.join(parent_dir, 'test_videos')
+                
+                davis_prompt_path = os.path.join(parent_dir, 'test_videos', 'davis_prompt')
+                davis_2x2_prompt_path = os.path.join(parent_dir, 'test_videos', 'davis_2x2_single_prompt')
+                davis_image_prompt_path = os.path.join(parent_dir, 'test_images', 'single_davis_image_prompts')
                 
                 generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path)
                 print("Finished Saving Davis Eval Segmentations")                
