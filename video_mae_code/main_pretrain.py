@@ -42,7 +42,7 @@ def get_args_parser():
     parser.add_argument("--batch_size_video", default=1, type=int, help="Video batch size per GPU")
     parser.add_argument("--epochs", default=4000, type=int)
     parser.add_argument("--accum_iter_image", default=1, type=int, help="accum iteration for image")
-    parser.add_argument("--accum_iter_video", default=64, type=int, help="accum iteration for video")
+    parser.add_argument("--accum_iter_video", default=64, type=int, help="accum iteration for vide")
     
     #Training
     parser.add_argument(
