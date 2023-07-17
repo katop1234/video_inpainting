@@ -185,11 +185,15 @@ def image_video_generation(prompt_path, model, mask_test_type):
                 
 def run_evaluation_method(store_path):
     curr_dir = os.path.dirname(os.path.abspath(__file__))
-    DAVIS_datasets_dir = os.path.join(curr_dir, 'DAVIS_datasets')
+    parent_dir = os.path.dirname(curr_dir)
+    DAVIS_datasets_dir = os.path.join(parent_dir, 'DAVIS_datasets')
     
     davis_path_orig = os.path.join(DAVIS_datasets_dir, 'DAVIS_video_1')
+    print('davis_path_orig: ', davis_path_orig)
     davis_path_2x2 = os.path.join(DAVIS_datasets_dir, 'DAVIS_video_2x2_single')
+    print('davis_path_2x2: ', davis_path_2x2)
     davis_path_image = os.path.join(DAVIS_datasets_dir, 'DAVIS_image_single')
+    print('davis_path_image: ', davis_path_image)
     
     # # davis_path_orig = '/shared/dannyt123/Datasets/DAVIS_video_1'
     # davis_path_orig = '/shared/dannyt123/video_inpainting/DAVIS_datasets/DAVIS_video_1'
