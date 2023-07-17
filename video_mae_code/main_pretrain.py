@@ -118,7 +118,7 @@ def get_args_parser():
 
     parser.add_argument(
         "--video_prompts_dir",
-        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/",
+        default="/shared/dannyt123/video_inpainting/test_cases",
         help="Folder containing video visualization examples.",
     )
 
