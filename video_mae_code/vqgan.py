@@ -141,7 +141,7 @@ class ResnetBlock(nn.Module):
     
     def forward(self, x, temb=None):
         B, C, H, W = x.shape
-        chunk_size = B // self.chunk_size_factor
+        chunk_size = max(B // self.chunk_size_factor, 1)
         
         out = None
     
