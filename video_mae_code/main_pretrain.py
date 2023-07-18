@@ -400,7 +400,7 @@ def main(args):
         base_lr = (args.lr * 256 / eff_batch_size)
         wandb_config['base_lr'] = base_lr
         wandb.init(
-            resume="od3h9m0m",
+            resume="m86vkhzp",
             project="video_inpainting2",
             config=wandb_config)
     
@@ -488,7 +488,12 @@ def main(args):
             if not args.test_mode:
                 wandb.log(log_stats)
             model.eval()
-            visualize_prompting(model, args.video_prompts_dir)
+            try:
+                visualize_prompting(model, args.video_prompts_dir)
+            except Exception as e:
+                print("\n")
+                print("Exception occurred in visualizing prompting. Debug this later!: {}".format(e))
+                print("\n")
             model.train()
         print("Done loop on epoch {}".format(epoch))
 
