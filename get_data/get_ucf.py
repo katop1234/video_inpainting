@@ -6,7 +6,12 @@ import rarfile
 from moviepy.editor import VideoFileClip
 
 # Check if 'unrar' is installed on the system
-assert shutil.which("unrar") is not None, "'unrar' is not installed on your system. Please install it to proceed."
+if shutil.which("unrar") is None:
+    print("'unrar' is not installed on your system. Installing it now...")
+    os.system('sudo apt-get update -y')
+    os.system('sudo apt-get install unrar -y')
+else:
+    print("'unrar' is installed on your system.")
 
 # Base directory for your operations
 base_dir = os.path.join(os.getcwd(), "get_data/")

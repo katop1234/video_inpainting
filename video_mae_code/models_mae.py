@@ -63,8 +63,10 @@ class MaskedAutoencoderViT(nn.Module):
         self.use_fit = use_fit
         
         # WARNING manually set
-        depth = 4
-        decoder_depth = 20
+        depth = 2
+        decoder_depth = 32
+        embed_dim = 1280
+        decoder_embed_dim = 1280
 
         # t_patch_size is how many consecutive video frames are grouped together to form a single temporal patch
         # pred_t_dim is how many consecutive temporal patches are predicted
@@ -213,7 +215,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.current_mem_cached = 0
         self.current_mem_allocated = 0
         self.forward_counts = 0
-        self.print_every = 1000
+        self.print_every = 100
         
         print("model initialized new code")
 
