@@ -36,6 +36,7 @@ else:
 os.system('mkdir -p get_data/data/objectron_temp/')
 subprocess.run(['gsutil', '-m', 'cp', '-r', 'gs://objectron', 'get_data/data/objectron_temp/'], check=True)
 
-# TODO implement this based on the above results
-# convert_and_move_videos(input_dir='data/objectron_temp/objectron', 
-#                     output_dir='/shared/katop1234/Datasets/objectron/')
+os.system('mkdir -p get_data/data/objectron')
+convert_and_move_videos(input_dir='get_data/data/objectron_temp/objectron', 
+                    output_dir='get_data/data/objectron/')
+os.system("rm -rf get_data/data/objectron_temp/")
