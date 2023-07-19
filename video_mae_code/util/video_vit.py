@@ -135,14 +135,16 @@ class FlashAttention(nn.Module):
         qkv_bias=False,
         qk_scale=None,
         proj_drop=0.0,
+        attn_drop=0.0,
         causal=False,
     ):
         super().__init__()
         assert dim % num_heads == 0, "dim should be divisible by num_heads"
+        assert attn_drop == 0.0  # do not use
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim**-0.5
-        self.causal = causal
+        self.causal = causal # whether to apply causal attention mask
 
         self.qkv = nn.Linear(dim, 3 * dim, bias=qkv_bias)
         self.proj = nn.Linear(dim, dim)
