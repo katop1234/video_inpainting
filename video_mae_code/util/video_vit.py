@@ -7,6 +7,7 @@ import torch.nn as nn
 from timm.models.layers import to_2tuple
 from timm.models.vision_transformer import DropPath, Mlp
 from torch.utils.checkpoint import checkpoint
+from flash_attn import flash_attn_qkvpacked_func
 
 logger = logging.get_logger(__name__)
 
@@ -126,6 +127,44 @@ class Attention(nn.Module):
         x = x.view(B, -1, C)
         return x
 
+class FlashAttention(nn.Module):
+    def __init__(
+        self,
+        dim,
+        num_heads=8,
+        qkv_bias=False,
+        qk_scale=None,
+        proj_drop=0.0,
+        causal=False,
+    ):
+        super().__init__()
+        assert dim % num_heads == 0, "dim should be divisible by num_heads"
+        self.num_heads = num_heads
+        head_dim = dim // num_heads
+        self.scale = qk_scale or head_dim**-0.5
+        self.causal = causal
+
+        self.qkv = nn.Linear(dim, 3 * dim, bias=qkv_bias)
+        self.proj = nn.Linear(dim, dim)
+        self.proj_drop = nn.Dropout(proj_drop)
+
+    def forward(self, x):
+        B, N, C = x.shape
+        qkv = (
+            self.qkv(x)
+            .reshape(B, N, 3, self.num_heads, C // self.num_heads)
+            .permute(0, 2, 1, 3, 4)
+        )
+
+        # flash_attn_qkvpacked_func should perform attention computation, return shape should be (B, N, self.num_heads, C // self.num_heads)
+        # For now, flash_attn_qkvpacked_func is assumed to be a global function, you might want to import it correctly or make it a staticmethod
+        out = flash_attn_qkvpacked_func(qkv, dropout_p=0.0 if not self.training else self.proj_drop.p, softmax_scale=self.scale, causal=self.causal)
+        out = out.permute(0, 2, 1, 3).contiguous()
+
+        x = self.proj(out.reshape(B, N, C))
+        x = self.proj_drop(x)
+        return x
+
 class Block(nn.Module):
     """
     Transformer Block with specified Attention function
@@ -143,7 +182,7 @@ class Block(nn.Module):
         drop_path=0.0,
         act_layer=nn.GELU,
         norm_layer=nn.LayerNorm,
-        attn_func=Attention,
+        attn_func=FlashAttention,
     ):
         super().__init__()
         self.norm1 = norm_layer(dim)
