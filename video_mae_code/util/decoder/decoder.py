@@ -253,8 +253,8 @@ def decode(
         total_frames = video_stream.frames
 
         window_length = fps / 30 * 64 + 1
-        if total_frames < window_length + 1:
-            raise ValueError("Video of fps {} has less than {} frames".format(fps, window_length + 1))
+        # if total_frames < window_length + 1:
+        #     raise ValueError("Video of fps {} has less than {} frames".format(fps, window_length + 1))
 
         start_frame = np.random.randint(0, int(total_frames - window_length - 1))
 
@@ -263,7 +263,7 @@ def decode(
         frame_count = 0
 
         for frame in container.decode(video=0):
-            if frame_count >= start_frame and frame_count < start_frame + window_length:
+            if frame_count >= start_frame and frame_count < min(total_frames, start_frame + window_length):
                 img = frame.to_image()
                 img_array = np.array(img)
                 frames_list.append(img_array)
