@@ -256,7 +256,7 @@ def decode(
         # if total_frames < window_length + 1:
         #     raise ValueError("Video of fps {} has less than {} frames".format(fps, window_length + 1))
 
-        start_frame = np.random.randint(0, int(total_frames - window_length - 1))
+        start_frame = np.random.randint(0, int(total_frames - window_length - 1)) if total_frames > window_length + 1 else 0
 
         # PyAV decoding
         frames_list = []
