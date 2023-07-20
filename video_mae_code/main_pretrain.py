@@ -360,7 +360,6 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            static_graph=True
         )
         model_without_ddp = model.module
 
@@ -400,10 +399,11 @@ def main(args):
         base_lr = (args.lr * 256 / eff_batch_size)
         wandb_config['base_lr'] = base_lr
         wandb.init(
-            resume="5wh765kq",
+            resume="2u4z188c",
             project="video_inpainting2",
             config=wandb_config)
     
+    model._set_static_graph()
     if args.detect_anomaly: # useful for debugging
         torch.autograd.set_detect_anomaly(True)
 
@@ -415,6 +415,7 @@ def main(args):
 
     combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
     log_stats = {}
+    
     
     for epoch in range(args.start_epoch, args.epochs):
 
