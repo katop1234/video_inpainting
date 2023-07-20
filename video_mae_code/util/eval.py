@@ -225,7 +225,7 @@ def visualize_prompting(model, test_cases_folder):
     visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"), "spatiotemporal")
     visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"), "spatiotemporal")
     
-    objectron_videos_path = '/shared/dannyt123/video_inpainting/test_videos/Objectron'
+    objectron_videos_path = '/shared/dannyt123/video_inpainting/test_cases/Objectron'
     visualize_video_prompting(model, objectron_videos_path, "frame prediction")
     visualize_video_prompting(model, os.path.join(test_cases_folder, "davis_2x2_prompt_visualization/"), "2x2 tube")
     visualize_video_prompting(model, objectron_videos_path, "frame interpolation")

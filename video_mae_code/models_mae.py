@@ -215,7 +215,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.current_mem_cached = 0
         self.current_mem_allocated = 0
         self.forward_counts = 0
-        self.print_every = 1000
+        self.print_every = 100
         
         print("model initialized new code")
 

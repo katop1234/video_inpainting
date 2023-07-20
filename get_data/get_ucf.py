@@ -4,9 +4,15 @@ import time
 import shutil
 import rarfile
 from moviepy.editor import VideoFileClip
+from helpers import delete_files_with_extension, convert_avi_to_mp4
 
 # Check if 'unrar' is installed on the system
-assert shutil.which("unrar") is not None, "'unrar' is not installed on your system. Please install it to proceed."
+if shutil.which("unrar") is None:
+    print("'unrar' is not installed on your system. Installing it now...")
+    os.system('sudo apt-get update -y')
+    os.system('sudo apt-get install unrar -y')
+else:
+    print("'unrar' is installed on your system.")
 
 # Base directory for your operations
 base_dir = os.path.join(os.getcwd(), "get_data/")
@@ -41,14 +47,6 @@ output_path = download_dir
 
 # Create output directory if it doesn't exist
 os.makedirs(output_path, exist_ok=True)
-
-def delete_files_with_extension(directory, extension):
-    for filename in os.listdir(directory):
-        if filename.endswith(extension):
-            os.remove(os.path.join(directory, filename))
-
-def convert_avi_to_mp4(avi_file_path, mp4_file_path):
-    subprocess.call(['ffmpeg', '-i', avi_file_path, mp4_file_path])
 
 # Recursive traversal
 for dirpath, dirs, files in os.walk(base_path):
