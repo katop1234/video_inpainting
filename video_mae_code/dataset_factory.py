@@ -61,7 +61,7 @@ def get_dataset(name, root_path, ds_type):
         elif name == "UCF101":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/UCF101/") 
         elif name == "CSV":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/dannyt123/Datasets/CSV")
+            dataset_train = VideoDataset(path_to_data_dir="/shared/dannyt123/Datasets/CSV/")
         else:
             raise NotImplementedError()
     else:

@@ -253,10 +253,15 @@ def decode(
         total_frames = video_stream.frames
 
         window_length = fps / 30 * 64 + 1
-        # if total_frames < window_length + 1:
-        #     raise ValueError("Video of fps {} has less than {} frames".format(fps, window_length + 1))
 
-        start_frame = np.random.randint(0, int(total_frames - window_length - 1)) if total_frames > window_length + 1 else 0
+        # Default to starting at 0
+        start_frame = 0
+
+        # If total_frames is greater than window_length + 1, set start_frame to a random value within allowed range
+        if total_frames > window_length + 1:
+            high_value = int(total_frames - window_length)
+            if high_value > 0:  # Ensure high_value is always greater than 0
+                start_frame = np.random.randint(0, high_value)
 
         # PyAV decoding
         frames_list = []
@@ -268,14 +273,15 @@ def decode(
                 img_array = np.array(img)
                 frames_list.append(img_array)
             frame_count += 1
-            if frame_count >= start_frame + window_length:
+            # Break loop if frame_count reaches start_frame + window_length or total_frames
+            if frame_count >= min(start_frame + window_length, total_frames):
                 break
 
         v_frames = torch.from_numpy(np.stack(frames_list))
 
     except Exception as e:
-        print("Failed to decode with PyAV with exception: {}".format(e))
-        raise e
+        print("in decoder.decode function, failed to decode with PyAV with exception: {}".format(e))
+        exit()
 
     # Return None if the frames were not decoded successfully.
     if v_frames is None or v_frames.size(0) == 0:
