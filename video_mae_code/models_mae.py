@@ -20,8 +20,8 @@ from util.logging import master_print as print
 from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
 
-from util.video_vit import RINBlockVIP, FITBlockVIP, CheckpointBlock
-from util import rin
+from util.video_vit import CheckpointBlock # RINBlockVIP, FITBlockVIP,
+#from util import rin
 import numpy as np
 
 class MaskedAutoencoderViT(nn.Module):
@@ -63,7 +63,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.use_fit = use_fit
         
         # WARNING manually set
-        depth = 0
+        depth = 2
         decoder_depth = 32
         embed_dim = 1280
         decoder_embed_dim = 1280
