@@ -20,6 +20,8 @@ from util.logging import master_print as print
 from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
 
+from X_CLIP.cct import CrossFrameCommunicationTransformer
+
 class MaskedAutoencoderViT(nn.Module):
     """Masked Autoencoder with VisionTransformer backbone"""
 
@@ -45,6 +47,7 @@ class MaskedAutoencoderViT(nn.Module):
         trunc_init=False,
         cls_embed=True,
         pred_t_dim=16,
+        X_CLIP=False, #False for regular training, True for training only X-CLIP
         **kwargs,
     ):
         
@@ -121,6 +124,14 @@ class MaskedAutoencoderViT(nn.Module):
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
+        # MAE cct specifics
+        self.X_CLIP = X_CLIP
+        self.embed_dim = embed_dim
+        self.cct_mask_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
+        self.cct = CrossFrameCommunicationTransformer(input_resolution=img_size, patch_size=patch_size, width=embed_dim, layers=8, heads=16, output_dim=decoder_embed_dim) #Temporarily hard code
+        # --------------------------------------------------------------------------
+
+        # --------------------------------------------------------------------------
         # MAE decoder specifics
         self.decoder_embed = nn.Linear(embed_dim, decoder_embed_dim, bias=True)
 
@@ -163,6 +174,16 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True)
+        # --------------------------------------------------------------------------
+        # CCT requires_grad
+        parameters_required = ['temporal', 'cct', 'cls_token']
+        if X_CLIP:
+            for n, p in self.named_parameters():
+                requires = False
+                for parameter in parameters_required:
+                    if parameter in n:
+                        requires = True
+                p.requires_grad_(requires)
         # --------------------------------------------------------------------------
 
         self.norm_pix_loss = norm_pix_loss
@@ -253,7 +274,7 @@ class MaskedAutoencoderViT(nn.Module):
         """
         N, L, D = x.shape  # batch, length, dim
 
-        if L == 14 ** 2 * self.patch_embed.t_grid_size:
+        if L == 14 ** 2 * self.patch_embed.t_grid_size or self.X_CLIP: #mask_ratio_video for also images for X-CLIP
             mask_ratio = mask_ratio_video
             pass 
         elif L == 14 ** 2 * 1:
@@ -294,7 +315,7 @@ class MaskedAutoencoderViT(nn.Module):
         return x_masked, mask, ids_restore, ids_keep
 
 
-    def video_eval_mask(self, x, type):
+    def video_eval_mask(self, x, type, X_CLIP_t=0):
         """
         Mask the last 7 frames of the video patches.
         x: [N, L, D], sequence
@@ -302,7 +323,10 @@ class MaskedAutoencoderViT(nn.Module):
     
         N, L, D = x.shape  # batch, length, dim
 
-        assert L == 196 * self.patch_embed.t_grid_size, "This only works for L = 196 * 16 (video)"
+        if self.X_CLIP:
+            L = 196 * self.patch_embed.t_grid_size
+        else:
+            assert L == 196 * self.patch_embed.t_grid_size, "This only works for L = 196 * 16 (video)"
 
         F, H, W = self.patch_embed.t_grid_size, 14, 14  # F is the number of frames
         
@@ -318,6 +342,8 @@ class MaskedAutoencoderViT(nn.Module):
             condition = lambda row, col, frame: (1 < row < 12) and (1 < col < 12)
         elif type == "dynamic inpainting":
             condition = lambda row, col, frame: (1 < row < 12) and (col > frame and col < (frame + 9))
+        elif type == "2x2 tube":
+            condition = lambda row, col, frame: row >= (W // 2) and col >= (H // 2)
         elif type == "view":
             raise NotImplementedError
         else: 
@@ -330,6 +356,10 @@ class MaskedAutoencoderViT(nn.Module):
                 for col in range(W):
                     if condition(row, col, frame):
                         mask[:, frame * H * W + row * W + col] = 1
+                        
+        if self.X_CLIP:
+            #Image-Video masking
+            mask = mask[:, H*W*X_CLIP_t:H*W*(X_CLIP_t+1)]
 
         x_masked, ids_restore, ids_keep = self.setup_mask(x, mask, N, D)
 
@@ -379,7 +409,7 @@ class MaskedAutoencoderViT(nn.Module):
         return x_masked, ids_restore, ids_keep
 
 
-    def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, video_test_type= ""):
+    def forward_encoder(self, x, mask_ratio_image, mask_ratio_video, test_image=False, video_test_type= "", X_CLIP_t=0):
         test_modes = not test_image or not video_test_type
         assert test_modes
         
@@ -400,7 +430,11 @@ class MaskedAutoencoderViT(nn.Module):
         elif test_image:
             x, mask, ids_restore, ids_keep = self.mask_test_image(x)
         elif video_test_type:
-            x, mask, ids_restore, ids_keep = self.video_eval_mask(x, video_test_type)
+            # print("x.shape before video_eval_mask: ", x.shape)
+            # print("video_test_type: ", video_test_type)
+            x, mask, ids_restore, ids_keep = self.video_eval_mask(x, video_test_type, X_CLIP_t)
+            # print("mask.shape after video_eval_mask: ", mask.shape)
+            # print("ids_keep.shape: ", ids_keep.shape)
         else:
             raise NotImplementedError("Invalid mode.")
 
@@ -468,11 +502,16 @@ class MaskedAutoencoderViT(nn.Module):
             x = blk(x)
         x = self.norm(x)
 
-        if self.cls_embed:
+        # print("x.shape in encoder before cls check: ", x.shape)
+        if self.cls_embed and not self.X_CLIP:
             # remove cls token
+            # print("entered cls_embed")
             x = x[:, 1:, :]
         else:
+            # print("did not enter cls_embed")
             x = x[:, :, :]
+            
+        # print("x.shape in encoder after cls check: ", x.shape)
 
         return x, mask, ids_restore
 
@@ -612,18 +651,116 @@ class MaskedAutoencoderViT(nn.Module):
         loss = (loss * mask).sum() / mask.sum() #mean loss on removed patches
         return loss
 
+    def repeat_img(self, imgs):
+        repeat = self.patch_embed.t_patch_size
+        imgs = imgs.repeat(1, 1, repeat, 1, 1)
+        return imgs
+    
+    
+    def X_CLIP_combine(self, latents, masks, ids_restores):
+        max_tokens = 0
+        for latent in latents:
+            num_tokens = latent.shape[1]
+            if num_tokens > max_tokens:
+                max_tokens = num_tokens
+        
+        attn_masks = torch.zeros(len(latents), max_tokens)
+        for i in range(len(latents)):
+            curr_latent = latents[i]
+            num_tokens = latent.shape[1]
+            num_pad = max_tokens - num_tokens
+            # print('latent.shape before padding: ', curr_latent.shape)
+            latent = torch.nn.functional.pad(curr_latent, (0, 0, 0, num_pad, 0, 0))
+            # print("latent: ", latent)
+            # print('latent.shape after padding: ', latent.shape)
+            latents[i] = latent
+            attn_masks[i, :num_tokens] = 1
+        # print('attn_masks: ', attn_masks)
+        # print('attn_masks.shape: ', attn_masks.shape)
+        # print("len(latents): ", len(latents))
+        # print("latents[0].shape: ", latents[0].shape)
+        latent = torch.cat(latents, dim=0)
+        # print("latent.shape after cat: ", latent.shape)
+                
+        mask = torch.cat(masks, dim=1)
+        
+        restore_len = ids_restores[0].shape[1]
+        # print("restore_len: ", restore_len)
+        for i in range(len(ids_restores)):
+            curr_ids_restore = ids_restores[i]
+            ids_restores[i] = curr_ids_restore + restore_len * i
+        ids_restore = torch.cat(ids_restores, dim=1)
+        # print('ids_restore.shape: ', ids_restore.shape)
+        # print("ids_restore: ", ids_restore)
+        return latent, mask, ids_restore, attn_masks
+        
 
     def forward(self, imgs, mask_ratio_image=0.75, mask_ratio_video=0.9, test_image=False, video_test_type=""):
         self.vae.eval()
-        if imgs.shape[2] == 1: #images
-            repeat = self.patch_embed.t_patch_size
-            imgs = imgs.repeat(1, 1, repeat, 1, 1)
-        latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, video_test_type)
+        
+        # if video_test_type: 
+        #     print("video_test_type: ", video_test_type)
+        # else:
+        #     print("video_test_type: random")    
+        
+        # print("imgs.shape: ", imgs.shape)
+        print('in models_mae.py')
+        if not self.X_CLIP:
+            if imgs.shape[2] == 1: #images
+                imgs = self.repeat_img(imgs)
+            
+            latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, video_test_type)
+            # print("latent.shape: ", latent.shape)
+            # print("ids_restore.shape: ", ids_restore.shape)
+            # print("mask.shape: ", mask.shape)
+            # print("ids_restore in normal: ", ids_restore)
+            # print("mask in normal: ", mask)
+            
+        else:
+            if imgs.shape[2] == 16:
+                B = imgs.shape[0]
+                latents = []
+                masks = []
+                ids_restores = []
+                for t in range(self.patch_embed.t_grid_size):
+                    index = 2 * t
+                    curr_img = imgs[:, :, index:index+2, :, :]
+                    latent, mask, ids_restore = self.forward_encoder(curr_img, mask_ratio_image, mask_ratio_video, test_image, video_test_type, X_CLIP_t=t)
+                    # print("latent.shape after forward encoder: ", latent.shape)
+                    # print("mask.shape after forward encoder: ", mask.shape)
+                    # print("ids_restore.shape after forward encoder: ", ids_restore.shape)
+                    latents.append(latent)
+                    masks.append(mask)
+                    # print("mask in encoder: ", mask)
+                    # print("ids_restore: ", ids_restore)
+                    ids_restores.append(ids_restore)
+                latent, mask, ids_restore, attn_masks = self.X_CLIP_combine(latents, masks, ids_restores)
+                print("latent.shape after X_CLIP_combine: ", latent.shape)
+                    
+                
+                # print("ids_restore.shape before cct: ", ids_restore.shape)
+                # print("mask.shape before cct: ", mask.shape)
+                print("latent.shape before cct: ", latent.shape)
+                _, latent = self.cct(latent, attn_masks)
+                print("latent.shape after cct: ", latent.shape)
+                latent = latent.contiguous().view(B, -1, self.embed_dim)
+                # print("latent.shape after view: ", latent.shape)
+                #CODE FOR MASK AND IDS_RESTORE
+                    
+        
+        
+        
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
+        
+        # print("pred.shape: ", pred.shape)
+        
         mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
+        
+        # print("mask.shape after interleave.shape: ", mask.shape)
         
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
+        
 
 def mae_vit_base_patch16(**kwargs):
     model = MaskedAutoencoderViT(

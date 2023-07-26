@@ -1,0 +1,14 @@
+train,val,train_height,train_width,val_height,val_width,train_end_idx,val_end_idx
+flamingo,blackswan,854,480,854,480,79,49
+breakdance-flare,breakdance,854,480,854,480,70,83
+elephant,camel,854,480,854,480,79,89
+car-turn,car-roundabout,854,480,854,480,79,74
+car-turn,car-shadow,854,480,854,480,79,39
+rhino,cows,854,480,854,480,89,103
+dance-jump,dance-twirl,854,480,854,480,59,89
+dog-agility,dog,854,480,854,480,24,59
+drift-turn,drift-chicane,854,480,854,480,63,51
+drift-turn,drift-straight,854,480,854,480,63,49
+rhino,goat,854,480,854,480,89,89
+dog-agility,libby,854,480,854,480,24,48
+lady-running,parkour,854,480,854,480,64,99

@@ -29,10 +29,12 @@ def get_dataset(name, root_path, ds_type):
     if ds_type == 'image':
         transforms_train = get_image_transforms()
         if name == 'cvf':
-            dataset_train = datasets.ImageFolder(os.path.join(root_path, 'arxiv_resized_train_val_split/train/'),
+            # dataset_train = datasets.ImageFolder(os.path.join(root_path, 'arxiv_resized_train_val_split/train/'),
+            #                                      transform=transforms_train)
+            dataset_train = datasets.ImageFolder('/shared/amir/dataset/arxiv_resized_train_val_split/train', 
                                                  transform=transforms_train)
         elif name == 'imagenet':
-            dataset_train = datasets.ImageFolder(os.path.join(root_path, 'ilsvrc/train'), 
+            dataset_train = datasets.ImageFolder('/shared/group/ilsvrc/train', 
                                                  transform=transforms_train)
         else:
             raise ValueError("Wrong dataset name.")
@@ -59,8 +61,7 @@ def get_dataset(name, root_path, ds_type):
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos/") 
         elif name == "UCF101":
             dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/UCF101/") 
-        elif name == 'CSV':
-            # dataset_train = VideoDataset(path_to_data_dir="/home/dannyt123/Datasets/CSV")
+        elif name == "CSV":
             dataset_train = VideoDataset(path_to_data_dir="/shared/dannyt123/Datasets/CSV")
         else:
             raise NotImplementedError()
@@ -144,6 +145,14 @@ class MergedDataset(torch.utils.data.Dataset):
         conf = [i / sum(image_dataset_conf) for i in image_dataset_conf]
         self.datasets = image_datasets
         self.conf = conf
+
+# class MergedDataset(torch.utils.data.Dataset):
+#     def __init__(self, root_path, dataset_list, dataset_conf, ds_type):
+#         dataset_conf = [float(x) for x in dataset_conf[0].split(',')]
+#         datasets = [get_dataset(ds_name, root_path, ds_type) for ds_name in dataset_list[0].split(',')]
+#         conf = [i / sum(dataset_conf) for i in dataset_conf]
+#         self.datasets = datasets
+#         self.conf = conf
 
     def __len__(self):
         return 79000

@@ -303,20 +303,31 @@ class NativeScalerWithGradNormCount:
         update_grad=True,
     ):  
         
+        # print('before scale backward')
         self._scaler.scale(loss).backward(create_graph=create_graph)
 
+        # print('before update_grad check')
         if update_grad:
             if clip_grad is not None:
                 assert parameters is not None
+                # print('before unscale')
                 self._scaler.unscale_(
                     optimizer
                 )  # unscale the gradients of optimizer's assigned params in-place
+                # print('after unscale')
                 norm = torch.nn.utils.clip_grad_norm_(parameters, clip_grad)
+                # print('after norm')
             else:
+                # print('before unscale in else')
                 self._scaler.unscale_(optimizer)
+                # print('after unscale in else')
                 norm = get_grad_norm_(parameters)
+                # print('after norm in else')
+            # print('before step')
             self._scaler.step(optimizer)
+            # print('after step')
             self._scaler.update()
+            # print('after update')
         else:
             norm = None
         return norm
@@ -391,7 +402,37 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
         else:
             with pathmgr.open(args.resume, "rb") as f:
                 checkpoint = torch.load(f, map_location="cpu")
-        model_without_ddp.load_state_dict(checkpoint["model"])
+        missing_keys, unexpected_keys = model_without_ddp.load_state_dict(checkpoint["model"], strict=False)
+        print("missing_keys: ", missing_keys)
+        print("unexpected_keys: ", unexpected_keys)
+        
+        if (args.X_CLIP or args.AIM) and args.no_cont_pretrain:
+            for j in range(args.transfer_encoder_depth):
+                i = (args.depth - args.transfer_encoder_depth) + j
+                model_without_ddp.blocks[i].attn.in_proj_weight = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.qkv.weight'.format(i=i)].to(device=args.device))
+                model_without_ddp.blocks[i].attn.in_proj_bias = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.qkv.bias'.format(i=i)].to(device=args.device))
+                model_without_ddp.blocks[i].attn.out_proj.weight = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.proj.weight'.format(i=i)].to(device=args.device))
+                model_without_ddp.blocks[i].attn.out_proj.bias = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.proj.bias'.format(i=i)].to(device=args.device))
+                print('set weights in cct encoder for: ', i)
+                
+            # for i in range(args.depth):
+            #     if i % 2 == 1:
+            #     # if True:
+            #         model_without_ddp.blocks[i].attn.in_proj_weight = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.qkv.weight'.format(i=i)].to(device=args.device))
+            #         model_without_ddp.blocks[i].attn.in_proj_bias = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.qkv.bias'.format(i=i)].to(device=args.device))
+            #         model_without_ddp.blocks[i].attn.out_proj.weight = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.proj.weight'.format(i=i)].to(device=args.device))
+            #         model_without_ddp.blocks[i].attn.out_proj.bias = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.proj.bias'.format(i=i)].to(device=args.device))
+            #         print('set weights in cct encoder for: ', i)
+            
+                
+            for j in range(args.transfer_decoder_depth):
+                i = (args.decoder_depth - args.transfer_decoder_depth) + j
+                model_without_ddp.decoder_blocks[i].attn.in_proj_weight = torch.nn.Parameter(checkpoint['model']['decoder_blocks.{i}.attn.qkv.weight'.format(i=i)].to(device=args.device))
+                model_without_ddp.decoder_blocks[i].attn.in_proj_bias = torch.nn.Parameter(checkpoint['model']['decoder_blocks.{i}.attn.qkv.bias'.format(i=i)].to(device=args.device))
+                model_without_ddp.decoder_blocks[i].attn.out_proj.weight = torch.nn.Parameter(checkpoint['model']['decoder_blocks.{i}.attn.proj.weight'.format(i=i)].to(device=args.device))
+                model_without_ddp.decoder_blocks[i].attn.out_proj.bias = torch.nn.Parameter(checkpoint['model']['decoder_blocks.{i}.attn.proj.bias'.format(i=i)].to(device=args.device))
+                print('set weights in decoder for: ', i)
+
         print("Resume checkpoint %s" % args.resume)
         if (
             "optimizer" in checkpoint
@@ -399,12 +440,14 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
             and not (hasattr(args, "eval") and args.eval)
             and not args.no_cont_pretrain
         ):
+            print('not in no_cont_pretrain')
             optimizer.load_state_dict(checkpoint["optimizer"])
             args.start_epoch = checkpoint["epoch"] + 1
             if "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
             print("With optim & sched!")
         elif args.no_cont_pretrain:
+            print("in no_cont_pretrain")
             args.start_epoch = 0
             
     return args.resume
@@ -484,6 +527,38 @@ def add_weight_decay(model, weight_decay=1e-5, skip_list=(), bias_wd=False):
     return [
         {"params": no_decay, "weight_decay": 0.0},
         {"params": decay, "weight_decay": weight_decay},
+    ]
+    
+
+def add_weight_decay_and_lr(model, lr=8e-6, weight_decay=1e-5, skip_list=(), bias_wd=False):
+    decay = []
+    decay_faster = []
+    no_decay = []
+    no_decay_faster = []
+    for name, param in model.named_parameters():
+        if not param.requires_grad:
+            continue  # frozen weights
+        if (
+            (not bias_wd)
+            and len(param.shape) == 1
+            or name.endswith(".bias")
+            or name in skip_list
+        ):
+            if "message" in name:
+                no_decay_faster.append(param)
+            else:
+                no_decay.append(param)
+        else:
+            if "message" in name:
+                decay_faster.append(param)
+            else:
+                decay.append(param)
+        
+    return [
+        {"params": no_decay, "weight_decay": 0.0},
+        {"params": no_decay_faster, "weight_decay": 0.0, "lr": lr * 10},
+        {"params": decay, "weight_decay": weight_decay},
+        {"params": decay_faster, "weight_decay": weight_decay, "lr": lr * 10},
     ]
 
 

@@ -27,6 +27,7 @@ import torch.backends.cudnn as cudnn
 import traceback
 from iopath.common.file_io import g_pathmgr as pathmgr
 import models_mae
+from mae_image import models_mae_image
 from engine_pretrain import train_one_epoch
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from torch.utils.tensorboard import SummaryWriter
@@ -39,7 +40,7 @@ def get_args_parser():
 
     parser.add_argument("--test_mode", action="store_true", help="If provided, skips training then exits")
     parser.add_argument("--batch_size_image", default=64, type=int, help="Image batch size per GPU")
-    parser.add_argument("--batch_size_video", default=1, type=int, help="Video batch size per GPU")
+    parser.add_argument("--batch_size_video", default=4, type=int, help="Video batch size per GPU")
     parser.add_argument("--epochs", default=4000, type=int)
     parser.add_argument("--accum_iter_image", default=1, type=int, help="accum iteration for image")
     parser.add_argument("--accum_iter_video", default=64, type=int, help="accum iteration for video")
@@ -59,6 +60,38 @@ def get_args_parser():
         metavar="MODEL",
         help="Name of model to train",
     )
+    
+    parser.add_argument(
+        "--X_CLIP",
+        action='store_true',
+        help="Provide for using X_CLIP",
+    )
+    
+    parser.add_argument(
+        "--AIM",
+        action='store_true',
+        help="Provide for using X_CLIP",
+    )
+    
+    parser.add_argument(
+        "--transfer_encoder_depth",
+        default=0,
+        type=int,
+        help="The number of CCT blocks in the encoder from the last encoders",
+    )
+    
+    parser.add_argument(
+        "--transfer_decoder_depth",
+        default=0,
+        type=int,
+        help="The number of CCT blocks in the decoder from the last decoders",
+    )
+
+    parser.add_argument(
+        "--mae_image",
+        action='store_true',
+        help="Provide for mae_image",
+    )
 
     parser.add_argument("--input_size", default=224, type=int, help="images input size")
 
@@ -75,13 +108,6 @@ def get_args_parser():
         type=float,
         help="Masking ratio (percentage of removed patches). 0.9 for video, and 0.75 for images",
     )
-
-    parser.add_argument(
-        "--norm_pix_loss",  # keep this false because it normalizes within N(0, 1) in a patch
-        action="store_true",
-        help="Use (per-patch) normalized pixels as targets for computing loss",
-    )
-    parser.set_defaults(norm_pix_loss=False)
 
     # Optimizer parameters
     parser.add_argument(
@@ -113,7 +139,7 @@ def get_args_parser():
     )
 
     parser.add_argument(
-        "--warmup_epochs", type=int, default=5, metavar="N", help="epochs to warmup LR"
+        "--warmup_epochs", type=int, default=120, metavar="N", help="epochs to warmup LR" #5
     )
 
     parser.add_argument(
@@ -169,6 +195,7 @@ def get_args_parser():
 
     parser.add_argument("--decoder_embed_dim", default=512, type=int)
     parser.add_argument("--decoder_depth", default=4, type=int)
+    parser.add_argument("--depth", default=24, type=int)
     parser.add_argument("--decoder_num_heads", default=16, type=int)
     parser.add_argument("--t_patch_size", default=2, type=int)
     parser.add_argument("--num_frames", default=16, type=int)
@@ -222,17 +249,14 @@ def get_args_parser():
     parser.set_defaults(cls_embed=True)
 
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
-    parser.add_argument('--image_dataset_list', nargs='+', default=['cvf'])
-    parser.add_argument('--image_dataset_conf', nargs='+', default=[1]) 
-    parser.add_argument('--video_dataset_list', nargs='+', default=["kinetics"])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[1])
+    parser.add_argument('--image_dataset_list', nargs='+', default=['imagenet', 'cvf'])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=[1, 1]) 
+    parser.add_argument('--video_dataset_list', nargs='+', default=["kinetics", "Objectron", "SSV2", "UCF101", "CSV"])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=[2, 2, 1, 1, 2])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
     parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
-    parser.add_argument('--davis_path', type=str, help='Path to the DAVIS folder containing the JPEGImages, Annotations, '
-                                                   'ImageSets, Annotations_unsupervised folders',
-                    default='/shared/dannyt123/Datasets/DAVIS')
-    parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
+    parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr') #4
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
 
     return parser
@@ -259,6 +283,8 @@ def main(args):
         dataset_image_train = None
     
     if args.video_itr > 0:
+        print("creating video merged dataset")
+        print("args.video_dataset_list: ", args.video_dataset_list)
         dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video')
     else:
         dataset_video_train = None
@@ -307,6 +333,8 @@ def main(args):
     else:
         data_loader_image_train = None
 
+    # args.batch_size_video = 4
+    print('args.batch_size_video: ', 4)
     if args.video_itr > 0: 
         data_loader_video_train = torch.utils.data.DataLoader(
             dataset_video_train,
@@ -321,9 +349,15 @@ def main(args):
 
 
     # define the model
-    model = models_mae.__dict__[args.model](
-        **vars(args),
-    )
+    if args.mae_image:
+        model = models_mae_image.__dict__[args.model](
+            **vars(args),
+        )
+    else:
+        print('not in mae_image')
+        model = models_mae.__dict__[args.model](
+            **vars(args),
+        )
 
     try:
         model.to(device)
@@ -358,18 +392,30 @@ def main(args):
             model,
             device_ids=[torch.cuda.current_device()],
             find_unused_parameters=True,
+            static_graph=True,
         )
         model_without_ddp = model.module
 
     # following timm: set wd as 0 for bias and norm layers
-    param_groups = misc.add_weight_decay(
-        model_without_ddp,
-        args.weight_decay,
-        bias_wd=args.bias_wd,
-    )
+    if args.X_CLIP:
+        param_groups = misc.add_weight_decay_and_lr(
+            model_without_ddp,
+            args.lr,
+            args.weight_decay,
+            bias_wd=args.bias_wd,
+        )
+    else:
+        param_groups = misc.add_weight_decay(
+            model_without_ddp,
+            args.weight_decay,
+            bias_wd=args.bias_wd,
+        )
 
     if args.beta is None:
-        beta = (0.9, 0.95)
+        if args.X_CLIP and args.no_cont_pretrain:
+            beta = (0.9, 0.98)
+        else:
+            beta = (0.9, 0.95)
     else:
         beta = args.beta
     optimizer = torch.optim._multi_tensor.AdamW(
@@ -449,27 +495,39 @@ def main(args):
 
         if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
             with torch.no_grad():
+                if args.test_mode:
+                    log_stats = {}
+                    
                 model.eval()
                 store_path = os.path.join(args.output_dir, "davis_segs")
                 if not os.path.exists(store_path):
                     os.mkdir(store_path)
-                eval_name = "model_mae"
+            
                 parent = Path(__file__).parent.absolute()
                 prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
-                davis_prompts_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                davis_path = args.davis_path
-                generate_segmentations(model, store_path, eval_name, prompt_csv, davis_prompts_path)
-                print("Finished Saving Davis Eval Segmentations")
+                single_prompt_csv = os.path.join(parent, "datasets/davis_single_prompt.csv")
                 
-                single_mean = run_evaluation_method(store_path, eval_name, davis_path)
-                log_stats["Davis_single_mean"] = single_mean
+                davis_prompt_path = os.path.join(args.video_prompts_dir, "davis_prompt")
+                davis_2x2_prompt_path = '/shared/dannyt123/video_inpainting/test_videos/davis_2x2_single_prompt'
+                davis_image_prompt_path = '/shared/dannyt123/video_inpainting/test_images/single_davis_image_prompts' 
+                
+                generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
+                print("Finished Saving Davis Eval Segmentations")                
+                
+                # single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
+                single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
+                # log_stats["Davis_single_mean_orig"] = single_mean_orig
+                print('single_mean_2x2: ', single_mean_2x2)
+                print('single_mean_image: ', single_mean_image)
+                log_stats["single_mean_2x2"] = single_mean_2x2
+                log_stats["single_mean_image"] = single_mean_image
                 model.train()
 
         if misc.is_main_process():
             if not args.test_mode:
                 wandb.log(log_stats)
             model.eval()
-            visualize_prompting(model, args.video_prompts_dir)
+            visualize_prompting(model, args.video_prompts_dir, mae_image=args.mae_image)
             model.train()
         print("Done loop on epoch {}".format(epoch))
 
