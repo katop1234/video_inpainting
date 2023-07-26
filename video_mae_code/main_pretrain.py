@@ -237,7 +237,7 @@ def get_args_parser():
     parser.add_argument(
         "--beta",
         default=None,
-        type=float,
+        # type=float,
         nargs="+",
     )
     parser.add_argument(
@@ -412,12 +412,10 @@ def main(args):
         )
 
     if args.beta is None:
-        if args.X_CLIP and args.no_cont_pretrain:
-            beta = (0.9, 0.98)
-        else:
-            beta = (0.9, 0.95)
-    else:
-        beta = args.beta
+        beta = (0.9, 0.95)
+    else: 
+        beta = tuple(float(x) for x in args.beta[0].split(','))
+        
     optimizer = torch.optim._multi_tensor.AdamW(
         param_groups,
         lr=args.lr,

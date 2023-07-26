@@ -62,7 +62,7 @@ class MaskedAutoencoderViT(nn.Module):
                 for i in range(depth)])
         elif AIM:
             self.blocks = nn.ModuleList([
-                CheckpointBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (depth - transfer_encoder_depth) else ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16)
+                CheckpointBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (depth - transfer_encoder_depth) else ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5)
                 for i in range(depth)])
         else:
             self.blocks = nn.ModuleList([
@@ -90,7 +90,7 @@ class MaskedAutoencoderViT(nn.Module):
         elif AIM:
             self.decoder_blocks = nn.ModuleList([
                 # CheckpointBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
-                CheckpointBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (decoder_depth - transfer_decoder_depth) else ResidualAttentionBlock(d_model=decoder_embed_dim, n_head=decoder_num_heads, mlp_ratio=mlp_ratio)
+                CheckpointBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (decoder_depth - transfer_decoder_depth) else ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5)
                 for i in range(decoder_depth)])
         else:
             self.decoder_blocks = nn.ModuleList([
@@ -379,6 +379,9 @@ class MaskedAutoencoderViT(nn.Module):
         return loss
 
     def forward(self, imgs, visual_tokens=None, mask_ratio_image=0.75, mask_ratio_video=0.9, mask_inpt_mask=None, test_image=False, video_test_type=''):
+        if self.AIM:
+            self.eval()
+            
         N, C, T, H, W = imgs.shape
         
         if video_test_type == '2x2 tube':

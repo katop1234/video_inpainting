@@ -139,20 +139,12 @@ class CombinedGen:
 
 
 class MergedDataset(torch.utils.data.Dataset):
-    def __init__(self, root_path, image_dataset_list, image_dataset_conf, ds_type):
-        image_dataset_conf = [float(x) for x in image_dataset_conf]
-        image_datasets = [get_dataset(ds_name, root_path, ds_type) for ds_name in image_dataset_list]
-        conf = [i / sum(image_dataset_conf) for i in image_dataset_conf]
-        self.datasets = image_datasets
+    def __init__(self, root_path, dataset_list, dataset_conf, ds_type):
+        dataset_conf = [float(x) for x in dataset_conf[0].split(',')]
+        datasets = [get_dataset(ds_name, root_path, ds_type) for ds_name in dataset_list[0].split(',')]
+        conf = [i / sum(dataset_conf) for i in dataset_conf]
+        self.datasets = datasets
         self.conf = conf
-
-# class MergedDataset(torch.utils.data.Dataset):
-#     def __init__(self, root_path, dataset_list, dataset_conf, ds_type):
-#         dataset_conf = [float(x) for x in dataset_conf[0].split(',')]
-#         datasets = [get_dataset(ds_name, root_path, ds_type) for ds_name in dataset_list[0].split(',')]
-#         conf = [i / sum(dataset_conf) for i in dataset_conf]
-#         self.datasets = datasets
-#         self.conf = conf
 
     def __len__(self):
         return 79000
