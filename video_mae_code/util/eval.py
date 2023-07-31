@@ -266,9 +266,9 @@ def decode_raw_prediction(mask, model, num_patches, orig_image, y, mae_image=Fal
     return im_paste, mask, orig_image
 
 @torch.no_grad()
-def visualize_prompting(model, test_cases_folder, mae_image=False):
+def visualize_prompting(model, test_cases_folder, mae_image=False, mask_ratio_image=0.75, mask_ratio_video=0.9):
     visualize_image_prompting(model, os.path.join(test_cases_folder, "test_images/"), mae_image=mae_image)
-    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "random", mae_image=mae_image)
+    visualize_video_prompting(model, os.path.join(test_cases_folder, "random_masked_videos/"), "random", mae_image=mae_image, mask_ratio_video=mask_ratio_video)
     # visualize_video_prompting(model, os.path.join(test_cases_folder, "temporally_masked_videos/"), "temporal", mae_image=mae_image)
     # visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_1_video/"), "spatiotemporal", mae_image=mae_image)
     # visualize_video_prompting(model, os.path.join(test_cases_folder, "spatiotemporally_masked_2_videos/"), "spatiotemporal", mae_image=mae_image)
@@ -328,7 +328,7 @@ def visualize_image_prompting(model, input_image_viz_dir, mae_image=False):
         wandb.log({output_img_name: image})
 
 @torch.no_grad()
-def visualize_video_prompting(model, input_video_viz_dir, test_type="", mae_image=False):    
+def visualize_video_prompting(model, input_video_viz_dir, test_type="", mae_image=False, mask_ratio_video=0.9):    
     if type(model) is torch.nn.parallel.DistributedDataParallel:
         model = model.module
 
@@ -340,7 +340,7 @@ def visualize_video_prompting(model, input_video_viz_dir, test_type="", mae_imag
     # print('test_model_input.shape in video: ', test_model_input.shape)
 
     if test_type == "random":
-        _, test_model_output, mask = model(test_model_input)
+        _, test_model_output, mask = model(test_model_input, mask_ratio_video=mask_ratio_video)
     elif test_type:
         _, test_model_output, mask = model(test_model_input, video_test_type=test_type)
     else:

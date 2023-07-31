@@ -23,8 +23,9 @@ sys.path.append("../")
 from vqgan import get_vq_model
 from X_CLIP.cct import CrossFramelAttentionBlock
 from AIM.vit_clip import ResidualAttentionBlock
+from util.video_vit import CheckpointVideoBlock, VideoBlock
 
-class CheckpointBlock(Block):
+class CheckpointImageBlock(Block):
     def forward(self, x, T=16):
         norm1_x = self.norm1(x)
         x = x + self.drop_path(checkpoint(self.attn, norm1_x))
@@ -38,7 +39,8 @@ class MaskedAutoencoderViT(nn.Module):
     def __init__(self, img_size=224, patch_size=16, in_chans=3,
                  embed_dim=1024, depth=24, num_heads=16,
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16, transfer_encoder_depth=0,
-                 transfer_decoder_depth=0, mlp_ratio=4., norm_layer=nn.LayerNorm, 
+                 transfer_decoder_depth=0, video_encoder_depth=0, 
+                 video_decoder_depth=0, mlp_ratio=4., norm_layer=nn.LayerNorm, 
                  X_CLIP=False, AIM=False, **kwargs):
         super().__init__()
         # --------------------------------------------------------------------------
@@ -54,19 +56,30 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim), requires_grad=False)  # fixed sin-cos embedding
+        self.embed_dim = embed_dim
+        
+        self.video_encoder_depth = video_encoder_depth
+        if video_encoder_depth > 0:
+            self.pos_embed_temporal = nn.Parameter(
+                torch.zeros(1, 16, embed_dim)
+            )
 
         if X_CLIP:
             self.blocks = nn.ModuleList([
-                CheckpointBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (depth - transfer_encoder_depth) else CrossFramelAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio)
-                # CheckpointBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i % 2 == 0 else CrossFramelAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio)
+                # CheckpointImageBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (depth - transfer_encoder_depth) else CrossFramelAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio)
+                Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (depth - transfer_encoder_depth) else CrossFramelAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio)
                 for i in range(depth)])
+            self.video_blocks = nn.ModuleList([
+                # CheckpointVideoBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                VideoBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                for i in range(video_encoder_depth)])
         elif AIM:
             self.blocks = nn.ModuleList([
-                CheckpointBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (depth - transfer_encoder_depth) else ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5)
+                CheckpointImageBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (depth - transfer_encoder_depth) else ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5)
                 for i in range(depth)])
         else:
             self.blocks = nn.ModuleList([
-                CheckpointBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                CheckpointImageBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(depth)])
         self.norm = norm_layer(embed_dim)
         self.vae = get_vq_model().eval()
@@ -81,20 +94,29 @@ class MaskedAutoencoderViT(nn.Module):
         self.mask_token = nn.Parameter(torch.zeros(1, 1, decoder_embed_dim))
 
         self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
+        self.decoder_embed_dim = decoder_embed_dim
+        self.video_decoder_depth = video_decoder_depth
+        if video_decoder_depth > 0:
+            self.decoder_pos_embed_temporal = nn.Parameter(
+                torch.zeros(1, 16, decoder_embed_dim)
+            )
 
         if X_CLIP:
             self.decoder_blocks = nn.ModuleList([
-                # CheckpointBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
-                CheckpointBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (decoder_depth - transfer_decoder_depth) else CrossFramelAttentionBlock(d_model=decoder_embed_dim, n_head=decoder_num_heads, mlp_ratio=mlp_ratio)
+                # CheckpointImageBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (decoder_depth - transfer_decoder_depth) else CrossFramelAttentionBlock(d_model=decoder_embed_dim, n_head=decoder_num_heads, mlp_ratio=mlp_ratio)
+                Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (decoder_depth - transfer_decoder_depth) else CrossFramelAttentionBlock(d_model=decoder_embed_dim, n_head=decoder_num_heads, mlp_ratio=mlp_ratio)
                 for i in range(decoder_depth)])
+            self.decoder_video_blocks = nn.ModuleList([
+                # CheckpointVideoBlock(decoder_embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                VideoBlock(decoder_embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                for i in range(video_decoder_depth)])
         elif AIM:
             self.decoder_blocks = nn.ModuleList([
-                # CheckpointBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
-                CheckpointBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (decoder_depth - transfer_decoder_depth) else ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5)
+                CheckpointImageBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (decoder_depth - transfer_decoder_depth) else ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5)
                 for i in range(decoder_depth)])
         else:
             self.decoder_blocks = nn.ModuleList([
-                CheckpointBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                CheckpointImageBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(decoder_depth)])
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
@@ -107,6 +129,32 @@ class MaskedAutoencoderViT(nn.Module):
             for n, p in self.named_parameters():
                 if 'Adapter' not in n:
                     p.requires_grad_(False)
+
+        if train_cct_only: #Testing for training only CCT blocks
+            grad_blocks = []
+            for j in range(transfer_encoder_depth):
+                i = (depth - transfer_encoder_depth) + j
+                grad_blocks.append('blocks.{i}.'.format(i=i))
+                
+            for j in range(transfer_decoder_depth):
+                i = (depth - transfer_decoder_depth) + j
+                grad_blocks.append('decoder_blocks.{i}.'.format(i=i))
+                
+            for n, p in self.named_parameters():
+                requires_grad = False
+                for grad_block in grad_blocks:
+                    if grad_block in n:
+                        requires_grad = True
+
+                p.requires_grad_(requires_grad)
+        
+        if train_video_only: #Testing for training only video blocks        
+            for n, p in self.named_parameters():
+                if 'video' not in n and 'temporal' not in n:
+                    print('n no grad: ', n)
+                    p.requires_grad_(False)
+                else: 
+                    print("n grad: ", n)
         # --------------------------------------------------------------------------
         self.initialize_weights()
 
@@ -115,9 +163,13 @@ class MaskedAutoencoderViT(nn.Module):
         # initialize (and freeze) pos_embed by sin-cos embedding
         pos_embed = get_2d_sincos_pos_embed(self.pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
         self.pos_embed.data.copy_(torch.from_numpy(pos_embed).float().unsqueeze(0))
+        if self.video_encoder_depth > 0:
+            torch.nn.init.trunc_normal_(self.pos_embed_temporal, std=0.02)
 
         decoder_pos_embed = get_2d_sincos_pos_embed(self.decoder_pos_embed.shape[-1], int(self.patch_embed.num_patches**.5), cls_token=True)
         self.decoder_pos_embed.data.copy_(torch.from_numpy(decoder_pos_embed).float().unsqueeze(0))
+        if self.video_decoder_depth > 0:
+            torch.nn.init.trunc_normal_(self.decoder_pos_embed_temporal, std=0.02)
 
         # initialize patch_embed like nn.Linear (instead of nn.Conv2d)
         w = self.patch_embed.proj.weight.data
@@ -131,7 +183,6 @@ class MaskedAutoencoderViT(nn.Module):
         self.apply(self._init_weights)
         
         if self.AIM:   
-            print('in AIM in intialize weights')
             ## initialize S_Adapter
             for n, m in self.blocks.named_modules():
                 if 'S_Adapter' in n:
@@ -312,7 +363,7 @@ class MaskedAutoencoderViT(nn.Module):
         
         return x_masked, ids_restore, ids_keep
 
-    def forward_encoder(self, x, mask_ratio=0.9, test_image=False, video_test_type='', T=16):
+    def forward_encoder(self, x, mask_ratio=0.9, test_image=False, video_test_type='', T=16, N=1):
         # embed patches
         x = self.patch_embed(x)
 
@@ -334,12 +385,31 @@ class MaskedAutoencoderViT(nn.Module):
 
         # apply Transformer blocks
         for blk in self.blocks:
-            x = blk(x, T=T)
+            if self.X_CLIP or self.AIM:
+                x = blk(x, T=T)
+            else:
+                x = blk(x)
+
+        if self.video_encoder_depth > 0:
+            patches = x.shape[1]
+            x = x.reshape(N, -1, self.embed_dim)
+            if T == 16:
+                temporal_embed = torch.repeat_interleave(
+                    self.pos_embed_temporal,
+                    patches,
+                    dim=1,
+                )
+                temporal_embed = temporal_embed.expand(N, -1, -1)
+                x += temporal_embed
+                
+            for blk in self.video_blocks:
+                x = blk(x)
+            x = x.reshape(N * T, -1, self.embed_dim)
         x = self.norm(x)
 
         return x, mask, ids_restore
 
-    def forward_decoder(self, x, ids_restore, T=16):
+    def forward_decoder(self, x, ids_restore, T=16, N=1):
         # embed tokens
         x = self.decoder_embed(x)
 
@@ -355,7 +425,26 @@ class MaskedAutoencoderViT(nn.Module):
 
         # apply Transformer blocks
         for blk in self.decoder_blocks:
-            x = blk(x, T=T)
+            if self.X_CLIP or self.AIM:
+                x = blk(x, T=T)
+            else:
+                x = blk(x)
+            
+        if self.video_decoder_depth > 0:
+            patches = x.shape[1]
+            x = x.reshape(N, -1, self.decoder_embed_dim)
+            if T == 16:
+                temporal_embed = torch.repeat_interleave(
+                    self.decoder_pos_embed_temporal,
+                    patches,
+                    dim=1,
+                )
+                temporal_embed = temporal_embed.expand(N, -1, -1)
+                x += temporal_embed
+            for blk in self.decoder_video_blocks:
+                x = blk(x)
+            x = x.reshape(N * T, -1, self.decoder_embed_dim)
+        
         x = self.decoder_norm(x)
 
         # predictor projection
@@ -386,7 +475,7 @@ class MaskedAutoencoderViT(nn.Module):
         
         if video_test_type == '2x2 tube':
             test_image = True
-         
+        
         imgs = imgs.contiguous().view(N*T, C, H, W)   
         if not video_test_type or video_test_type == '2x2 tube':
             if T == 1:
@@ -394,11 +483,11 @@ class MaskedAutoencoderViT(nn.Module):
             else:
                 mask_ratio = mask_ratio_video
                 
-            latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio, test_image, T=T)
+            latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio, test_image, T=T, N=N)
         else:
             raise NotImplementedError
         
-        pred = self.forward_decoder(latent, ids_restore, T=T)  # [N, L, p*p*3]
+        pred = self.forward_decoder(latent, ids_restore, T=T, N=N)  # [N, L, p*p*3]
         loss = self.forward_loss(imgs, pred, mask)
         
         pred = pred.contiguous().view(N, -1, 1024) #N*T, -1, 1024

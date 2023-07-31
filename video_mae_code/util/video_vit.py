@@ -127,7 +127,7 @@ class Attention(nn.Module):
         x = x.view(B, -1, C)
         return x
 
-class Block(nn.Module):
+class VideoBlock(nn.Module):
     """
     Transformer Block with specified Attention function
     """
@@ -172,7 +172,7 @@ class Block(nn.Module):
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
     
-class CheckpointBlock(Block):
+class CheckpointVideoBlock(VideoBlock):
     def forward(self, x):
         norm1_x = self.norm1(x)
         x = x + self.drop_path(checkpoint(self.attn, norm1_x))

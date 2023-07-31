@@ -415,16 +415,6 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
                 model_without_ddp.blocks[i].attn.out_proj.bias = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.proj.bias'.format(i=i)].to(device=args.device))
                 print('set weights in cct encoder for: ', i)
                 
-            # for i in range(args.depth):
-            #     if i % 2 == 1:
-            #     # if True:
-            #         model_without_ddp.blocks[i].attn.in_proj_weight = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.qkv.weight'.format(i=i)].to(device=args.device))
-            #         model_without_ddp.blocks[i].attn.in_proj_bias = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.qkv.bias'.format(i=i)].to(device=args.device))
-            #         model_without_ddp.blocks[i].attn.out_proj.weight = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.proj.weight'.format(i=i)].to(device=args.device))
-            #         model_without_ddp.blocks[i].attn.out_proj.bias = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.proj.bias'.format(i=i)].to(device=args.device))
-            #         print('set weights in cct encoder for: ', i)
-            
-                
             for j in range(args.transfer_decoder_depth):
                 i = (args.decoder_depth - args.transfer_decoder_depth) + j
                 model_without_ddp.decoder_blocks[i].attn.in_proj_weight = torch.nn.Parameter(checkpoint['model']['decoder_blocks.{i}.attn.qkv.weight'.format(i=i)].to(device=args.device))
@@ -440,14 +430,12 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
             and not (hasattr(args, "eval") and args.eval)
             and not args.no_cont_pretrain
         ):
-            print('not in no_cont_pretrain')
             optimizer.load_state_dict(checkpoint["optimizer"])
             args.start_epoch = checkpoint["epoch"] + 1
             if "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
             print("With optim & sched!")
         elif args.no_cont_pretrain:
-            print("in no_cont_pretrain")
             args.start_epoch = 0
             
     return args.resume
@@ -544,21 +532,21 @@ def add_weight_decay_and_lr(model, lr=8e-6, weight_decay=1e-5, skip_list=(), bia
             or name.endswith(".bias")
             or name in skip_list
         ):
-            if "message" in name:
+            if "message" in name or "video" in name or "temporal" in name:
                 no_decay_faster.append(param)
             else:
                 no_decay.append(param)
         else:
-            if "message" in name:
+            if "message" in name or "video" in name or "temporal" in name:
                 decay_faster.append(param)
             else:
                 decay.append(param)
         
     return [
         {"params": no_decay, "weight_decay": 0.0},
-        {"params": no_decay_faster, "weight_decay": 0.0, "lr": lr * 10},
+        {"params": no_decay_faster, "weight_decay": 0.0, "lr": lr * 100},
         {"params": decay, "weight_decay": weight_decay},
-        {"params": decay_faster, "weight_decay": weight_decay, "lr": lr * 10},
+        {"params": decay_faster, "weight_decay": weight_decay, "lr": lr * 100},
     ]
 
 

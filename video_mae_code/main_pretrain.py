@@ -51,6 +51,18 @@ def get_args_parser():
         action='store_true',
         help="Provide for restarting the optimizer and epoch count",
     )
+    
+    parser.add_argument(
+        "--train_cct_only",
+        action='store_true',
+        help="Provide for training cct encoder/decoder blocks only",
+    )
+    
+    parser.add_argument(
+        "--train_video_only",
+        action='store_true',
+        help="Provide for training video encoder/decoder blocks only",
+    )
 
     # Model parameters
     parser.add_argument(
@@ -85,6 +97,20 @@ def get_args_parser():
         default=0,
         type=int,
         help="The number of CCT blocks in the decoder from the last decoders",
+    )
+    
+    parser.add_argument(
+        "--video_encoder_depth",
+        default=0,
+        type=int,
+        help="The number of video blocks in the encoder from the last encoders",
+    )
+    
+    parser.add_argument(
+        "--video_decoder_depth",
+        default=0,
+        type=int,
+        help="The number of video blocks in the decoder from the last decoders",
     )
 
     parser.add_argument(
@@ -140,6 +166,12 @@ def get_args_parser():
 
     parser.add_argument(
         "--warmup_epochs", type=int, default=120, metavar="N", help="epochs to warmup LR" #5
+    )
+    
+    parser.add_argument(
+        "--new_faster_lr",
+        action='store_true',
+        help="Provide for faster learning rate for new parameters in X_CLIP",
     )
 
     parser.add_argument(
@@ -249,14 +281,14 @@ def get_args_parser():
     parser.set_defaults(cls_embed=True)
 
     parser.add_argument("--dataset_root", default=os.path.join(os.path.expanduser("~"), "Datasets"), help="parent folder for all datasets")
-    parser.add_argument('--image_dataset_list', nargs='+', default=['imagenet', 'cvf'])
-    parser.add_argument('--image_dataset_conf', nargs='+', default=[1, 1]) 
-    parser.add_argument('--video_dataset_list', nargs='+', default=["kinetics", "Objectron", "SSV2", "UCF101", "CSV"])
-    parser.add_argument('--video_dataset_conf', nargs='+', default=[2, 2, 1, 1, 2])
+    parser.add_argument('--image_dataset_list', nargs='+', default=['imagenet,cvf'])
+    parser.add_argument('--image_dataset_conf', nargs='+', default=['1,1']) 
+    parser.add_argument('--video_dataset_list', nargs='+', default=["kinetics,Objectron,SSV2,UCF101,CSV"])
+    parser.add_argument('--video_dataset_conf', nargs='+', default=['2,2,1,1,2'])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
     parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
-    parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr') #4
+    parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
 
     return parser
@@ -392,18 +424,25 @@ def main(args):
             model,
             device_ids=[torch.cuda.current_device()],
             find_unused_parameters=True,
-            static_graph=True,
+            # static_graph=True,
         )
         model_without_ddp = model.module
 
     # following timm: set wd as 0 for bias and norm layers
     if args.X_CLIP:
-        param_groups = misc.add_weight_decay_and_lr(
-            model_without_ddp,
-            args.lr,
-            args.weight_decay,
-            bias_wd=args.bias_wd,
-        )
+        if args.new_faster_lr:
+            param_groups = misc.add_weight_decay_and_lr(
+                model_without_ddp,
+                args.lr,
+                args.weight_decay,
+                bias_wd=args.bias_wd,
+            )
+        else:
+            param_groups = misc.add_weight_decay(
+                model_without_ddp,
+                args.weight_decay,
+                bias_wd=args.bias_wd,
+            )
     else:
         param_groups = misc.add_weight_decay(
             model_without_ddp,
@@ -525,7 +564,7 @@ def main(args):
             if not args.test_mode:
                 wandb.log(log_stats)
             model.eval()
-            visualize_prompting(model, args.video_prompts_dir, mae_image=args.mae_image)
+            visualize_prompting(model, args.video_prompts_dir, mae_image=args.mae_image, mask_ratio_image=args.mask_ratio_image, mask_ratio_video=args.mask_ratio_video)
             model.train()
         print("Done loop on epoch {}".format(epoch))
 

@@ -78,6 +78,7 @@ class ResidualAttentionBlock(nn.Module):
         return self.attn(x, x, x, need_weights=False, attn_mask=self.attn_mask)[0]
 
     def forward(self, x: torch.Tensor, T=16):
+        x = x.permute(1, 0, 2)
         ## x shape [HW+1, BT, D]
         n, bt, d = x.shape
         ## temporal adaptation
@@ -98,6 +99,7 @@ class ResidualAttentionBlock(nn.Module):
         # xn = self.ln_2(x)
         xn = self.norm2(x)
         x = x + self.mlp(xn) + self.drop_path(self.scale * self.MLP_Adapter(xn))
+        x = x.permute(1, 0, 2)
         return x
 
 

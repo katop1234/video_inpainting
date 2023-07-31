@@ -8,27 +8,21 @@ from torch.utils.checkpoint import checkpoint
 
 
 class CrossFramelAttentionBlock(nn.Module):
-    def __init__(self, d_model: int, n_head: int, mlp_ratio=4., attn_mask: torch.Tensor = None, droppath = 0., ): #T=0, 
+    def __init__(self, d_model: int, n_head: int, mlp_ratio=4., attn_mask: torch.Tensor = None, droppath = 0., ):
         super().__init__()
-        # self.T = T
-
         self.message_fc = nn.Linear(d_model, d_model)
         self.message_ln = LayerNorm(d_model)
         self.message_attn = nn.MultiheadAttention(d_model, n_head,)
            
         self.attn = nn.MultiheadAttention(d_model, n_head,)
-        # self.ln_1 = LayerNorm(d_model)
         self.norm1 = LayerNorm(d_model)
         
         self.drop_path = DropPath(droppath) if droppath > 0. else nn.Identity()
         self.mlp = nn.Sequential(OrderedDict([
-            # ("c_fc", nn.Linear(d_model, int(d_model * mlp_ratio))),
             ("fc1", nn.Linear(d_model, int(d_model * mlp_ratio))),
             ("gelu", QuickGELU()),
             ("fc2", nn.Linear(int(d_model * mlp_ratio), d_model))
-            # ("c_proj", nn.Linear(int(d_model * mlp_ratio), d_model))
         ]))
-        # self.ln_2 = LayerNorm(d_model)
         self.norm2 = LayerNorm(d_model)
         self.attn_mask = attn_mask
 
@@ -52,7 +46,7 @@ class CrossFramelAttentionBlock(nn.Module):
         
         x = torch.cat([x, msg_token], dim=0)
         
-        x = x.view(l+1, -1, d)        
+        x = x.view(l+1, -1, d)
         x = x + self.drop_path(self.attention(self.norm1(x)))
         x = x[:l,:,:]
         x = x + self.drop_path(self.mlp(self.norm2(x)))
