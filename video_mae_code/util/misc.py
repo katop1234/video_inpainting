@@ -544,9 +544,9 @@ def add_weight_decay_and_lr(model, lr=8e-6, weight_decay=1e-5, skip_list=(), bia
         
     return [
         {"params": no_decay, "weight_decay": 0.0},
-        {"params": no_decay_faster, "weight_decay": 0.0, "lr": lr * 100},
+        {"params": no_decay_faster, "weight_decay": 0.0, "lr": lr * 10},
         {"params": decay, "weight_decay": weight_decay},
-        {"params": decay_faster, "weight_decay": weight_decay, "lr": lr * 100},
+        {"params": decay_faster, "weight_decay": weight_decay, "lr": lr * 10},
     ]
 
 
