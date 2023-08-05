@@ -29,7 +29,6 @@ def extract_image_seg(image_array, orig_height, orig_width, mask_type):
     if mask_type == 'spatiotemporal':
         seg_array = image_array[112:, :, :]
     elif mask_type == '2x2 tube' or 'test image':
-        # print('image_array.shape: ', image_array.shape)
         seg_array = image_array[113:, 113:, :]
     
     seg_image = PIL.Image.fromarray(seg_array)
@@ -49,7 +48,6 @@ def extract_prompt_seg(video_array, orig_height, orig_width, mask_type):
     frames = []
     length = generated_segs.shape[0]
     for i in range(length):
-        # print('generated_segs.shape: ', generated_segs.shape)
         curr_image_array = generated_segs[i]
         curr_frame = extract_image_seg(curr_image_array, orig_height, orig_width, mask_type)
         frames.append(curr_frame)

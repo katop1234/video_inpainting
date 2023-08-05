@@ -41,7 +41,7 @@ class MaskedAutoencoderViT(nn.Module):
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16, transfer_encoder_depth=0,
                  transfer_decoder_depth=0, video_encoder_depth=0, 
                  video_decoder_depth=0, mlp_ratio=4., norm_layer=nn.LayerNorm, 
-                 X_CLIP=False, AIM=False, **kwargs):
+                 X_CLIP=False, AIM=False, video_encoder_indices="", video_decoder_indices="", **kwargs):
         super().__init__()
         # --------------------------------------------------------------------------
         # MAE transfer
@@ -57,12 +57,15 @@ class MaskedAutoencoderViT(nn.Module):
         self.cls_token = nn.Parameter(torch.zeros(1, 1, embed_dim))
         self.pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, embed_dim), requires_grad=False)  # fixed sin-cos embedding
         self.embed_dim = embed_dim
+        self.depth = depth
         
         self.video_encoder_depth = video_encoder_depth
         if video_encoder_depth > 0:
             self.pos_embed_temporal = nn.Parameter(
                 torch.zeros(1, 16, embed_dim)
             )
+            if video_encoder_indices:
+                self.video_encoder_indices = [int(x) for x in video_encoder_indices.split(',')]
 
         if X_CLIP:
             self.blocks = nn.ModuleList([
@@ -78,9 +81,15 @@ class MaskedAutoencoderViT(nn.Module):
                 CheckpointImageBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (depth - transfer_encoder_depth) else ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5)
                 for i in range(depth)])
         else:
+            # self.blocks = nn.ModuleList([
+            #     CheckpointImageBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+            #     for i in range(depth)])
             self.blocks = nn.ModuleList([
-                CheckpointImageBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(depth)])
+            self.video_blocks = nn.ModuleList([
+                VideoBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                for i in range(video_encoder_depth)])
         self.norm = norm_layer(embed_dim)
         self.vae = get_vq_model().eval()
         vocab_size = 1024
@@ -95,11 +104,15 @@ class MaskedAutoencoderViT(nn.Module):
 
         self.decoder_pos_embed = nn.Parameter(torch.zeros(1, num_patches + 1, decoder_embed_dim), requires_grad=False)  # fixed sin-cos embedding
         self.decoder_embed_dim = decoder_embed_dim
+        self.decoder_depth = decoder_depth
+        
         self.video_decoder_depth = video_decoder_depth
         if video_decoder_depth > 0:
             self.decoder_pos_embed_temporal = nn.Parameter(
                 torch.zeros(1, 16, decoder_embed_dim)
             )
+            if video_decoder_indices:
+                self.video_decoder_indices = [int(x) for x in video_decoder_indices.split(',')]
 
         if X_CLIP:
             self.decoder_blocks = nn.ModuleList([
@@ -115,9 +128,15 @@ class MaskedAutoencoderViT(nn.Module):
                 CheckpointImageBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer) if i < (decoder_depth - transfer_decoder_depth) else ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5)
                 for i in range(decoder_depth)])
         else:
+            # self.decoder_blocks = nn.ModuleList([
+            #     CheckpointImageBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+            #     for i in range(decoder_depth)])
             self.decoder_blocks = nn.ModuleList([
-                CheckpointImageBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(decoder_depth)])
+            self.decoder_video_blocks = nn.ModuleList([
+                VideoBlock(decoder_embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                for i in range(video_decoder_depth)])
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True) # decoder to patch
@@ -130,25 +149,26 @@ class MaskedAutoencoderViT(nn.Module):
                 if 'Adapter' not in n:
                     p.requires_grad_(False)
 
-        if train_cct_only: #Testing for training only CCT blocks
-            grad_blocks = []
-            for j in range(transfer_encoder_depth):
-                i = (depth - transfer_encoder_depth) + j
-                grad_blocks.append('blocks.{i}.'.format(i=i))
+        # if train_cct_only: #Testing for training only CCT blocks
+        # if self.X_CLIP and False:
+        #     grad_blocks = []
+        #     for j in range(transfer_encoder_depth):
+        #         i = (depth - transfer_encoder_depth) + j
+        #         grad_blocks.append('blocks.{i}.'.format(i=i))
                 
-            for j in range(transfer_decoder_depth):
-                i = (depth - transfer_decoder_depth) + j
-                grad_blocks.append('decoder_blocks.{i}.'.format(i=i))
+        #     for j in range(transfer_decoder_depth):
+        #         i = (depth - transfer_decoder_depth) + j
+        #         grad_blocks.append('decoder_blocks.{i}.'.format(i=i))
                 
-            for n, p in self.named_parameters():
-                requires_grad = False
-                for grad_block in grad_blocks:
-                    if grad_block in n:
-                        requires_grad = True
+        #     for n, p in self.named_parameters():
+        #         requires_grad = False
+        #         for grad_block in grad_blocks:
+        #             if grad_block in n:
+        #                 requires_grad = True
 
-                p.requires_grad_(requires_grad)
+        #         p.requires_grad_(requires_grad)
         
-        if train_video_only: #Testing for training only video blocks        
+        if True: #Testing for training only video blocks        
             for n, p in self.named_parameters():
                 if 'video' not in n and 'temporal' not in n:
                     print('n no grad: ', n)
@@ -384,12 +404,6 @@ class MaskedAutoencoderViT(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1)
 
         # apply Transformer blocks
-        for blk in self.blocks:
-            if self.X_CLIP or self.AIM:
-                x = blk(x, T=T)
-            else:
-                x = blk(x)
-
         if self.video_encoder_depth > 0:
             patches = x.shape[1]
             x = x.reshape(N, -1, self.embed_dim)
@@ -401,10 +415,54 @@ class MaskedAutoencoderViT(nn.Module):
                 )
                 temporal_embed = temporal_embed.expand(N, -1, -1)
                 x += temporal_embed
+            # else:
+            #     rand_pos = torch.randint(16, (1,))
+            #     temporal_embed = torch.repeat_interleave(
+            #         self.pos_embed_temporal[:, rand_pos, :],
+            #         patches,
+            #         dim=1,
+            #     )
+            # x += temporal_embed
+        image_block_indice = 0
+        video_block_indice = 0
+        for i in range(self.depth + self.video_encoder_depth):
+            if i in self.video_encoder_indices:
+                x = x.reshape(N, -1, self.embed_dim)
+                x = self.video_blocks[video_block_indice](x)
+                x = x.reshape(N * T, -1, self.embed_dim)
+                video_block_indice += 1
+            else:
+                x = self.blocks[image_block_indice](x)
+                image_block_indice += 1
+            
+            
+            
+            
+            
+            
+            
+        # for blk in self.blocks:
+        #     x = blk(x)
+
+        # if self.video_encoder_depth > 0:
+        #     patches = x.shape[1]
+        #     x = x.reshape(N, -1, self.embed_dim)
+        #     if T == 16:
+        #         temporal_embed = torch.repeat_interleave(
+        #             self.pos_embed_temporal,
+        #             patches,
+        #             dim=1,
+        #         )
+        #         temporal_embed = temporal_embed.expand(N, -1, -1)
+        #         x += temporal_embed
                 
-            for blk in self.video_blocks:
-                x = blk(x)
-            x = x.reshape(N * T, -1, self.embed_dim)
+        #     for blk in self.video_blocks:
+        #         x = blk(x)
+        #     x = x.reshape(N * T, -1, self.embed_dim)
+        
+        
+        
+        
         x = self.norm(x)
 
         return x, mask, ids_restore
@@ -424,12 +482,6 @@ class MaskedAutoencoderViT(nn.Module):
         x = x + self.decoder_pos_embed
 
         # apply Transformer blocks
-        for blk in self.decoder_blocks:
-            if self.X_CLIP or self.AIM:
-                x = blk(x, T=T)
-            else:
-                x = blk(x)
-            
         if self.video_decoder_depth > 0:
             patches = x.shape[1]
             x = x.reshape(N, -1, self.decoder_embed_dim)
@@ -441,9 +493,51 @@ class MaskedAutoencoderViT(nn.Module):
                 )
                 temporal_embed = temporal_embed.expand(N, -1, -1)
                 x += temporal_embed
-            for blk in self.decoder_video_blocks:
-                x = blk(x)
-            x = x.reshape(N * T, -1, self.decoder_embed_dim)
+            # else:
+            #     rand_pos = torch.randint(16, (1,))
+            #     temporal_embed = torch.repeat_interleave(
+            #         self.decoder_pos_embed_temporal[:, rand_pos, :],
+            #         patches,
+            #         dim=1,
+            #     )
+            # x += temporal_embed
+        image_block_indice = 0
+        video_block_indice = 0
+        for i in range(self.decoder_depth + self.video_decoder_depth):
+            if i in self.video_decoder_indices:
+                x = x.reshape(N, -1, self.decoder_embed_dim)
+                x = self.decoder_video_blocks[video_block_indice](x)
+                x = x.reshape(N * T, -1, self.decoder_embed_dim)
+                video_block_indice += 1
+            else:
+                x = self.decoder_blocks[image_block_indice](x)
+                image_block_indice += 1
+        
+        
+        
+        
+        
+        # for blk in self.decoder_blocks:
+        #     x = blk(x)
+            
+        # if self.video_decoder_depth > 0:
+        #     patches = x.shape[1]
+        #     x = x.reshape(N, -1, self.decoder_embed_dim)
+        #     if T == 16:
+        #         temporal_embed = torch.repeat_interleave(
+        #             self.decoder_pos_embed_temporal,
+        #             patches,
+        #             dim=1,
+        #         )
+        #         temporal_embed = temporal_embed.expand(N, -1, -1)
+        #         x += temporal_embed
+        #     for blk in self.decoder_video_blocks:
+        #         x = blk(x)
+        #     x = x.reshape(N * T, -1, self.decoder_embed_dim)
+        
+        
+        
+        
         
         x = self.decoder_norm(x)
 
