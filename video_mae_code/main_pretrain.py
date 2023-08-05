@@ -557,7 +557,7 @@ def main(args):
                 prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
                 single_prompt_csv = os.path.join(parent, "datasets/davis_single_prompt.csv")
                 
-                davis_prompt_path = os.path.join(args.video_prompts_dir, "davis_prompt")
+                davis_prompt_path = os.path.join(parent, "../test_videos/davis_prompt")
                 davis_2x2_prompt_path = os.path.join(parent, "../test_videos/davis_2x2_single_prompt")
                 davis_image_prompt_path = os.path.join(parent, "../test_images/single_davis_image_prompts")
                 
