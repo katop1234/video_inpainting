@@ -747,17 +747,8 @@ class MaskedAutoencoderViT(nn.Module):
                 # print("latent.shape after view: ", latent.shape)
                 #CODE FOR MASK AND IDS_RESTORE
                     
-        
-        
-        
-        pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]
-        
-        # print("pred.shape: ", pred.shape)
-        
-        mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)
-        
-        # print("mask.shape after interleave.shape: ", mask.shape)
-        
+        pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]        
+        mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)        
         loss = self.forward_loss(imgs, pred, mask)
         return loss, pred, mask
         

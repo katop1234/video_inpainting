@@ -10,8 +10,11 @@ import subprocess
 import sys
 import torch
 from util.eval import *
+from pathlib import Path
 
-sys.path.append('/shared/dannyt123/davis2017-evaluation')
+parent = Path(__file__).parent.absolute()
+davis_eval_path = os.path.join(parent, "../../davis2017-evaluation")
+sys.path.append(davis_eval_path)
 import evaluate
 
 #Constants

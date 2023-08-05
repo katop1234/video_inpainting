@@ -74,6 +74,20 @@ def get_args_parser():
     )
     
     parser.add_argument(
+        "--video_encoder_indices",
+        default="",
+        type=str,
+        help="Indice placement of video encoder blocks, e.g 1,2,3. Number of indices must be the same as video_encoder_depth",
+    )
+    
+    parser.add_argument(
+        "--video_decoder_indices",
+        default="",
+        type=str,
+        help="Indice placement of video decoder blocks, e.g 1,2,3. Number of indices must be the same as video_decoder_depth",
+    )
+    
+    parser.add_argument(
         "--X_CLIP",
         action='store_true',
         help="Provide for using X_CLIP",
@@ -82,7 +96,7 @@ def get_args_parser():
     parser.add_argument(
         "--AIM",
         action='store_true',
-        help="Provide for using X_CLIP",
+        help="Provide for using AIM",
     )
     
     parser.add_argument(
@@ -430,19 +444,12 @@ def main(args):
 
     # following timm: set wd as 0 for bias and norm layers
     if args.X_CLIP:
-        if args.new_faster_lr:
-            param_groups = misc.add_weight_decay_and_lr(
-                model_without_ddp,
-                args.lr,
-                args.weight_decay,
-                bias_wd=args.bias_wd,
-            )
-        else:
-            param_groups = misc.add_weight_decay(
-                model_without_ddp,
-                args.weight_decay,
-                bias_wd=args.bias_wd,
-            )
+        param_groups = misc.add_weight_decay_and_lr(
+            model_without_ddp,
+            args.lr,
+            args.weight_decay,
+            bias_wd=args.bias_wd,
+        )
     else:
         param_groups = misc.add_weight_decay(
             model_without_ddp,
@@ -477,7 +484,13 @@ def main(args):
         wandb_config['base_lr'] = base_lr
         wandb.init(
             project="video_inpainting2",
-            config=wandb_config)
+            config=wandb_config,
+            resume=True,
+            # id='rtvliihp' #24 + 4
+            # id='d89vyoc9' #16 alt
+            # id='22xypfhg' #12 encoder
+            id='5229d47d' #0.75
+            )
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
@@ -545,8 +558,10 @@ def main(args):
                 single_prompt_csv = os.path.join(parent, "datasets/davis_single_prompt.csv")
                 
                 davis_prompt_path = os.path.join(args.video_prompts_dir, "davis_prompt")
-                davis_2x2_prompt_path = '/shared/dannyt123/video_inpainting/test_videos/davis_2x2_single_prompt'
-                davis_image_prompt_path = '/shared/dannyt123/video_inpainting/test_images/single_davis_image_prompts' 
+                davis_2x2_prompt_path = os.path.join(parent, "../test_videos/davis_2x2_single_prompt")
+                davis_image_prompt_path = os.path.join(parent, "../test_images/single_davis_image_prompts")
+                # davis_2x2_prompt_path = '/shared/dannyt123/video_inpainting/test_videos/davis_2x2_single_prompt'
+                # davis_image_prompt_path = '/shared/dannyt123/video_inpainting/test_images/single_davis_image_prompts' 
                 
                 generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
                 print("Finished Saving Davis Eval Segmentations")                

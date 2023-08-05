@@ -232,8 +232,6 @@ def decode(
         # Print duration of the video in seconds
         video_stream = container.streams.video[0]
         video_duration_sec = video_stream.duration * float(video_stream.time_base)
-        if video_duration_sec > 250:
-            raise ValueError("Video is too long")
 
         decode_all_video = True
         video_start_pts, video_end_pts = 0, -1
@@ -257,8 +255,15 @@ def decode(
         
         # If less than 120 frames, raise an exception (or handle it as you see fit)
         window_length = int(fps * 1.85)
+        max_frames = 600
+        if video_duration_sec > 40:
+            print("total_frames, fps: ", total_frames, fps)
+            raise ValueError("Video is too long")
         if total_frames < window_length + 1:
             raise ValueError("Video of fps {} has less than {} frames".format(fps, window_length + 1))
+        if total_frames > max_frames:
+            print("total_frames: ", total_frames)
+            raise ValueError("Video has greater than {} frames".format(max_frames))
         if total_frames < 16:
             raise ValueError("Video must contain at least 16 frames")
 
