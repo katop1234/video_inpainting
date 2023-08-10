@@ -24,6 +24,7 @@ from vqgan import get_vq_model
 from X_CLIP.cct import CrossFramelAttentionBlock
 from AIM.vit_clip import ResidualAttentionBlock
 from util.video_vit import CheckpointVideoBlock, VideoBlock
+from util.decoder_masking_generator import RunningCellMaskingGenerator
 
 class CheckpointImageBlock(Block):
     def forward(self, x, T=16):
@@ -41,12 +42,16 @@ class MaskedAutoencoderViT(nn.Module):
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16, transfer_encoder_depth=0,
                  transfer_decoder_depth=0, video_encoder_depth=0, 
                  video_decoder_depth=0, mlp_ratio=4., norm_layer=nn.LayerNorm, 
-                 X_CLIP=False, AIM=False, video_encoder_indices="", video_decoder_indices="", **kwargs):
+                 X_CLIP=False, AIM=False, video_encoder_indices="", video_decoder_indices="", 
+                 decoder_masking=False, **kwargs):
         super().__init__()
         # --------------------------------------------------------------------------
-        # MAE transfer
+        # MAE transfer and test
         self.X_CLIP = X_CLIP
         self.AIM = AIM
+        self.decoder_masking = decoder_masking
+        if self.decoder_masking:
+            self.decoder_mask_generator = RunningCellMaskingGenerator((16, img_size // patch_size, img_size // patch_size))
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
@@ -414,15 +419,15 @@ class MaskedAutoencoderViT(nn.Module):
                     dim=1,
                 )
                 temporal_embed = temporal_embed.expand(N, -1, -1)
-                x += temporal_embed
-            # else:
-            #     rand_pos = torch.randint(16, (1,))
-            #     temporal_embed = torch.repeat_interleave(
-            #         self.pos_embed_temporal[:, rand_pos, :],
-            #         patches,
-            #         dim=1,
-            #     )
-            # x += temporal_embed
+                # x += temporal_embed
+            else:
+                rand_pos = torch.randint(16, (1,))
+                temporal_embed = torch.repeat_interleave(
+                    self.pos_embed_temporal[:, rand_pos, :],
+                    patches,
+                    dim=1,
+                )
+            x += temporal_embed
         image_block_indice = 0
         video_block_indice = 0
         for i in range(self.depth + self.video_encoder_depth):
@@ -434,40 +439,11 @@ class MaskedAutoencoderViT(nn.Module):
             else:
                 x = self.blocks[image_block_indice](x)
                 image_block_indice += 1
-            
-            
-            
-            
-            
-            
-            
-        # for blk in self.blocks:
-        #     x = blk(x)
-
-        # if self.video_encoder_depth > 0:
-        #     patches = x.shape[1]
-        #     x = x.reshape(N, -1, self.embed_dim)
-        #     if T == 16:
-        #         temporal_embed = torch.repeat_interleave(
-        #             self.pos_embed_temporal,
-        #             patches,
-        #             dim=1,
-        #         )
-        #         temporal_embed = temporal_embed.expand(N, -1, -1)
-        #         x += temporal_embed
-                
-        #     for blk in self.video_blocks:
-        #         x = blk(x)
-        #     x = x.reshape(N * T, -1, self.embed_dim)
-        
-        
-        
-        
         x = self.norm(x)
 
         return x, mask, ids_restore
 
-    def forward_decoder(self, x, ids_restore, T=16, N=1):
+    def forward_decoder(self, x, mask, ids_restore, T=16, N=1):
         # embed tokens
         x = self.decoder_embed(x)
 
@@ -480,27 +456,45 @@ class MaskedAutoencoderViT(nn.Module):
 
         # add pos embed
         x = x + self.decoder_pos_embed
+        
+        encode_decode_mask = None
+        if T == 16 and self.decoder_masking: # and self.decoder_depth == 0: #Decoder masking only for videos
+            decode_mask = self.decoder_mask_generator()
+            decode_mask = torch.from_numpy(decode_mask.repeat(N, 0)).to(device=mask.get_device())
+            encode_decode_mask = torch.logical_and(mask, decode_mask).int() == 0
+            max_patches = encode_decode_mask.sum(dim=1).max()
+            false_mask = ~encode_decode_mask
+            
+            for i in range(encode_decode_mask.shape[0]):
+                false_indices = false_mask[i].nonzero(as_tuple=False).flatten()
+                num_to_convert = max_patches - encode_decode_mask[i].sum()
+                selected_indices = torch.randperm(false_indices.shape[0])[:num_to_convert]
+                encode_decode_mask[i, false_indices[selected_indices]] = True
 
+            x_ = x[:, 1:, :]
+            x_ = x_[encode_decode_mask, :].view(N*T, -1, self.decoder_embed_dim)
+            x = torch.cat([x[:, :1, :], x_], dim=1)
+        
         # apply Transformer blocks
-        if self.video_decoder_depth > 0:
-            patches = x.shape[1]
-            x = x.reshape(N, -1, self.decoder_embed_dim)
-            if T == 16:
-                temporal_embed = torch.repeat_interleave(
-                    self.decoder_pos_embed_temporal,
-                    patches,
-                    dim=1,
-                )
-                temporal_embed = temporal_embed.expand(N, -1, -1)
-                x += temporal_embed
-            # else:
-            #     rand_pos = torch.randint(16, (1,))
-            #     temporal_embed = torch.repeat_interleave(
-            #         self.decoder_pos_embed_temporal[:, rand_pos, :],
-            #         patches,
-            #         dim=1,
-            #     )
+        patches = x.shape[1]
+        x = x.reshape(N, -1, self.decoder_embed_dim)
+        if T == 16:
+            temporal_embed = torch.repeat_interleave(
+                self.decoder_pos_embed_temporal,
+                patches,
+                dim=1,
+            )
+            temporal_embed = temporal_embed.expand(N, -1, -1)
             # x += temporal_embed
+        else:
+            rand_pos = torch.randint(16, (1,))
+            temporal_embed = torch.repeat_interleave(
+                self.decoder_pos_embed_temporal[:, rand_pos, :],
+                patches,
+                dim=1,
+            )
+        x += temporal_embed
+            
         image_block_indice = 0
         video_block_indice = 0
         for i in range(self.decoder_depth + self.video_decoder_depth):
@@ -512,33 +506,7 @@ class MaskedAutoencoderViT(nn.Module):
             else:
                 x = self.decoder_blocks[image_block_indice](x)
                 image_block_indice += 1
-        
-        
-        
-        
-        
-        # for blk in self.decoder_blocks:
-        #     x = blk(x)
-            
-        # if self.video_decoder_depth > 0:
-        #     patches = x.shape[1]
-        #     x = x.reshape(N, -1, self.decoder_embed_dim)
-        #     if T == 16:
-        #         temporal_embed = torch.repeat_interleave(
-        #             self.decoder_pos_embed_temporal,
-        #             patches,
-        #             dim=1,
-        #         )
-        #         temporal_embed = temporal_embed.expand(N, -1, -1)
-        #         x += temporal_embed
-        #     for blk in self.decoder_video_blocks:
-        #         x = blk(x)
-        #     x = x.reshape(N * T, -1, self.decoder_embed_dim)
-        
-        
-        
-        
-        
+
         x = self.decoder_norm(x)
 
         # predictor projection
@@ -547,9 +515,9 @@ class MaskedAutoencoderViT(nn.Module):
         # remove cls token
         x = x[:, 1:, :]
 
-        return x
+        return x, encode_decode_mask
 
-    def forward_loss(self, imgs, pred, mask):
+    def forward_loss(self, imgs, pred, mask, encode_decode_mask):
         """
         imgs: [N, 3, H, W]
         pred: [N, L, p*p*3]
@@ -557,6 +525,19 @@ class MaskedAutoencoderViT(nn.Module):
         """
         with torch.no_grad():
             target = self.vae.get_codebook_indices(imgs).flatten(1)
+            
+        if encode_decode_mask is not None: #Only for videos
+            print('inside encode_decode_mask')
+            loss_mask = (mask == 1) & encode_decode_mask
+            N, _, vocab_size = pred.shape
+            target = target[loss_mask].view(N, -1)         
+            overlap_mask = encode_decode_mask & loss_mask
+            pred_mask = overlap_mask[encode_decode_mask].view(N, -1)
+            pred = pred[pred_mask].view(N, -1, vocab_size)
+            loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
+            loss = loss.sum() / encode_decode_mask.sum()
+            return loss
+        
         loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
@@ -581,8 +562,8 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             raise NotImplementedError
         
-        pred = self.forward_decoder(latent, ids_restore, T=T, N=N)  # [N, L, p*p*3]
-        loss = self.forward_loss(imgs, pred, mask)
+        pred, encode_decode_mask = self.forward_decoder(latent, mask, ids_restore, T=T, N=N)  # [N, L, p*p*3]
+        loss = self.forward_loss(imgs, pred, mask, encode_decode_mask)
         
         pred = pred.contiguous().view(N, -1, 1024) #N*T, -1, 1024
         return loss, pred, mask

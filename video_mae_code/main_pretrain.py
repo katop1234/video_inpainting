@@ -45,6 +45,20 @@ def get_args_parser():
     parser.add_argument("--accum_iter_image", default=1, type=int, help="accum iteration for image")
     parser.add_argument("--accum_iter_video", default=64, type=int, help="accum iteration for video")
     
+    #Wandb
+    parser.add_argument(
+        "--wandb_resume",
+        action='store_true',
+        help="Provide for resuming a wandb run",
+    )
+    
+    parser.add_argument(
+        "--wandb_id",
+        default="",
+        type=str,
+        help="Wandb ID for resuming a run",
+    )
+    
     #Training
     parser.add_argument(
         "--no_cont_pretrain",
@@ -132,6 +146,12 @@ def get_args_parser():
         action='store_true',
         help="Provide for mae_image",
     )
+    
+    parser.add_argument(
+        "--decoder_masking",
+        action='store_true',
+        help="Provide for decoder_masking",
+    )
 
     parser.add_argument("--input_size", default=224, type=int, help="images input size")
 
@@ -186,12 +206,6 @@ def get_args_parser():
         "--new_faster_lr",
         action='store_true',
         help="Provide for faster learning rate for new parameters in X_CLIP",
-    )
-
-    parser.add_argument(
-        "--video_prompts_dir",
-        default="/shared/katop1234/video_inpainting/video_inpainting/test_cases/",
-        help="Folder containing video visualization examples.",
     )
 
     parser.add_argument(
@@ -476,21 +490,31 @@ def main(args):
         optimizer=optimizer,
         loss_scaler=loss_scaler,
     )
-    print("Total number of parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    print("Total number of trainable parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    print("Total number of parameters: ", sum(p.numel() for p in model.parameters()))
 
     if misc.is_main_process():
         wandb_config = vars(args)
         base_lr = (args.lr * 256 / eff_batch_size)
         wandb_config['base_lr'] = base_lr
-        wandb.init(
+        if args.wandb_resume:
+            print("in wandb_resume")
+            wandb.init(
             project="video_inpainting2",
             config=wandb_config,
             resume=True,
-            # id='rtvliihp' #24 + 4
-            # id='d89vyoc9' #16 alt
-            # id='22xypfhg' #12 encoder
-            id='5229d47d' #0.75
+            id=args.wandb_id,
             )
+        else:
+            wandb.init(
+                project="video_inpainting2",
+                config=wandb_config,
+                # resume=True,
+                # id='rtvliihp' #24 + 4
+                # id='d89vyoc9' #16 alt
+                # id='22xypfhg' #12 encoder
+                # id='5229d47d' #0.75
+                )
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
@@ -577,7 +601,9 @@ def main(args):
             if not args.test_mode:
                 wandb.log(log_stats)
             model.eval()
-            visualize_prompting(model, args.video_prompts_dir, mae_image=args.mae_image, mask_ratio_image=args.mask_ratio_image, mask_ratio_video=args.mask_ratio_video)
+            parent = Path(__file__).parent.absolute()
+            video_prompts_dir = os.path.join(parent, "../test_cases")
+            visualize_prompting(model, video_prompts_dir, mae_image=args.mae_image, mask_ratio_image=args.mask_ratio_image, mask_ratio_video=args.mask_ratio_video)
             model.train()
         print("Done loop on epoch {}".format(epoch))
 

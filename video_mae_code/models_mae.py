@@ -710,11 +710,6 @@ class MaskedAutoencoderViT(nn.Module):
                 imgs = self.repeat_img(imgs)
             
             latent, mask, ids_restore = self.forward_encoder(imgs, mask_ratio_image, mask_ratio_video, test_image, video_test_type)
-            # print("latent.shape: ", latent.shape)
-            # print("ids_restore.shape: ", ids_restore.shape)
-            # print("mask.shape: ", mask.shape)
-            # print("ids_restore in normal: ", ids_restore)
-            # print("mask in normal: ", mask)
             
         else:
             if imgs.shape[2] == 16:
@@ -726,26 +721,12 @@ class MaskedAutoencoderViT(nn.Module):
                     index = 2 * t
                     curr_img = imgs[:, :, index:index+2, :, :]
                     latent, mask, ids_restore = self.forward_encoder(curr_img, mask_ratio_image, mask_ratio_video, test_image, video_test_type, X_CLIP_t=t)
-                    # print("latent.shape after forward encoder: ", latent.shape)
-                    # print("mask.shape after forward encoder: ", mask.shape)
-                    # print("ids_restore.shape after forward encoder: ", ids_restore.shape)
                     latents.append(latent)
                     masks.append(mask)
-                    # print("mask in encoder: ", mask)
-                    # print("ids_restore: ", ids_restore)
                     ids_restores.append(ids_restore)
                 latent, mask, ids_restore, attn_masks = self.X_CLIP_combine(latents, masks, ids_restores)
-                print("latent.shape after X_CLIP_combine: ", latent.shape)
-                    
-                
-                # print("ids_restore.shape before cct: ", ids_restore.shape)
-                # print("mask.shape before cct: ", mask.shape)
-                print("latent.shape before cct: ", latent.shape)
                 _, latent = self.cct(latent, attn_masks)
-                print("latent.shape after cct: ", latent.shape)
                 latent = latent.contiguous().view(B, -1, self.embed_dim)
-                # print("latent.shape after view: ", latent.shape)
-                #CODE FOR MASK AND IDS_RESTORE
                     
         pred = self.forward_decoder(latent, ids_restore, mask_ratio_image, mask_ratio_video) #[N, L, 1024]        
         mask = mask.repeat_interleave(self.patch_embed.t_patch_size, dim=1)        
