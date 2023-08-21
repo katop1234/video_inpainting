@@ -21,8 +21,6 @@ from mae_image.pos_embed_image import get_2d_sincos_pos_embed
 import sys
 sys.path.append("../")
 from vqgan import get_vq_model
-from X_CLIP.cct import CrossFramelAttentionBlock
-from AIM.vit_clip import ResidualAttentionBlock
 from util.video_vit import CheckpointVideoBlock, VideoBlock
 from util.decoder_masking_generator import RunningCellMaskingGenerator
 import random
@@ -125,18 +123,19 @@ class MaskedAutoencoderViT(nn.Module):
 
         if use_checkpointing:
             self.decoder_blocks = nn.ModuleList([
-                Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
-                for i in range(decoder_depth)])
-            self.decoder_video_blocks = nn.ModuleList([
-                VideoBlock(decoder_embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
-                for i in range(video_decoder_depth)])
-        else:
-            self.decoder_blocks = nn.ModuleList([
                 CheckpointImageBlock(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(decoder_depth)])
             self.decoder_video_blocks = nn.ModuleList([
                 CheckpointVideoBlock(decoder_embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(video_decoder_depth)])
+        else:
+            self.decoder_blocks = nn.ModuleList([
+                Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                for i in range(decoder_depth)])
+            self.decoder_video_blocks = nn.ModuleList([
+                VideoBlock(decoder_embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                for i in range(video_decoder_depth)])
+    
 
         self.decoder_norm = norm_layer(decoder_embed_dim)
         self.decoder_pred = nn.Linear(decoder_embed_dim, vocab_size, bias=True) # decoder to patch
@@ -440,6 +439,11 @@ class MaskedAutoencoderViT(nn.Module):
         x = x[:, 1:, :]
 
         return x, encode_decode_mask
+    
+    def set_vqgan_target(self, imgs):
+        _imgs = imgs.clone()
+        with torch.no_grad():
+            self.target = self.vae.get_codebook_indices(_imgs).flatten(1)
 
     def forward_loss(self, imgs, pred, mask, encode_decode_mask):
         """
@@ -447,9 +451,6 @@ class MaskedAutoencoderViT(nn.Module):
         pred: [N, L, p*p*3]
         mask: [N, L], 0 is keep, 1 is remove, 
         """
-        with torch.no_grad():
-            target = self.vae.get_codebook_indices(imgs).flatten(1)
-            
         if encode_decode_mask is not None: #Only for videos
             print('inside encode_decode_mask')
             loss_mask = (mask == 1) & encode_decode_mask
@@ -462,20 +463,18 @@ class MaskedAutoencoderViT(nn.Module):
             loss = loss.sum() / encode_decode_mask.sum()
             return loss
         
-        loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=target)
+        loss = nn.CrossEntropyLoss(reduction='none')(input=pred.permute(0, 2, 1), target=self.target)
         loss = (loss * mask).sum() / mask.sum()  # mean loss on removed patches
         return loss
 
     def forward(self, imgs, visual_tokens=None, mask_ratio_image=0.75, mask_ratio_video=0.9, mask_inpt_mask=None, test_image=False, video_test_type=''):
-        if self.AIM:
-            self.eval()
-            
         N, C, T, H, W = imgs.shape
         
         if video_test_type == '2x2 tube':
             test_image = True
         
         imgs = imgs.contiguous().view(N*T, C, H, W)   
+        self.set_vqgan_target(imgs)
         if not video_test_type or video_test_type == '2x2 tube':
             if T == 1:
                 mask_ratio = mask_ratio_image
