@@ -14,6 +14,7 @@ import io as io_module
 import av
 import torch
 import numpy as np
+import ffmpeg
 
 def temporal_sampling(frames, start_idx, end_idx, num_samples):
     """
@@ -82,6 +83,47 @@ def pyav_decode(container, target_fps):
         frames.append(torch.from_numpy(img_array).permute(2, 0, 1))
     frames = torch.stack(frames)
     return frames
+
+def decode_ffmpeg(video_path, start=0, num_sec=2, num_frames=16):
+    try:
+        # Get video metadata using ffprobe
+        decode_all_video = False
+        probe = ffmpeg.probe(video_path, v='error', select_streams='v:0', show_entries='stream=width,height,duration,r_frame_rate')
+        video_info = next((s for s in probe['streams'] if 'width' in s and 'height' in s), None)
+        
+        if video_info is None:
+            raise ValueError("No video stream information found in the input video.")
+        
+        width = int(video_info['width'])
+        height = int(video_info['height'])
+        end = math.floor(float(video_info['duration']))
+        r_frame_rate = video_info['r_frame_rate'].split('/')
+        fps = int(r_frame_rate[0]) / int(r_frame_rate[1])
+        
+        start_seek = random.randint(start, int(max(start, end - num_sec)))
+        cmd = (
+            ffmpeg
+            .input(video_path, ss=start_seek, t=num_sec + 0.1)
+            .filter('fps', fps=fps)
+        )
+        out, _ = (
+            cmd.output('pipe:', format='rawvideo', pix_fmt='rgb24')
+            .run(capture_stdout=True, quiet=True)
+        )
+        
+        video = np.frombuffer(out, np.uint8).reshape([-1, height, width, 3])
+        video_copy = video.copy()
+        video = torch.from_numpy(video_copy)
+        if video.shape[1] < num_frames:
+            zeros = torch.zeros((3, num_frames - video.shape[1], height, width), dtype=torch.uint8)
+            video = torch.cat((video, zeros), axis=1)
+        frames = video
+        
+    except Exception as e:
+        print("Failed to decode by ffmpeg with exception: {}".format(e))
+        return None
+    
+    return frames, fps, decode_all_video
 
 # Original decode function
 def decode(
@@ -255,7 +297,7 @@ def decode(
         
         # If less than 120 frames, raise an exception (or handle it as you see fit)
         window_length = int(fps * 1.85)
-        max_frames = 600
+        max_frames = 450
         if video_duration_sec > 40:
             print("total_frames, fps: ", total_frames, fps)
             raise ValueError("Video is too long")

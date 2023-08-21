@@ -78,10 +78,12 @@ def get_args_parser():
         help="Provide for training video encoder/decoder blocks only",
     )
 
+
     # Model parameters
     parser.add_argument(
         "--model",
-        default="mae_vit_large_patch16",
+        # default="mae_vit_large_patch16",
+        default ='mae_blank',
         type=str,
         metavar="MODEL",
         help="Name of model to train",
@@ -99,6 +101,12 @@ def get_args_parser():
         default="",
         type=str,
         help="Indice placement of video decoder blocks, e.g 1,2,3. Number of indices must be the same as video_decoder_depth",
+    )
+    
+    parser.add_argument(
+        "--random_video",
+        action='store_true',
+        help="Provide for randomnly moving the video blocks",
     )
     
     parser.add_argument(
@@ -173,6 +181,12 @@ def get_args_parser():
     parser.add_argument(
         "--weight_decay", type=float, default=0.05, help="weight decay (default: 0.05)"
     )
+    
+    parser.add_argument(
+        "--use_checkpointing",
+        action='store_true',
+        help="Use Checkpoint blocks",
+    )
 
     parser.add_argument(
         "--lr",
@@ -219,6 +233,7 @@ def get_args_parser():
         default="",
         help="path where to tensorboard log",
     )
+    
     parser.add_argument(
         "--device", default="cuda", help="device to use for training / testing"
     )
@@ -253,6 +268,7 @@ def get_args_parser():
         "--dist_url", default="env://", help="url used to set up distributed training"
     )
 
+    parser.add_argument("--embed_dim", default=1024, type=int)
     parser.add_argument("--decoder_embed_dim", default=512, type=int)
     parser.add_argument("--decoder_depth", default=4, type=int)
     parser.add_argument("--depth", default=24, type=int)
