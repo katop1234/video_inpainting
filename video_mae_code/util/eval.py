@@ -315,7 +315,8 @@ def visualize_video_prompting(model, input_video_viz_dir, test_type="", mae_imag
         model = model.module
 
     test_model_input = get_test_model_input(data_dir=input_video_viz_dir)
-    test_model_input = spatial_sample_test_video(test_model_input)
+    if test_model_input.shape[2] != 16:
+        test_model_input = spatial_sample_test_video(test_model_input)
 
     print("prompting video with", input_video_viz_dir)
     
