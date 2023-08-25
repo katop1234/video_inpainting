@@ -323,10 +323,7 @@ class MaskedAutoencoderViT(nn.Module):
         # add temporal embedding
         if self.video_encoder_depth > 0:
             patches = x.shape[1]
-            # print('x.shape before reshape for temporal: ', x.shape)
-            # x = x.reshape(N, -1, self.embed_dim) #LOOK AT THIS HERE HERE HERE HERE
             x = x.view([N, -1, self.embed_dim])
-            # print('x.shape after reshape for temporal: ', x.shape)
             if T == 16:
                 temporal_embed = torch.repeat_interleave(
                     self.pos_embed_temporal,
@@ -343,7 +340,6 @@ class MaskedAutoencoderViT(nn.Module):
                 )
                 temporal_embed = temporal_embed.expand(N, -1, -1)
             x += temporal_embed
-            # x = x.reshape(N * T, -1, self.embed_dim) #LOOK AT THIS HERE HERE HERE HERE
             x = x.view([N * T, -1, self.embed_dim])
         
         image_block_indice = 0
@@ -353,20 +349,16 @@ class MaskedAutoencoderViT(nn.Module):
             self.video_encoder_indices = random.sample(self.encoder_all_indices, self.video_encoder_depth)
 
         #apply Transformer blocks
-        # print('x.shape in encoder before blocks: ', x.shape)
         for i in range(self.depth + self.video_encoder_depth):
             if i in self.video_encoder_indices:
-                # x = x.reshape(N, -1, self.embed_dim)
                 x = x.view([N, -1, self.embed_dim])
                 x = self.video_blocks[video_block_indice](x)
-                # x = x.reshape(N * T, -1, self.embed_dim)
                 x = x.view([N * T, -1, self.embed_dim])
                 video_block_indice += 1
             else:
                 x = self.blocks[image_block_indice](x)
                 image_block_indice += 1
         x = self.norm(x)
-        # print('x.shape in encoder after blocks: ', x.shape)
 
         return x, mask, ids_restore
 
@@ -405,10 +397,7 @@ class MaskedAutoencoderViT(nn.Module):
         # add temporal embedding
         if self.video_decoder_depth > 0:
             patches = x.shape[1]
-            # print('x.shape before reshape for temporal decoder: ', x.shape)
-            # x = x.reshape(N, -1, self.decoder_embed_dim)
             x = x.view([N, -1, self.decoder_embed_dim])
-            # print('x.shape after reshape for temporal decoder: ', x.shape)
             if T == 16:
                 temporal_embed = torch.repeat_interleave(
                     self.decoder_pos_embed_temporal,
@@ -425,7 +414,6 @@ class MaskedAutoencoderViT(nn.Module):
                 )
                 temporal_embed = temporal_embed.expand(N, -1, -1)
             x += temporal_embed
-            # x = x.reshape(N * T, -1, self.decoder_embed_dim)
             x = x.view([N * T, -1, self.decoder_embed_dim])
             
         image_block_indice = 0
@@ -433,14 +421,11 @@ class MaskedAutoencoderViT(nn.Module):
         if self.random_video:
             self.video_decoder_indices = random.sample(self.decoder_all_indices, self.video_decoder_depth)
         
-        # print('x.shape in decoder before blocks: ', x.shape)
         #apply Transformer blocks
         for i in range(self.decoder_depth + self.video_decoder_depth):
             if i in self.video_decoder_indices:
-                # x = x.reshape(N, -1, self.decoder_embed_dim)
                 x = x.view([N, -1, self.decoder_embed_dim])
                 x = self.decoder_video_blocks[video_block_indice](x)
-                # x = x.reshape(N * T, -1, self.decoder_embed_dim)
                 x = x.view([N * T, -1, self.decoder_embed_dim])
                 video_block_indice += 1
             else:
@@ -448,7 +433,6 @@ class MaskedAutoencoderViT(nn.Module):
                 image_block_indice += 1
 
         x = self.decoder_norm(x)
-        # print('x.shape in decoder after blocks: ', x.shape)
 
         # predictor projection
         x = self.decoder_pred(x)
@@ -491,10 +475,6 @@ class MaskedAutoencoderViT(nn.Module):
         if video_test_type == '2x2 tube':
             test_image = True
         
-        #Alt #1
-        # imgs = imgs.contiguous().view(N*T, C, H, W)
-        
-        #Alt #2
         imgs = imgs.permute(0, 2, 1, 3, 4)
         imgs = imgs.flatten(0, 1)
         
