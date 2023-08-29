@@ -1,0 +1,9 @@
+train,val,train_height,train_width,val_height,val_width,train_end_idx,val_end_idx
+boxing-fisheye,walking,854,480,854,480,86,71
+horsejump-low,horsejump-high,854,480,854,480,59,49
+paragliding-launch,paragliding,854,480,854,480,79,69
+kite-surf,kite-walk,854,480,854,480,49,79
+scooter-black,scooter-gray,854,480,854,480,42,74
+dogs-jump,dog,854,480,854,480,65,59
+breakdance,breakdance-flare,854,480,854,480,83,70
+scooter-black,motorbike,854,480,854,480,42,42
