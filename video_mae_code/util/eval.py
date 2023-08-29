@@ -259,6 +259,7 @@ def visualize_prompting(model, test_cases_folder, mae_image=False, mask_ratio_im
     
     visualize_all_video_prompting(model, os.path.join(test_cases_folder, "davis_2x2_prompt_visualization/"), "2x2 tube", mae_image=mae_image)
     visualize_all_video_prompting(model, os.path.join(test_cases_folder, "davis_2x2_prompt_visualization_other/"), "2x2 tube", mae_image=mae_image)
+    visualize_all_video_prompting(model, os.path.join(test_cases_folder, "davis_2x2_prompt_visualization_same/"), "2x2 tube", mae_image=mae_image)
     
     # visualize_video_prompting(model, objectron_videos_path, "frame interpolation", mae_image=mae_image)
     # visualize_video_prompting(model, objectron_videos_path, "central inpainting", mae_image=mae_image)

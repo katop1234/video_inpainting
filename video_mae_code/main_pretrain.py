@@ -467,7 +467,8 @@ def main(args):
         model = torch.nn.parallel.DistributedDataParallel(
             model,
             device_ids=[torch.cuda.current_device()],
-            find_unused_parameters=True,
+            # find_unused_parameters=True,
+            find_unused_parameters=False,
             # static_graph=True,
         )
         model_without_ddp = model.module
