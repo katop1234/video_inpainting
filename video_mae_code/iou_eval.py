@@ -165,6 +165,8 @@ def generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, dav
                 save_segmentations(frames_2x2, val, seg_save_2x2_path, val_end_idx, '2x2 tube')
                 save_segmentations(frames_image, val, seg_save_image_path, val_end_idx, 'test image')
                 
+                prompt_num += 1
+                
 def image_video_generation(prompt_path, model, mask_test_type, mae_image=False):
     test_model_input = get_test_model_input(file=prompt_path)
     test_model_input = spatial_sample_test_video(test_model_input)

@@ -489,10 +489,9 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             raise NotImplementedError
         
-        pred, encode_decode_mask = self.forward_decoder(latent, mask, ids_restore, T=T, N=N)  # [N, L, p*p*3]
+        pred, encode_decode_mask = self.forward_decoder(latent, mask, ids_restore, T=T, N=N)
         loss = self.forward_loss(imgs, pred, mask, encode_decode_mask)
         
-        # pred = pred.contiguous().view(N, -1, 1024) #N*T, -1, 1024
         return loss, pred, mask
 
     def mask_test_image_video(self, x):

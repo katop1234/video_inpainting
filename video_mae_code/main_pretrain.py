@@ -21,7 +21,7 @@ from util.eval import visualize_prompting
 import util.env  # do not uncomment
 import util.misc as misc
 import numpy as np
-import timm  # do not uncomment
+# import timm  # do not uncomment
 import torch
 import torch.backends.cudnn as cudnn
 import traceback
@@ -331,7 +331,7 @@ def get_args_parser():
     parser.add_argument('--video_dataset_conf', nargs='+', default=['2,2,1,1,2'])
     parser.add_argument('--image_video_ratio', default=0.0, help='default means equally mixed between the two')
 
-    parser.add_argument('--davis_eval_freq', default=5, help='frequency of computing davis eval metrics')
+    parser.add_argument('--davis_eval_freq', default=1, help='frequency of computing davis eval metrics')
     parser.add_argument('--image_itr', default=4, type=int, help='number of image only itr')
     parser.add_argument('--video_itr', default=1, type=int, help='number of video only itr')
 
@@ -353,6 +353,15 @@ def main(args):
     cudnn.benchmark = True
 
     # Dataset combining image and video data
+    if type(args.image_itr) == str:
+        args.image_itr = int(args.image_itr)
+        print('args.image_itr: ', image_itr)
+    if type(args.video_itr) == str:
+        args.video_itr = int(args.video_itr)
+        print('args.video_itr: ', args.video_itr)
+    if type(args.davis_eval_freq) == str:
+        args.davis_eval_freq = int(args.davis_eval_freq)
+        
     if args.image_itr > 0:
         dataset_image_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, 'image')
     else:
@@ -469,7 +478,7 @@ def main(args):
             device_ids=[torch.cuda.current_device()],
             # find_unused_parameters=True,
             find_unused_parameters=False,
-            # static_graph=True,
+            static_graph=True,
         )
         model_without_ddp = model.module
 
@@ -510,6 +519,7 @@ def main(args):
     print("Total number of trainable parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
     print("Total number of parameters: ", sum(p.numel() for p in model.parameters()))
 
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
     if misc.is_main_process():
         wandb_config = vars(args)
         base_lr = (args.lr * 256 / eff_batch_size)
@@ -526,11 +536,6 @@ def main(args):
             wandb.init(
                 project="video_inpainting2",
                 config=wandb_config,
-                # resume=True,
-                # id='rtvliihp' #24 + 4
-                # id='d89vyoc9' #16 alt
-                # id='22xypfhg' #12 encoder
-                # id='5229d47d' #0.75
                 )
 
     checkpoint_path = ""

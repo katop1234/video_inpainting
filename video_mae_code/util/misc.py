@@ -394,6 +394,13 @@ def get_last_checkpoint(args):
 def load_model(args, model_without_ddp, optimizer, loss_scaler):
     if not args.resume:
         args.resume = get_last_checkpoint(args)
+    if args.resume and '3400' in args.resume and 'output_dir' not in args.resume:
+        print('in 3400 and checking new')
+        last_checkpoint = get_last_checkpoint(args)
+        if last_checkpoint:
+            print('last checkpoint exists')
+            args.resume = last_checkpoint
+            print('args.resume: ', args.resume)
     if args.resume:
         if args.resume.startswith("https"):
             checkpoint = torch.hub.load_state_dict_from_url(
@@ -428,14 +435,14 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
             "optimizer" in checkpoint
             and "epoch" in checkpoint
             and not (hasattr(args, "eval") and args.eval)
-            and not args.no_cont_pretrain
+            and ('3400' not in args.resume or 'output_dir' in args.resume)
         ):
             optimizer.load_state_dict(checkpoint["optimizer"])
             args.start_epoch = checkpoint["epoch"] + 1
             if "scaler" in checkpoint:
                 loss_scaler.load_state_dict(checkpoint["scaler"])
             print("With optim & sched!")
-        elif args.no_cont_pretrain:
+        else:
             args.start_epoch = 0
             
     return args.resume
