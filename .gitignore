@@ -1,8 +1,0 @@
-fb_mae_st/
-runs/
-test_cases/
-test.py
-__pycache__/
-output_dir/
-pretraining_progress/
-video_mae_code/__pycache__/

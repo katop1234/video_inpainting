@@ -2,9 +2,6 @@
 # All rights reserved.
 
 
-import av
-
-
 def get_video_container(path_to_vid, multi_thread_decode=False):
     """
     Given the path to the video, return the pyav video container.

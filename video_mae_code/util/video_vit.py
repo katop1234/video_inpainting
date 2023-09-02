@@ -6,6 +6,7 @@ import torch
 import torch.nn as nn
 from timm.models.layers import to_2tuple
 from timm.models.vision_transformer import DropPath, Mlp
+from torch.utils.checkpoint import checkpoint
 
 logger = logging.get_logger(__name__)
 
@@ -51,7 +52,7 @@ class PatchEmbed(nn.Module):
 
         self.grid_size = img_size[0] // patch_size[0]
         self.t_grid_size = frames // t_patch_size
-        
+
         self.embed_dim = embed_dim
 
         kernel_size = [t_patch_size] + list(patch_size) # 1, 16, 16
@@ -66,7 +67,7 @@ class PatchEmbed(nn.Module):
             H == self.img_size[0] and W == self.img_size[1]
         ), f"Input image size ({H}*{W}) doesn't match model ({self.img_size[0]}*{self.img_size[1]})."
 
-        assert T == self.frames or T == 1
+        assert T == self.frames or T == 2 or T == 1 #1
         x = self.proj(x)
         x = x.flatten(3)
         x = torch.einsum("ncts->ntsc", x)  # [N, T, H*W, C]
@@ -117,7 +118,6 @@ class Attention(nn.Module):
         )
 
         attn = (q @ k.transpose(-2, -1)) * self.scale
-
         attn = attn.softmax(dim=-1)
 
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
@@ -159,6 +159,7 @@ class Block(nn.Module):
         self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
         self.norm2 = norm_layer(dim)
         mlp_hidden_dim = int(dim * mlp_ratio)
+        # TODO see if this MLP can be replaced with default pytroch implementation, maybe thats why RIN and ViT are the same.
         self.mlp = Mlp(
             in_features=dim,
             hidden_features=mlp_hidden_dim,
@@ -170,3 +171,300 @@ class Block(nn.Module):
         x = x + self.drop_path(self.attn(self.norm1(x)))
         x = x + self.drop_path(self.mlp(self.norm2(x)))
         return x
+    
+class CheckpointBlock(Block):
+    def forward(self, x):
+        norm1_x = self.norm1(x)
+        x = x + self.drop_path(checkpoint(self.attn, norm1_x))
+        norm2_x = self.norm2(x)
+        x = x + self.drop_path(checkpoint(self.mlp, norm2_x))
+        return x
+
+### RIN Implementation below ###
+import util.rin as rin
+
+class TransformerBlock(nn.Module):
+    def __init__(self, dim, heads=16, **attn_kwargs):
+        super().__init__()
+
+        self.cross_attention = rin.CrossAttention(dim, heads=16, norm=True, **attn_kwargs)
+        self.feed_forward = rin.FeedForward(dim)
+
+    def forward(self, x, context=None):
+        def cross_attention_fn(x, context):
+            return self.cross_attention(x, context)
+
+        def feed_forward_fn(x):
+            return self.feed_forward(x)
+
+        memory_before = torch.cuda.memory_allocated()
+        x = checkpoint(cross_attention_fn, x, x if context is None else context) + x
+        #x = cross_attention_fn(x, x if context is None else context) + x
+        memory_after = torch.cuda.memory_allocated()
+       # print(f"Cross attention - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
+
+        memory_before = torch.cuda.memory_allocated()
+        x = checkpoint(feed_forward_fn, x) + x
+        #x = feed_forward_fn(x) + x
+        memory_after = torch.cuda.memory_allocated()
+       # print(f"Feed forward - Memory before: {int(memory_before / 1e6)}MB, after: {int(memory_after / 1e6)}MB, increase: {int((memory_after - memory_before) / 1e6)}MB")
+
+        return x
+
+class RINBlockVIP(nn.Module):
+    def __init__(
+        self,
+        dim,
+        process_depth=4,
+        dim_latent = None,
+        final_norm = True,
+        heads=16,
+        read_depth=1,
+        write_depth=1,
+        **attn_kwargs
+    ):
+        super().__init__()
+        dim_latent = rin.default(dim_latent, dim) # WARNING we use the same dim for everything.
+
+        self.read_blocks = nn.ModuleList([
+            TransformerBlock(dim_latent, **attn_kwargs)
+            for _ in range(read_depth)
+        ])
+        
+        self.process_blocks = nn.ModuleList([
+            TransformerBlock(dim_latent, **attn_kwargs)
+            for _ in range(process_depth)
+        ])
+
+        self.write_blocks = nn.ModuleList([
+            TransformerBlock(dim_latent, **attn_kwargs)
+            for _ in range(write_depth)
+        ])
+
+        self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
+
+        self.counter = 1
+        self.print_frequency = 100  # Change this to control how often the similarities are printed
+    
+    # Helper function to calculate and print similarity
+    def _print_similarity(self, old, new, block_name, depth):
+        similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
+        print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
+
+    def forward(self, patches, latents, print_similarities=False):
+        if self.counter % self.print_frequency == 0:
+            print("---Start of RIN Block---")
+            latents_initial = latents.clone().detach() 
+            patches_initial = patches.clone().detach()
+
+        for i, read_block in enumerate(self.read_blocks):
+            latents_prev = latents.clone().detach() if self.counter % self.print_frequency == 0 else None
+            latents = read_block(latents, patches)
+            if self.counter % self.print_frequency == 0:
+                self._print_similarity(latents_prev, latents, 'Read latents', i+1)
+                
+        for i, process_block in enumerate(self.process_blocks):
+            latents_prev = latents.clone().detach() if self.counter % self.print_frequency == 0 else None
+            latents = process_block(latents)
+            if self.counter % self.print_frequency == 0:
+                self._print_similarity(latents_prev, latents, 'Process latents', i+1)
+
+        for i, write_block in enumerate(self.write_blocks):
+            patches_prev = patches.clone().detach() if self.counter % self.print_frequency == 0 else None
+            patches = write_block(patches, latents)
+            if self.counter % self.print_frequency == 0:
+                self._print_similarity(patches_prev, patches, 'Write patches', i+1)
+
+        # Print final similarity values
+        if self.counter % self.print_frequency == 0:
+            self._print_similarity(latents_initial, latents, 'Final vs Initial Latent', len(self.read_blocks)+len(self.process_blocks)+len(self.write_blocks))
+            self._print_similarity(patches_initial, patches, 'Final vs Initial Patch', len(self.read_blocks)+len(self.process_blocks)+len(self.write_blocks))
+        
+        self.counter += 1
+        
+        latents = self.latent_final_norm(latents)
+        
+        return patches, latents
+    
+class Identity(nn.Module):
+    def forward(self, x):
+        return x
+
+class naiveRINBlockVIP(nn.Module):
+    def __init__(
+        self,
+        dim,
+        process_depth=4,
+        dim_latent = None,
+        final_norm = True,
+        heads=16,
+        read_depth=1,
+        write_depth=1,
+        first_block=False,
+        last_block=False,
+        **attn_kwargs
+    ):
+        super().__init__()
+        dim_latent = rin.default(dim_latent, dim) # WARNING we use the same dim for everything.
+        
+        self.first_block = first_block
+        self.last_block = last_block
+        
+        # self.read_blocks = nn.ModuleList([
+        #     Identity()
+        #     for _ in range(read_depth)
+        # ])
+        # self.process_blocks = nn.ModuleList([
+        #     Identity()
+        #     for _ in range(process_depth)
+        # ])
+        # self.write_blocks = nn.ModuleList([
+        #     Identity()
+        #     for _ in range(write_depth)
+        # ])
+
+        if self.first_block:
+            self.read_blocks = nn.ModuleList([
+                TransformerBlock(dim_latent, **attn_kwargs)
+                for _ in range(read_depth)
+            ])
+        elif self.last_block:
+            self.write_blocks = nn.ModuleList([
+            TransformerBlock(dim_latent, **attn_kwargs)
+            for _ in range(write_depth)
+            ])
+        else:
+            self.process_blocks = nn.ModuleList([
+                TransformerBlock(dim_latent, **attn_kwargs)
+                for _ in range(process_depth)
+            ])
+
+        self.latent_final_norm = rin.LayerNorm(dim_latent) if final_norm else nn.Identity()
+
+        self.counter = 0
+        self.print_frequency = 100  # Change this to control how often the similarities are printed
+    
+    # Helper function to calculate and print similarity
+    def _print_similarity(self, old, new, block_name, depth):
+        similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
+        print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
+
+    def forward(self, patches, latents, print_similarities=False):
+        latents_initial = latents.clone().detach() 
+        patches_initial = patches.clone().detach()
+        
+        if self.counter % self.print_frequency == 0:
+            print("---Start of RIN Block---")
+
+        if self.first_block:
+            for i, read_block in enumerate(self.read_blocks):
+                latents_prev = latents.clone().detach()
+                latents = read_block(latents, patches)
+                if self.counter % self.print_frequency == 0:
+                    self._print_similarity(latents_prev, latents, 'Read latents', i+1)
+
+        elif self.last_block:
+            for i, write_block in enumerate(self.write_blocks):
+                patches_prev = patches.clone().detach() 
+                patches = write_block(patches, latents)
+                if self.counter % self.print_frequency == 0:
+                    self._print_similarity(patches_prev, patches, 'Write patches', i+1)
+        else:
+            for i, process_block in enumerate(self.process_blocks):
+                latents_prev = latents.clone().detach()
+                latents = process_block(latents)
+                if self.counter % self.print_frequency == 0:
+                    self._print_similarity(latents_prev, latents, 'Process latents', i+1)
+
+        # Print final similarity values
+        if self.counter % self.print_frequency == 0:
+            self._print_similarity(latents_initial, latents, 'Final vs Initial Latent', 1)
+            self._print_similarity(patches_initial, patches, 'Final vs Initial Patch', 1)
+        
+        self.counter += 1
+        
+        latents = self.latent_final_norm(latents)
+        
+        return patches, latents
+
+class FITBlockVIP(nn.Module):
+    def __init__(self, dim, read_depth=1, process_depth=1, write_depth=1, **attn_kwargs):
+        super().__init__()
+        self.l = 56 # Num latents per group
+        self.group_size = 196 # Patches per group
+
+        self.dim_latent = dim
+        self.latent = nn.Parameter(torch.randn(1, self.dim_latent) * 0.02)
+
+        self.group_block = TransformerBlock(dim, **attn_kwargs)
+
+        self.read_blocks = nn.ModuleList([
+            TransformerBlock(dim, **attn_kwargs)
+            for _ in range(read_depth)
+        ])
+
+        self.process_blocks = nn.ModuleList([
+            TransformerBlock(dim, **attn_kwargs)
+            for _ in range(process_depth)
+        ])
+
+        self.write_blocks = nn.ModuleList([
+            TransformerBlock(dim, **attn_kwargs)
+            for _ in range(write_depth)
+        ])
+
+        self.print_frequency = 100
+        self.counter = 0
+        
+    def _print_similarity(self, old, new, block_name, depth):
+        similarity = torch.sum(new * old) / (torch.norm(new) * torch.norm(old))
+        print(f'{block_name} similarity at depth {depth}: {similarity.item()}')
+
+    def forward(self, x):
+        B, N, _ = x.shape
+
+        # calculate the number of groups
+        G = N // self.group_size
+        leftover = N % self.group_size
+        if leftover:
+            G += 1
+
+        x = x.view(B, G, -1, x.shape[-1])
+        x_initial = x.clone().detach()
+
+        # Step 1: (GROUP) Each group attends to itself
+        x_group_prev = x.clone().detach()
+        x = self.group_block(x)
+        if self.counter % self.print_frequency == 0:
+            self._print_similarity(x_group_prev, x, 'Group blocks', 1)
+
+        # Step 2: (READ) Each group cross attends to its own latent vectors
+        latents = rin.repeat(self.latent, '1 L -> B G L', B=B, G=G)
+        for i, read_block in enumerate(self.read_blocks):
+            latents_prev = latents.clone().detach()
+            latents = read_block(latents, x)
+            if self.counter % self.print_frequency == 0:
+                self._print_similarity(latents_prev, latents, 'Read latents', i+1)
+
+        # Step 3: (PROCESS) Concat all the latents and do self attention globally
+        latents_concat = latents.view(B, G*self.l, -1)
+        for i, process_block in enumerate(self.process_blocks):
+            latents_prev = latents_concat.clone().detach()
+            latents_concat = process_block(latents_concat)
+            if self.counter % self.print_frequency == 0:
+                self._print_similarity(latents_prev, latents_concat, 'Process latents', i+1)
+
+        # Step 4: (WRITE) Write back to x in the reverse process as 2
+        latents = latents_concat.view(B, G, self.l, -1)
+        for i, write_block in enumerate(self.write_blocks):
+            x_prev = x.clone().detach()
+            x = write_block(x, latents)
+            if self.counter % self.print_frequency == 0:
+                self._print_similarity(x_prev, x, 'Write blocks', i+1)
+
+        if self.counter % self.print_frequency == 0:
+            self._print_similarity(x_initial, x, 'Final vs Initial x', len(self.read_blocks)+len(self.process_blocks)+len(self.write_blocks))
+
+        self.counter += 1
+
+        return x.view(B, N, -1)

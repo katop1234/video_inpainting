@@ -6,7 +6,7 @@ import logging
 import os
 import random
 import time
-import util.decoder.constants as constants
+from util.decoder import constants
 from collections import defaultdict
 
 import cv2
@@ -230,37 +230,38 @@ def load_image_lists(frame_list_file, prefix="", return_list=False):
     return dict(image_paths), dict(labels)
 
 def tensor_normalize(tensor):
-    """
-    Normalize a given tensor by subtracting the mean and dividing the std.
-    Args:
-        tensor (tensor): tensor to normalize.
-        mean (tensor or list): mean value to subtract.
-        std (tensor or list): std to divide.
-    """
-    assert tensor.shape in [(1, 3, 16, 224, 224), (1, 3, 1, 224, 224)], "Other shapes not supported"
-    
-    tensor = tensor.float()
-    mean = constants.mean.view(1, 3, 1, 1, 1).to(tensor.device)
-    std = constants.std.view(1, 3, 1, 1, 1).to(tensor.device)
-    
-    tensor = tensor - mean
-    tensor = tensor / std
-    return tensor
-
-def revert_tensor_normalize(tensor):
-    """
-    Revert normalization for a given tensor by multiplying by the std and adding the mean.
-    Args:
-        tensor (tensor): tensor to revert normalization.
-        mean (tensor or list): mean value to add.
-        std (tensor or list): std to multiply.
-    """
     tensor = tensor.float()
     mean = constants.mean.to(tensor.device)
     std = constants.std.to(tensor.device)
-    
-    tensor = tensor * std.view(1, 3, 1, 1, 1).to(tensor.device)
-    tensor = tensor + mean.view(1, 3, 1, 1, 1).to(tensor.device)
+
+    #Checking whether the tensor is in [0, 1] or in [0, 255]
+    if torch.max(tensor) > 1.:
+        tensor = tensor / 255.0
+
+    # Get the position of the color channel dimension
+    color_dim = tensor.shape.index(3)
+
+    # Expand the mean and std tensors to match the tensor shape
+    expanded_mean = mean.view(*([1] * color_dim), 3, *([1] * (len(tensor.shape) - color_dim - 1)))
+    expanded_std = std.view(*([1] * color_dim), 3, *([1] * (len(tensor.shape) - color_dim - 1)))
+
+    tensor = tensor - expanded_mean
+    tensor = tensor / expanded_std
+    return tensor
+
+def revert_tensor_normalize(tensor):
+    tensor = tensor.float()
+    mean = constants.mean.to(tensor.device)
+    std = constants.std.to(tensor.device)
+
+    # Get the position of the color channel dimension
+    color_dim = tensor.shape.index(3)
+
+    # Expand the mean and std tensors to match the tensor shape
+    expanded_mean = mean.view(*([1] * color_dim), 3, *([1] * (len(tensor.shape) - color_dim - 1)))
+    expanded_std = std.view(*([1] * color_dim), 3, *([1] * (len(tensor.shape) - color_dim - 1)))
+
+    tensor = tensor * expanded_std + expanded_mean
     tensor = torch.clip(tensor * 255, 0, 255)
     return tensor
 

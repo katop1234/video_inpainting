@@ -9,7 +9,8 @@ import importlib
 import torch
 from omegaconf import OmegaConf
 import os
-from viz_utils import imagenet_std, imagenet_mean
+import util.decoder.constants as constants
+
 cwd = os.path.dirname(os.path.abspath(__file__))
 
 ## Code borrowed from VQGAN
@@ -53,11 +54,10 @@ def nonlinearity(x):
     # swish
     return x * torch.sigmoid(x)
 
-
-def Normalize(in_channels):
+def Normalize(in_channels, chunk_size=32):
     return torch.nn.GroupNorm(num_groups=32, num_channels=in_channels, eps=1e-6, affine=True)
 
-
+    
 class Upsample(nn.Module):
     def __init__(self, in_channels, with_conv):
         super().__init__()
@@ -136,29 +136,45 @@ class ResnetBlock(nn.Module):
                                                     kernel_size=1,
                                                     stride=1,
                                                     padding=0)
+        
+        self.chunk_size_factor = 2
+    
+    def forward(self, x, temb=None):
+        B, C, H, W = x.shape
+        chunk_size = max(B // self.chunk_size_factor, 1)
+        
+        out = None
+    
+        for i in range(0, B, chunk_size):
+            x_chunk = x[i:min(i+chunk_size, B)]
+            h = x_chunk
 
-    def forward(self, x, temb):
-        h = x
-        h = self.norm1(h)
-        h = nonlinearity(h)
-        h = self.conv1(h)
+            h = self.norm1(h)
+            h = nonlinearity(h)
+            h = self.conv1(h)
 
-        if temb is not None:
-            h = h + self.temb_proj(nonlinearity(temb))[:, :, None, None]
+            if temb is not None:
+                temb_chunk = temb[i:i+chunk_size]
+                h = h + self.temb_proj(nonlinearity(temb_chunk))[:, :, None, None]
 
-        h = self.norm2(h)
-        h = nonlinearity(h)
-        h = self.dropout(h)
-        h = self.conv2(h)
+            h = self.norm2(h)
+            h = nonlinearity(h)
+            h = self.dropout(h)
+            h = self.conv2(h)
 
-        if self.in_channels != self.out_channels:
-            if self.use_conv_shortcut:
-                x = self.conv_shortcut(x)
-            else:
-                x = self.nin_shortcut(x)
+            if self.in_channels != self.out_channels:
+                if self.use_conv_shortcut:
+                    x_chunk = self.conv_shortcut(x_chunk)
+                else:
+                    x_chunk = self.nin_shortcut(x_chunk)
+            
+            if out is None:
+                # Initialize out once we know number of channels in x_chunk
+                out = torch.empty((B, x_chunk.shape[1], H, W), device=x.device, dtype=x.dtype)
+                
+            out[i:min(i+chunk_size, B)] = x_chunk + h
 
-        return x + h
-
+        return out
 
 class AttnBlock(nn.Module):
     def __init__(self, in_channels):
@@ -1281,8 +1297,8 @@ class VQModel(pl.LightningModule):
     def map_pixels(self, x: torch.Tensor) -> torch.Tensor:
         if x.dtype != torch.float:
             raise ValueError('expected input to have type float')
-        x = 2. * (x * torch.tensor(imagenet_std[None, :, None, None]).to(x.device) + torch.tensor(
-            imagenet_mean[None, :, None, None]).to(x.device)) - 1.
+        x = 2. * (x * torch.tensor(constants.np_std[None, :, None, None]).to(x.device) + torch.tensor(
+            constants.np_mean[None, :, None, None]).to(x.device)) - 1.
         return x.float()
 
 
