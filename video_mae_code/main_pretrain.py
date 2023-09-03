@@ -104,6 +104,20 @@ def get_args_parser():
     )
     
     parser.add_argument(
+        "--s_transfer_encoder_indices",
+        default="",
+        type=str,
+        help="Indice placement of spatial encoder blocks transfer for X-CLIP or AIM, e.g 1,2,3.",
+    )
+    
+    parser.add_argument(
+        "--s_transfer_decoder_indices",
+        default="",
+        type=str,
+        help="Indice placement of spatial decoder blocks transfer for X-CLIP or AIM, e.g 1,2,3.",
+    )
+    
+    parser.add_argument(
         "--random_video",
         action='store_true',
         help="Provide for randomnly moving the video blocks",

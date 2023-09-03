@@ -21,6 +21,8 @@ from mae_image.pos_embed_image import get_2d_sincos_pos_embed
 import sys
 sys.path.append("../")
 from vqgan import get_vq_model
+from X_CLIP.cct import CrossFramelAttentionBlock
+from AIM.vit_clip import ResidualAttentionBlock
 from util.video_vit import CheckpointVideoBlock, VideoBlock
 from util.decoder_masking_generator import RunningCellMaskingGenerator
 import random
@@ -41,6 +43,7 @@ class MaskedAutoencoderViT(nn.Module):
                  decoder_embed_dim=512, decoder_depth=8, decoder_num_heads=16, 
                  video_encoder_depth=0, video_decoder_depth=0, mlp_ratio=4., norm_layer=nn.LayerNorm, 
                  video_encoder_indices=[], video_decoder_indices=[], random_video=False, 
+                 X_CLIP=False, AIM=False, s_transfer_encoder_indices=[], s_transfer_decoder_indices=[], 
                  decoder_masking=False, use_checkpointing=False, train_video_only=False, **kwargs):
         super().__init__()
         # --------------------------------------------------------------------------
@@ -51,6 +54,8 @@ class MaskedAutoencoderViT(nn.Module):
         self.random_video = random_video
         self.encoder_all_indices = [i for i in range(depth + video_encoder_depth)]
         self.decoder_all_indices = [i for i in range(decoder_depth + video_decoder_depth)]
+        self.X_CLIP = X_CLIP
+        self.AIM = AIM
         # --------------------------------------------------------------------------
 
         # --------------------------------------------------------------------------
@@ -64,18 +69,26 @@ class MaskedAutoencoderViT(nn.Module):
         self.depth = depth
         
         self.video_encoder_depth = video_encoder_depth
-        if video_encoder_depth > 0:
+        if video_encoder_indices:
+            if type(video_encoder_indices) == str:
+                self.video_encoder_indices = [int(x) for x in video_encoder_indices.split(',')]
+            else:
+                self.video_encoder_indices = video_encoder_indices
+        else:
+            self.video_encoder_indices = []
+            
+        if s_transfer_encoder_indices:
+            if type(s_transfer_encoder_indices) == str:
+                self.s_transfer_encoder_indices = [int(x) for x in s_transfer_encoder_indices.split(',')]
+            else:
+                self.s_transfer_encoder_indices = s_transfer_encoder_indices
+        else:
+            self.s_transfer_encoder_indices = []
+        
+        if video_encoder_depth > 0 or X_CLIP or AIM:
             self.pos_embed_temporal = nn.Parameter(
                 torch.zeros(1, 16, embed_dim)
             )
-            if video_encoder_indices:
-                if type(video_encoder_indices) == str:
-                    self.video_encoder_indices = [int(x) for x in video_encoder_indices.split(',')]
-                else:
-                    self.video_encoder_indices = video_encoder_indices
-        else:
-            self.video_encoder_indices = []
-
 
         if use_checkpointing:
             self.blocks = nn.ModuleList([
@@ -85,9 +98,18 @@ class MaskedAutoencoderViT(nn.Module):
                 CheckpointVideoBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(video_encoder_depth)])
         else:
-            self.blocks = nn.ModuleList([
-                Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
-                for i in range(depth)])
+            if X_CLIP:
+                self.blocks = nn.ModuleList([
+                    Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                    for i in range(depth)])
+            elif AIM:
+                self.blocks = nn.ModuleList([
+                    Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                    for i in range(depth)])
+            else:
+                self.blocks = nn.ModuleList([
+                    Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                    for i in range(depth)])
             self.video_blocks = nn.ModuleList([
                 VideoBlock(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(video_encoder_depth)])
@@ -109,17 +131,26 @@ class MaskedAutoencoderViT(nn.Module):
         self.decoder_depth = decoder_depth
         
         self.video_decoder_depth = video_decoder_depth
-        if video_decoder_depth > 0:
+        if video_decoder_indices:
+            if type(video_decoder_indices) == str:
+                self.video_decoder_indices = [int(x) for x in video_decoder_indices.split(',')]
+            else:
+                self.video_decoder_indices = video_decoder_indices
+        else:
+            self.video_decoder_indices = []
+            
+        if s_transfer_decoder_indices:
+            if type(s_transfer_decoder_indices) == str:
+                self.s_transfer_decoder_indices = [int(x) for x in s_transfer_decoder_indices.split(',')]
+            else:
+                self.s_transfer_decoder_indices = s_transfer_decoder_indices
+        else:
+            self.s_transfer_decoder_indices = []
+            
+        if video_decoder_depth or X_CLIP or AIM:
             self.decoder_pos_embed_temporal = nn.Parameter(
                 torch.zeros(1, 16, decoder_embed_dim)
             )
-            if video_decoder_indices:
-                if type(video_decoder_indices) == str:
-                    self.video_decoder_indices = [int(x) for x in video_decoder_indices.split(',')]
-                else:
-                    self.video_decoder_indices = video_decoder_indices
-        else:
-            self.video_decoder_indices = []
 
         if use_checkpointing:
             self.decoder_blocks = nn.ModuleList([
@@ -129,9 +160,18 @@ class MaskedAutoencoderViT(nn.Module):
                 CheckpointVideoBlock(decoder_embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(video_decoder_depth)])
         else:
-            self.decoder_blocks = nn.ModuleList([
-                Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
-                for i in range(decoder_depth)])
+            if X_CLIP:
+                self.decoder_blocks = nn.ModuleList([
+                    CrossFramelAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio) if i in self.s_transfer_encoder_indices else Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                    for i in range(decoder_depth)])
+            elif AIM:
+                self.decoder_blocks = nn.ModuleList([
+                    ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5) if i in self.s_transfer_encoder_indices else Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                    for i in range(decoder_depth)])
+            else:
+                self.decoder_blocks = nn.ModuleList([
+                    Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                    for i in range(decoder_depth)])
             self.decoder_video_blocks = nn.ModuleList([
                 VideoBlock(decoder_embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                 for i in range(video_decoder_depth)])
@@ -150,6 +190,28 @@ class MaskedAutoencoderViT(nn.Module):
                     p.requires_grad_(False)
                 # else: 
                     # print("n grad: ", n)
+        
+        # Setting only Adapter params trainable
+        if self.AIM:
+            for n, p in self.named_parameters():
+                if 'Adapter' not in n:
+                    p.requires_grad_(False)
+                    
+        # Training, Also would want to test training all but slower for pretrained params
+        if self.X_CLIP:
+            grad_blocks = []
+            for i in range(self.s_transfer_encoder_indices):
+                grad_blocks.append('blocks.{i}.'.format(i=i))
+            for i in range(self.s_transfer_decoder_indices):
+                grad_blocks.append('decoder_blocks.{i}.'.format(i=i))
+            
+            for n, p in self.named_parameters():
+                requires_grad = False
+                for grad_block in grad_blocks:
+                    if grad_block in n:
+                        requires_grad = True
+
+                p.requires_grad_(requires_grad)
         # --------------------------------------------------------------------------
         self.initialize_weights()
 
@@ -321,7 +383,7 @@ class MaskedAutoencoderViT(nn.Module):
         x = torch.cat((cls_tokens, x), dim=1)
 
         # add temporal embedding
-        if self.video_encoder_depth > 0:
+        if self.video_encoder_depth > 0 or self.X_CLIP or self.AIM:
             patches = x.shape[1]
             x = x.view([N, -1, self.embed_dim])
             if T == 16:
@@ -395,7 +457,7 @@ class MaskedAutoencoderViT(nn.Module):
             x = torch.cat([x[:, :1, :], x_], dim=1)
         
         # add temporal embedding
-        if self.video_decoder_depth > 0:
+        if self.video_decoder_depth > 0 or self.X_CLIP or self.AIM:
             patches = x.shape[1]
             x = x.view([N, -1, self.decoder_embed_dim])
             if T == 16:
