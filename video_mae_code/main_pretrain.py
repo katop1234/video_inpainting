@@ -609,6 +609,7 @@ def main(args):
                     log_stats = {}
                     
                 model.eval()
+                ## Segmentation specific code
                 store_path = os.path.join(args.output_dir, "davis_segs")
                 if not os.path.exists(store_path):
                     os.mkdir(store_path)
@@ -623,6 +624,20 @@ def main(args):
                 
                 generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
                 print("Finished Saving Davis Eval Segmentations")
+                
+                ## Colorization specific code
+                store_path = os.path.join(args.output_dir, "davis_cols")
+                if not os.path.exists(store_path):
+                    os.mkdir(store_path)
+                
+                parent = Path(__file__).parent.absolute()
+                prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
+                single_prompt_csv = os.path.join(parent, "datasets/davis_single_prompt.csv")
+                
+                davis_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_prompt") # TODO not supported yet
+                print("Colorization eval for /test_videos/colorization_davis_prompt not supported yet")
+                davis_2x2_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_2x2_single_prompt")
+                davis_image_prompt_path = os.path.join(parent, "../test_images/colorization_single_davis_image_prompts")
                   
                 generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
                 print("Finished Saving Colorization examples")               
