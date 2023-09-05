@@ -33,6 +33,7 @@ from util.misc import NativeScalerWithGradNormCount as NativeScaler
 from torch.utils.tensorboard import SummaryWriter
 import util.decoder.utils as utils
 from iou_eval import generate_segmentations, run_evaluation_method, generate_colorizations
+import evaluate_colorization
 from pathlib import Path
 
 def get_args_parser():
@@ -625,6 +626,14 @@ def main(args):
                 generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
                 print("Finished Saving Davis Eval Segmentations")
                 
+                single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
+                single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
+                log_stats["Davis_single_mean_orig"] = single_mean_orig
+                print('single_mean_2x2: ', single_mean_2x2)
+                print('single_mean_image: ', single_mean_image)
+                log_stats["single_mean_2x2"] = single_mean_2x2
+                log_stats["single_mean_image"] = single_mean_image
+                
                 ## Colorization specific code
                 store_path = os.path.join(args.output_dir, "davis_cols")
                 if not os.path.exists(store_path):
@@ -640,15 +649,16 @@ def main(args):
                 davis_image_prompt_path = os.path.join(parent, "../test_images/colorization_single_davis_image_prompts")
                   
                 generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
-                print("Finished Saving Colorization examples")               
+                print("Finished Saving Colorization examples")       
                 
-                # single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
-                # single_mean_2x2, single_mean_image = run_evaluation_method(store_path) # TODO this is commented cuz couldn't import the evaluate folder
-                # log_stats["Davis_single_mean_orig"] = single_mean_orig
-                # print('single_mean_2x2: ', single_mean_2x2)
-                # print('single_mean_image: ', single_mean_image)
-                # log_stats["single_mean_2x2"] = single_mean_2x2
-                # log_stats["single_mean_image"] = single_mean_image
+                single_mean_2x2, single_mean_image = evaluate_colorization.run_evaluation_method(store_path)
+                print('single_mean_2x2:', single_mean_2x2)
+                print('single_mean_image:', single_mean_image)
+
+                log_stats = {}  # Assuming log_stats was previously defined
+                log_stats["single_mean_2x2"] = single_mean_2x2
+                log_stats["single_mean_image"] = single_mean_image
+                
                 model.train()
 
         if misc.is_main_process():
