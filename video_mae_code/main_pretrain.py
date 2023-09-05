@@ -45,6 +45,12 @@ def get_args_parser():
     parser.add_argument("--accum_iter_image", default=1, type=int, help="accum iteration for image")
     parser.add_argument("--accum_iter_video", default=64, type=int, help="accum iteration for video")
     
+    parser.add_argument(
+        "--fb",
+        action='store_true',
+        help="Provide for running on facebook cluster",
+    )
+    
     #Wandb
     parser.add_argument(
         "--wandb_resume",
@@ -352,6 +358,7 @@ def get_args_parser():
     return parser
 
 def main(args):
+    start_time = time.time()
     misc.init_distributed_mode(args)
 
     print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
@@ -373,35 +380,43 @@ def main(args):
         args.video_itr = int(args.video_itr)
     if type(args.davis_eval_freq) == str:
         args.davis_eval_freq = int(args.davis_eval_freq)
-        
+    
+    print('time before image MergedDataset: ', time.time() - start_time)
     if args.image_itr > 0:
-        dataset_image_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, 'image')
+        dataset_image_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, 'image', args.fb)
     else:
         dataset_image_train = None
+    print('time after image MergedDataset: ', time.time() - start_time)
     
+    print('time before video MergedDataset: ', time.time() - start_time)
     if args.video_itr > 0:
         print("creating video merged dataset")
         print("args.video_dataset_list: ", args.video_dataset_list)
-        dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video')
+        dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video', args.fb)
     else:
         dataset_video_train = None
+    print('time after video MergedDataset: ', time.time() - start_time)
 
     num_tasks = misc.get_world_size()  # 8 gpus
     global_rank = misc.get_rank()
     
+    print('time before image distributedsampler: ', time.time() - start_time)
     if args.image_itr > 0:
         sampler_image_train = torch.utils.data.DistributedSampler(
             dataset_image_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
         )
     else:
         sampler_image_train = None
+    print('time after image distributedsampler: ', time.time() - start_time)
 
+    print('time before video distributedsampler: ', time.time() - start_time)
     if args.video_itr > 0:
         sampler_video_train = torch.utils.data.DistributedSampler(
             dataset_video_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
         )
     else: 
         sampler_video_train = None
+    print('time after video distributedsampler: ', time.time() - start_time)
 
     print("Sampler_train = %s" % str(sampler_image_train))
 
@@ -416,6 +431,7 @@ def main(args):
     print("Batch size video is", args.batch_size_video)
     print("Num GPUs is", misc.get_world_size())
 
+    print('time before image dataloader: ', time.time() - start_time)
     if args.image_itr > 0:
         data_loader_image_train = torch.utils.data.DataLoader(
             dataset_image_train,
@@ -427,7 +443,9 @@ def main(args):
         )
     else:
         data_loader_image_train = None
+    print('time after image dataloader: ', time.time() - start_time)
 
+    print('time before video dataloader: ', time.time() - start_time)
     # args.batch_size_video = 4
     print('args.batch_size_video: ', 4)
     if args.video_itr > 0: 
@@ -441,7 +459,7 @@ def main(args):
         )
     else:
         data_loader_video_train = None
-
+    print('time after video dataloader: ', time.time() - start_time)
 
     # define the model
     if args.mae_image:
@@ -519,6 +537,7 @@ def main(args):
     )
     loss_scaler = NativeScaler(fp32=args.fp32)
 
+    print('time before model loaded: ', time.time() - start_time)
     print("loading model")
     _ = misc.load_model(
         args=args,
@@ -528,6 +547,7 @@ def main(args):
     )
     print("Total number of trainable parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
     print("Total number of parameters: ", sum(p.numel() for p in model.parameters()))
+    print('time after model loaded: ', time.time() - start_time)
 
     os.environ["WANDB__SERVICE_WAIT"] = "300"
     if misc.is_main_process():
@@ -547,13 +567,14 @@ def main(args):
                 project="video_inpainting2",
                 config=wandb_config,
                 )
+    print('time after wandb: ', time.time() - start_time)
 
     checkpoint_path = ""
     print(f"Start training for {args.epochs} epochs")
-    start_time = time.time()
-
+    # start_time = time.time()
+    print('time before combinedgen: ', time.time() - start_time)
     combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
-
+    print('time after combinedgen: ', time.time() - start_time)
     for epoch in range(args.start_epoch, args.epochs):
 
         if args.distributed:

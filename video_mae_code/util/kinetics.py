@@ -63,6 +63,8 @@ class Kinetics(torch.utils.data.Dataset):
         rand_aug=False,
         jitter_scales_relative=[0.5, 1.0],
         jitter_aspect_relative=[0.75, 1.3333],
+        #fb
+        fb=False,
     ):
         """
         Construct the Kinetics video loader with a given csv file. The format of
@@ -139,6 +141,9 @@ class Kinetics(torch.utils.data.Dataset):
         elif self.mode in ["test"]:
             self._num_clips = test_num_ensemble_views * test_num_spatial_crops
 
+        #fb
+        self.fb = fb
+
         # print("Constructing Kinetics {}...".format(mode))
         self._construct_loader()
         if self.mode in ["pretrain", "val", "test"]:
@@ -162,7 +167,12 @@ class Kinetics(torch.utils.data.Dataset):
         }
         
         repo_root = Path(__file__).resolve().parents[1] # chdir out of util/ into video_mae_code/
-        csv_file_path = repo_root / "datasets" / "kinetics_videos.csv"
+        if self.fb:
+            csv_file_path = repo_root / "datasets" / "kinetics_videos_fb.csv"
+            print('csv_file_path: ', csv_file_path)
+        else:
+            csv_file_path = repo_root / "datasets" / "kinetics_videos.csv"
+            print('csv_file_path: ', csv_file_path)
 
         path_to_file = csv_file_path
         

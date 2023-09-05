@@ -6,9 +6,10 @@ from torchvision import datasets
 from torchvision.transforms import transforms
 import numpy as np
 import torch
+import time
 
 class VideoDataset(Kinetics):
-    def __init__(self, path_to_data_dir):
+    def __init__(self, path_to_data_dir, fb=False):
         super().__init__(path_to_data_dir=path_to_data_dir,
                          mode="pretrain",
                          sampling_rate=4,
@@ -16,7 +17,8 @@ class VideoDataset(Kinetics):
                          train_jitter_scales=(256, 320),
                          repeat_aug=1,
                          jitter_aspect_relative=[0.75, 1.3333],
-                         jitter_scales_relative=[0.5, 1.0])
+                         jitter_scales_relative=[0.5, 1.0],
+                         fb=fb,)
 
 def get_image_transforms():
     return transforms.Compose([
@@ -25,17 +27,24 @@ def get_image_transforms():
         transforms.ToTensor(),
         transforms.Normalize(mean=constants.mean, std=constants.std)])
 
-def get_dataset(name, root_path, ds_type):
+def get_dataset(name, root_path, ds_type, fb=False):
+    start_time = time.time()
     if ds_type == 'image':
         transforms_train = get_image_transforms()
         if name == 'cvf':
-            # dataset_train = datasets.ImageFolder(os.path.join(root_path, 'arxiv_resized_train_val_split/train/'),
-            #                                      transform=transforms_train)
-            dataset_train = datasets.ImageFolder('/shared/amir/dataset/arxiv_resized_train_val_split/train', 
-                                                 transform=transforms_train)
+            if fb:
+                dataset_train = datasets.ImageFolder('/private/home/amirbar/datasets/CVF/arxiv_resized_train_val_split/train/', 
+                                                     transform=transforms_train)
+            else:
+                dataset_train = datasets.ImageFolder('/shared/amir/dataset/arxiv_resized_train_val_split/train', 
+                                                     transform=transforms_train)
         elif name == 'imagenet':
-            dataset_train = datasets.ImageFolder('/shared/group/ilsvrc/train', 
-                                                 transform=transforms_train)
+            if fb:
+                dataset_train = datasets.ImageFolder('/datasets01/imagenet_full_size/061417/train', 
+                                                     transform=transforms_train)
+            else:
+                dataset_train = datasets.ImageFolder('/shared/group/ilsvrc/train', 
+                                                    transform=transforms_train)
         else:
             raise ValueError("Wrong dataset name.")
 
@@ -50,24 +59,44 @@ def get_dataset(name, root_path, ds_type):
                 pretrain_rand_flip=False,
                 pretrain_rand_erase_prob=0,
                 rand_aug=False,
+                fb=fb,
             )
         elif name == "CrossTask":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids/")
+            if fb:
+                dataset_train = VideoDataset(path_to_data_dir="/datasets01/CrossTask/053122/raw_video/", fb=fb)
+            else:
+                dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids/", fb=fb)
         elif name == "kinetics":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/group/kinetics/")
+            if fb:
+                dataset_train = VideoDataset(path_to_data_dir="/datasets01/kinetics/092121/400/train_288px/", fb=fb)
+            else:
+                dataset_train = VideoDataset(path_to_data_dir="/shared/group/kinetics/", fb=fb)
         elif name == "Objectron":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron/")
+            if fb:
+                raise ValueError("Objectron not supported on fb")
+            else:
+                dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron/", fb=fb)
         elif name == "SSV2":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos/") 
+            if fb:
+                dataset_train = VideoDataset(path_to_data_dir="/datasets01/SSV2/videos/", fb=fb)
+            else: 
+                dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos/", fb=fb) 
         elif name == "UCF101":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/UCF101/") 
+            if fb:
+                dataset_train = VideoDataset(path_to_data_dir="/datasets01/ucf101/112018/data", fb=fb) 
+            else:
+                dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/UCF101/", fb=fb) 
         elif name == "CSV":
-            dataset_train = VideoDataset(path_to_data_dir="/shared/dannyt123/Datasets/CSV")
+            if fb:
+                raise ValueError("CSV not yet implemented")
+            else:
+                dataset_train = VideoDataset(path_to_data_dir="/shared/dannyt123/Datasets/CSV", fb=fb)
         else:
             raise NotImplementedError()
     else:
         raise ValueError("Wrong dataset type.")
 
+    print('time for {name}: '.format(name=name), time.time() - start_time)
     return dataset_train
 
 def combined_gen(image_itr_cls, video_itr_cls, accum_iter_img, accum_iter_vid, image_itr, video_itr, num_iter):
@@ -139,9 +168,9 @@ class CombinedGen:
 
 
 class MergedDataset(torch.utils.data.Dataset):
-    def __init__(self, root_path, dataset_list, dataset_conf, ds_type):
+    def __init__(self, root_path, dataset_list, dataset_conf, ds_type, fb=False):
         dataset_conf = [float(x) for x in dataset_conf[0].split(',')]
-        datasets = [get_dataset(ds_name, root_path, ds_type) for ds_name in dataset_list[0].split(',')]
+        datasets = [get_dataset(ds_name, root_path, ds_type, fb) for ds_name in dataset_list[0].split(',')]
         conf = [i / sum(dataset_conf) for i in dataset_conf]
         self.datasets = datasets
         self.conf = conf
