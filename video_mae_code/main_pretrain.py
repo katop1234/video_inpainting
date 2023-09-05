@@ -626,9 +626,9 @@ def main(args):
                 generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
                 print("Finished Saving Davis Eval Segmentations")
                 
-                single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
+                # single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
                 single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
-                log_stats["Davis_single_mean_orig"] = single_mean_orig
+                # log_stats["Davis_single_mean_orig"] = single_mean_orig
                 print('single_mean_2x2: ', single_mean_2x2)
                 print('single_mean_image: ', single_mean_image)
                 log_stats["single_mean_2x2"] = single_mean_2x2
