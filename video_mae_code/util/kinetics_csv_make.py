@@ -11,6 +11,7 @@ PARSER.add_argument('--kinetics_videos_fb_csv', type=str,
 
 
 def create_csv(kinetics_path, kinetics_videos_fb_csv):
+    kinetics_path = os.path.join(kinetics_path, 'train_288x')
     with open(kinetics_videos_fb_csv, 'w') as f:
         writer = csv.writer(f)
         for _, dirnames, _ in os.walk(kinetics_path):

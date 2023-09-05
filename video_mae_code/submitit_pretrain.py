@@ -63,9 +63,6 @@ class Trainer(object):
         import submitit
 
         self.args.dist_url = get_init_file().as_uri()
-        checkpoint_file = os.path.join(self.args.output_dir, "checkpoint.pth")
-        if os.path.exists(checkpoint_file):
-            self.args.resume = checkpoint_file
         print("Requeuing ", self.args)
         empty_trainer = type(self)(self.args)
         return submitit.helpers.DelayedSubmission(empty_trainer)
@@ -119,6 +116,7 @@ def main():
 
     args.dist_url = get_init_file().as_uri()
     args.output_dir = args.job_dir
+    args.log_dir = args.job_dir
 
     trainer = Trainer(args)
     job = executor.submit(trainer)

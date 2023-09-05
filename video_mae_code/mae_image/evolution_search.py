@@ -161,7 +161,7 @@ def regularized_evolution(history_csv, population_csv, csv_add_type, cycles, pop
 
                 # The parent is the best model in the sample.
                 parent = max(sample, key=lambda i: i[2])
-                # print('parent: ', parent)
+                print('parent: ', parent)
                     
                 # Create the child model and store it.
                 child_video_encoder_indices, child_video_decoder_indices = mutate_arch(parent, encoder_all_indices, decoder_all_indices, encoder_mutation_prob)

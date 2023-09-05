@@ -30,7 +30,7 @@ import models_mae
 from mae_image import models_mae_image
 from engine_pretrain import train_one_epoch
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
-from torch.utils.tensorboard import SummaryWriter
+# from torch.utils.tensorboard import SummaryWriter
 import util.decoder.utils as utils
 from iou_eval import generate_segmentations, run_evaluation_method
 from pathlib import Path
@@ -369,10 +369,8 @@ def main(args):
     # Dataset combining image and video data
     if type(args.image_itr) == str:
         args.image_itr = int(args.image_itr)
-        print('args.image_itr: ', image_itr)
     if type(args.video_itr) == str:
         args.video_itr = int(args.video_itr)
-        print('args.video_itr: ', args.video_itr)
     if type(args.davis_eval_freq) == str:
         args.davis_eval_freq = int(args.davis_eval_freq)
         
@@ -407,14 +405,12 @@ def main(args):
 
     print("Sampler_train = %s" % str(sampler_image_train))
 
-    if global_rank == 0 and args.log_dir is not None:
-        try:
-            pathmgr.mkdirs(args.log_dir)
-        except Exception as _:
-            pass
-        log_writer = SummaryWriter(log_dir=args.log_dir)
-    else:
-        log_writer = None
+    try:
+        pathmgr.mkdirs(args.log_dir)
+    except Exception as _:
+        pass
+    
+    log_writer = None
 
     print("Batch size image is", args.batch_size_image)
     print("Batch size video is", args.batch_size_video)
