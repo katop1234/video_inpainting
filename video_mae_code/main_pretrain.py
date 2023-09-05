@@ -639,10 +639,6 @@ def main(args):
                 if not os.path.exists(store_path):
                     os.mkdir(store_path)
                 
-                parent = Path(__file__).parent.absolute()
-                prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
-                single_prompt_csv = os.path.join(parent, "datasets/davis_single_prompt.csv")
-                
                 davis_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_prompt") # TODO not supported yet
                 print("Colorization eval for /test_videos/colorization_davis_prompt not supported yet")
                 davis_2x2_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_2x2_single_prompt")
