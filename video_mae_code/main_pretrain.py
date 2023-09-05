@@ -388,7 +388,7 @@ def main(args):
         dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video')
     else:
         dataset_video_train = None
-
+    
     num_tasks = misc.get_world_size()  # 8 gpus
     global_rank = misc.get_rank()
     

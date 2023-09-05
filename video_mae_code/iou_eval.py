@@ -6,6 +6,8 @@ import numpy as np
 import PIL
 from PIL import Image
 import os
+import os
+import PIL.Image
 import subprocess
 import sys
 import torch
@@ -13,7 +15,7 @@ from util.eval import *
 from pathlib import Path
 
 parent = Path(__file__).parent.absolute()
-davis_eval_path = os.path.join(parent, "../../davis2017-evaluation")
+davis_eval_path = os.path.join(parent, "../davis2017-evaluation")
 sys.path.append(davis_eval_path)
 import evaluate
 
@@ -80,6 +82,28 @@ def save_segmentations(frames, val, path, end_idx, mask_type):
             seg_image.putpalette(color_palette)
             curr_path = os.path.join(path, f'{i:05}.png')
             seg_image.save(curr_path)
+
+def save_colorizations(frames, val, path, end_idx, single_object_cases):
+    # Saves the colorizations at the proper frames
+    num_frames = len(frames)
+
+    sampling_rate = end_idx // num_frames
+    indices = []
+    for i in range(num_frames):
+        indices.append(i * sampling_rate)
+
+    j = 0
+    for i in range(end_idx + 1):
+        if i in indices and val in single_object_cases:
+            frame = frames[j]
+            h, w, _ = frame.shape
+            colorized_quadrant = frame[h//2:, w//2:]  # Extract bottom-right quadrant
+
+            j += 1
+            colorized_image = PIL.Image.fromarray(colorized_quadrant)
+            curr_path = os.path.join(path, f'{i:05}.png')
+            colorized_image.save(curr_path)
+
 
 def load_model(model_path):
     model = MaskedAutoencoderViT()
@@ -225,8 +249,8 @@ def generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, dav
                 val_width = int(row[5])
                 val_end_idx = int(row[7])
                 
-                video_prompt_2x2 = "DAVIS_2x2_{prompt_num}.mp4".format(prompt_num=prompt_num)
-                image_prompt_2x2 = "DAVIS_image_{prompt_num}.png".format(prompt_num=prompt_num)
+                video_prompt_2x2 = "colorization_DAVIS_2x2_{prompt_num}.mp4".format(prompt_num=prompt_num)
+                image_prompt_2x2 = "colorization_DAVIS_image_{prompt_num}.png".format(prompt_num=prompt_num)
                 
                 video_prompt_2x2 = os.path.join(davis_2x2_prompt_path, video_prompt_2x2)
                 image_prompt_2x2 = os.path.join(davis_image_prompt_path, image_prompt_2x2)
@@ -245,8 +269,8 @@ def generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, dav
                 if not os.path.exists(seg_save_image_path):
                     os.mkdir(seg_save_image_path)
                     
-                save_segmentations(frames_2x2, val, seg_save_2x2_path, val_end_idx, '2x2 tube')
-                save_segmentations(frames_image, val, seg_save_image_path, val_end_idx, 'test image')
+                save_colorizations(frames_2x2, val, seg_save_2x2_path, val_end_idx, '2x2 tube')
+                save_colorizations(frames_image, val, seg_save_image_path, val_end_idx, 'test image')
                 
                 prompt_num += 1
                 
