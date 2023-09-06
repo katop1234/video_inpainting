@@ -167,26 +167,30 @@ class Kinetics(torch.utils.data.Dataset):
         }
         
         repo_root = Path(__file__).resolve().parents[1] # chdir out of util/ into video_mae_code/
-        if self.fb:
-            csv_file_path = repo_root / "datasets" / "kinetics_videos_fb.csv"
-            print('csv_file_path: ', csv_file_path)
-        else:
-            csv_file_path = repo_root / "datasets" / "kinetics_videos.csv"
-            print('csv_file_path: ', csv_file_path)
+        # if self.fb:
+        #     csv_file_path = repo_root / "datasets" / "kinetics_videos_fb.csv"
+        #     print('csv_file_path: ', csv_file_path)
+        # else:
+        #     csv_file_path = repo_root / "datasets" / "kinetics_videos.csv"
+        #     print('csv_file_path: ', csv_file_path)
 
-        path_to_file = csv_file_path
+        # print('csv_file_path: ', csv_file_path)
+        # path_to_file = csv_file_path
         
-        assert pathmgr.exists(path_to_file), "{} dir not found".format(path_to_file)
+        # assert pathmgr.exists(path_to_file), "{} dir not found".format(path_to_file)
 
         self._path_to_videos = []
         self._labels = []
         self._spatial_temporal_idx = []
 
-        if 'kinetics' in self._path_to_data_dir:
+        # if 'kinetics' in self._path_to_data_dir:
+        if self._path_to_data_dir.endswith('csv'):
+            path_to_file = self._path_to_data_dir
             with pathmgr.open(path_to_file, "r") as f:
                 for clip_idx, path_label in enumerate(f.read().splitlines()):
-                    assert len(path_label.split()) == 2
-                    path, label = path_label.split()
+                    # assert len(path_label.split()) == 2
+                    # path, label = path_label.split()
+                    path, label = path_label, "0"
                         
                     for idx in range(self._num_clips):
                         self._path_to_videos.append(os.path.join(path))

@@ -4,9 +4,124 @@ from util.decoder import constants
 from util.kinetics import Kinetics
 from torchvision import datasets
 from torchvision.transforms import transforms
+from iopath.common.file_io import g_pathmgr as pathmgr
 import numpy as np
 import torch
 import time
+from pathlib import Path
+
+from typing import Any, Callable, cast, Dict, List, Optional, Tuple, Union
+
+def has_file_allowed_extension(filename: str, extensions: Union[str, Tuple[str, ...]]) -> bool:
+    """Checks if a file is an allowed extension.
+
+    Args:
+        filename (string): path to a file
+        extensions (tuple of strings): extensions to consider (lowercase)
+
+    Returns:
+        bool: True if the filename ends with one of given extensions
+    """
+    return filename.lower().endswith(extensions if isinstance(extensions, str) else tuple(extensions))
+
+
+def is_image_file(filename: str) -> bool:
+    """Checks if a file is an allowed image extension.
+
+    Args:
+        filename (string): path to a file
+
+    Returns:
+        bool: True if the filename ends with a known image extension
+    """
+    IMG_EXTENSIONS = (".jpg", ".jpeg", ".png", ".ppm", ".bmp", ".pgm", ".tif", ".tiff", ".webp")
+    return has_file_allowed_extension(filename, IMG_EXTENSIONS)
+
+
+def find_classes(directory: str) -> Tuple[List[str], Dict[str, int]]:
+    """Finds the class folders in a dataset.
+
+    See :class:`DatasetFolder` for details.
+    """
+    classes = sorted(entry.name for entry in os.scandir(directory) if entry.is_dir())
+    if not classes:
+        raise FileNotFoundError(f"Couldn't find any class folder in {directory}.")
+
+    class_to_idx = {cls_name: i for i, cls_name in enumerate(classes)}
+    return classes, class_to_idx
+
+
+def make_dataset(
+    directory: str,
+    class_to_idx: Optional[Dict[str, int]] = None,
+    extensions: Optional[Union[str, Tuple[str, ...]]] = None,
+    is_valid_file: Optional[Callable[[str], bool]] = None,
+    dataset_csv=None, 
+) -> List[Tuple[str, int]]:
+    """Generates a list of samples of a form (path_to_sample, class).
+
+    See :class:`DatasetFolder` for details.
+
+    Note: The class_to_idx parameter is here optional and will use the logic of the ``find_classes`` function
+    by default.
+    """
+    print('in new make_dataset')
+    directory = os.path.expanduser(directory)
+
+    if class_to_idx is None:
+        _, class_to_idx = find_classes(directory)
+    elif not class_to_idx:
+        raise ValueError("'class_to_index' must have at least one entry to collect any samples.")
+
+    both_none = extensions is None and is_valid_file is None
+    both_something = extensions is not None and is_valid_file is not None
+    if both_none or both_something:
+        raise ValueError("Both extensions and is_valid_file cannot be None or not None at the same time")
+
+    if extensions is not None:
+
+        def is_valid_file(x: str) -> bool:
+            return has_file_allowed_extension(x, extensions)  # type: ignore[arg-type]
+
+    is_valid_file = cast(Callable[[str], bool], is_valid_file)
+
+    instances = []
+    available_classes = set()
+    if dataset_csv and dataset_csv.endswith('csv'):
+        print('in csv')
+        instances = []
+        with pathmgr.open(dataset_csv, "r") as f:
+            for path_label in enumerate(f.read().splitlines()):
+                _, path = path_label
+                if is_valid_file(path):
+                    item = path, 0
+                    instances.append(item)
+    else: 
+        for target_class in sorted(class_to_idx.keys()):
+            class_index = class_to_idx[target_class]
+            target_dir = os.path.join(directory, target_class)
+            if not os.path.isdir(target_dir):
+                continue
+            for root, _, fnames in sorted(os.walk(target_dir, followlinks=True)):
+                for fname in sorted(fnames):
+                    path = os.path.join(root, fname)
+                    if is_valid_file(path):
+                        item = path, class_index
+                        instances.append(item)
+
+                        if target_class not in available_classes:
+                            available_classes.add(target_class)
+
+    return instances
+
+class ImageFoldercsv(datasets.ImageFolder):
+    def __init__(self, root, transform=None, dataset_csv=None):
+        self.dataset_csv = dataset_csv
+        
+        super().__init__(root=root, transform=transform)
+    
+    def make_dataset(self, directory, class_to_idx, extensions=None, is_valid_file=None):
+        return make_dataset(directory, class_to_idx, extensions=extensions, is_valid_file=is_valid_file, dataset_csv=self.dataset_csv)
 
 class VideoDataset(Kinetics):
     def __init__(self, path_to_data_dir, fb=False):
@@ -28,23 +143,29 @@ def get_image_transforms():
         transforms.Normalize(mean=constants.mean, std=constants.std)])
 
 def get_dataset(name, root_path, ds_type, fb=False):
+    parent = Path(__file__).parent.absolute()
+    datasets = os.path.join(parent, "datasets")
     start_time = time.time()
     if ds_type == 'image':
         transforms_train = get_image_transforms()
         if name == 'cvf':
             if fb:
+                cvf_csv_path = os.path.join(datasets, 'cvf_images_fb.csv')
                 dataset_train = datasets.ImageFolder('/private/home/amirbar/datasets/CVF/arxiv_resized_train_val_split/train/', 
-                                                     transform=transforms_train)
+                                                     transform=transforms_train, dataset_csv=cvf_csv_path)
             else:
-                dataset_train = datasets.ImageFolder('/shared/amir/dataset/arxiv_resized_train_val_split/train', 
-                                                     transform=transforms_train)
+                cvf_csv_path = os.path.join(datasets, 'cvf_images.csv')
+                dataset_train = ImageFoldercsv('/shared/amir/dataset/arxiv_resized_train_val_split/train', 
+                                                     transform=transforms_train, dataset_csv=cvf_csv_path)
         elif name == 'imagenet':
             if fb:
+                imagenet_csv_path = os.path.join(datasets, 'imagenet_images_fb.csv')
                 dataset_train = datasets.ImageFolder('/datasets01/imagenet_full_size/061417/train', 
-                                                     transform=transforms_train)
+                                                     transform=transforms_train, dataset_csv=imagenet_csv_path )
             else:
-                dataset_train = datasets.ImageFolder('/shared/group/ilsvrc/train', 
-                                                    transform=transforms_train)
+                imagenet_csv_path = os.path.join(datasets, 'imagenet_images.csv')
+                dataset_train = ImageFoldercsv('/shared/group/ilsvrc/train', 
+                                                    transform=transforms_train, dataset_csv=imagenet_csv_path)
         else:
             raise ValueError("Wrong dataset name.")
 
@@ -63,34 +184,46 @@ def get_dataset(name, root_path, ds_type, fb=False):
             )
         elif name == "CrossTask":
             if fb:
-                dataset_train = VideoDataset(path_to_data_dir="/datasets01/CrossTask/053122/raw_video/", fb=fb)
+                crosstask_csv_path = os.path.join(datasets, 'crosstask_videos_fb.csv')
             else:
-                dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/CrossTask_vids/", fb=fb)
+                crosstask_csv_path = os.path.join(datasets, 'crosstask_videos.csv')
+            dataset_train = VideoDataset(path_to_data_dir=crosstask_csv_path, fb=fb)
         elif name == "kinetics":
             if fb:
-                dataset_train = VideoDataset(path_to_data_dir="/datasets01/kinetics/092121/400/train_288px/", fb=fb)
+                kinetics_csv_path = os.path.join(datasets, 'kinetics_videos_fb.csv')
             else:
-                dataset_train = VideoDataset(path_to_data_dir="/shared/group/kinetics/", fb=fb)
+                kinetics_csv_path = os.path.join(datasets, 'kinetics_videos.csv')
+            dataset_train = VideoDataset(path_to_data_dir=kinetics_csv_path, fb=fb)
         elif name == "Objectron":
             if fb:
                 raise ValueError("Objectron not supported on fb")
             else:
-                dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/Objectron/", fb=fb)
+                objectron_csv_path = os.path.join(datasets, 'objectron_videos.csv')
+                dataset_train = VideoDataset(path_to_data_dir=objectron_csv_path, fb=fb)
         elif name == "SSV2":
             if fb:
-                dataset_train = VideoDataset(path_to_data_dir="/datasets01/SSV2/videos/", fb=fb)
-            else: 
-                dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/SSV2_videos/", fb=fb) 
+                ssv2_csv_path = os.path.join(datasets, 'ssv2_videos_fb.csv')
+            else:
+                ssv2_csv_path = os.path.join(datasets, 'ssv2_videos.csv')
+            dataset_train = VideoDataset(path_to_data_dir=ssv2_csv_path, fb=fb) 
         elif name == "UCF101":
             if fb:
-                dataset_train = VideoDataset(path_to_data_dir="/datasets01/ucf101/112018/data", fb=fb) 
+                ucf101_csv_path = os.path.join(datasets, 'ucf101_videos_fb.csv')
             else:
-                dataset_train = VideoDataset(path_to_data_dir="/shared/katop1234/Datasets/UCF101/", fb=fb) 
+                ucf101_csv_path = os.path.join(datasets, 'ucf101_videos.csv')
+            dataset_train = VideoDataset(path_to_data_dir=ucf101_csv_path, fb=fb) 
         elif name == "CSV":
             if fb:
-                raise ValueError("CSV not yet implemented")
+                csv_csv_path = os.path.join(datasets, 'csv_videos_fb.csv')
             else:
-                dataset_train = VideoDataset(path_to_data_dir="/shared/dannyt123/Datasets/CSV", fb=fb)
+                csv_csv_path = os.path.join(datasets, 'csv_videos.csv')
+            dataset_train = VideoDataset(path_to_data_dir=csv_csv_path, fb=fb)
+        elif name == "EgoObj":
+            if fb:
+                egoobj_csv_path = os.path.join(datasets, 'egoobj_videos_fb.csv')
+                dataset_train = VideoDataset(path_to_data_dir=egoobj_csv_path, fb=fb) 
+            else:
+                raise ValueError("Ego Object not implemented on BAIR")
         else:
             raise NotImplementedError()
     else:

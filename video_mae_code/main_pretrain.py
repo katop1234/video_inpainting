@@ -596,6 +596,16 @@ def main(args):
                 fp32=args.fp32,
             )
 
+            checkpoint_path = misc.save_model(
+                    args=args,
+                    model=model,
+                    model_without_ddp=model_without_ddp,
+                    optimizer=optimizer,
+                    loss_scaler=loss_scaler,
+                    epoch=epoch,
+                    save_numbered=False,
+                )
+            
             if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
                 checkpoint_path = misc.save_model(
                     args=args,
@@ -604,6 +614,7 @@ def main(args):
                     optimizer=optimizer,
                     loss_scaler=loss_scaler,
                     epoch=epoch,
+                    save_numbered=True,
                 )
 
             log_stats = {

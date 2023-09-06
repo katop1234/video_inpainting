@@ -359,8 +359,9 @@ def get_grad_norm_(parameters, norm_type: float = 2.0) -> torch.Tensor:
     return total_norm
 
 
-def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
+def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler, save_numbered=False):
     checkpoint_path = "{}/checkpoint-{:05d}.pth".format(args.output_dir, epoch)
+    latest_checkpoint_path = "{}/checkpoint.pth".format(args.output_dir)
     to_save = {
         "model": model_without_ddp.state_dict(),
         "optimizer": optimizer.state_dict(),
@@ -369,7 +370,10 @@ def save_model(args, epoch, model, model_without_ddp, optimizer, loss_scaler):
         "args": args,
     }
 
-    save_on_master(to_save, checkpoint_path)
+    if save_numbered:
+        save_on_master(to_save, checkpoint_path)
+    else:
+        save_on_master(to_save, latest_checkpoint_path)
     return checkpoint_path
 
 
@@ -386,9 +390,13 @@ def get_last_checkpoint(args):
         print("No checkpoints found in '{}'.".format(d))
         return None
     else:
-        # Sort the checkpoints by epoch.
-        name = sorted(names)[-1]
-        return os.path.join(d, name)
+        if "checkpoint.pth" in names:
+            # Load checkpoint.pth if it exists which should be latest
+            return os.path.join(d, "checkpoint.pth")
+        else:
+            # Sort the checkpoints by epoch.
+            name = sorted(names)[-1]
+            return os.path.join(d, name)
 
 
 def load_model(args, model_without_ddp, optimizer, loss_scaler):
