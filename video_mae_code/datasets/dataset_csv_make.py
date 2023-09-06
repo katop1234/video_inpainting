@@ -7,7 +7,7 @@ video_extensions = ['.mp4', '.avi', '.mkv', '.mov']
 image_extensions = ['.png', '.jpg', '.JPEG']
 
 #Facebook Paths
-imagenet_fb_path = ""
+imagenet_fb_path = "/datasets01/imagenet_full_size/061417/train/"
 cvf_fb_path = "/private/home/amirbar/datasets/CVF/arxiv_resized_train_val_split/train/"
 
 crosstask_fb_path = "/datasets01/CrossTask/053122/raw_video/"
