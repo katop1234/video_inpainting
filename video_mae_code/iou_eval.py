@@ -6,11 +6,14 @@ import numpy as np
 import PIL
 from PIL import Image
 import os
+import os
+import PIL.Image
 import subprocess
 import sys
 import torch
 from util.eval import *
 from pathlib import Path
+from evaluate_colorization import calculate_metric
 
 parent = Path(__file__).parent.absolute()
 davis_eval_path = os.path.join(parent, "../davis2017-evaluation")
@@ -80,6 +83,28 @@ def save_segmentations(frames, val, path, end_idx, mask_type):
             seg_image.putpalette(color_palette)
             curr_path = os.path.join(path, f'{i:05}.png')
             seg_image.save(curr_path)
+
+def save_colorizations(frames, val, path, end_idx, single_object_cases):
+    # Saves the colorizations at the proper frames
+    num_frames = len(frames)
+
+    sampling_rate = end_idx // num_frames
+    indices = []
+    for i in range(num_frames):
+        indices.append(i * sampling_rate)
+
+    j = 0
+    for i in range(end_idx + 1):
+        if i in indices and val in single_object_cases:
+            frame = frames[j]
+            h, w, _ = frame.shape
+            colorized_quadrant = frame[h//2:, w//2:]  # Extract bottom-right quadrant
+
+            j += 1
+            colorized_image = PIL.Image.fromarray(colorized_quadrant)
+            curr_path = os.path.join(path, f'{i:05}.png')
+            colorized_image.save(curr_path)
+
 
 def load_model(model_path):
     model = MaskedAutoencoderViT()
@@ -166,6 +191,111 @@ def generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, dav
                 save_segmentations(frames_image, val, seg_save_image_path, val_end_idx, 'test image')
                 
                 prompt_num += 1
+
+
+def generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=False):
+    if type(model) is torch.nn.parallel.DistributedDataParallel:
+        model = model.module
+    
+    # get a folder for images to do coloriaztion and also one for videos
+    # test colorization on each one and then get the metrics
+    # save the colorizations in a given folder for reference
+    
+    # you can copy dannys code and then just change the input data from segmentations to colorization tasks and it works
+    
+    
+    results_orig_path = get_results_path(store_path, 'orig')
+    results_2x2_path = get_results_path(store_path, '2x2')
+    results_image_path = get_results_path(store_path, 'image')
+    if not os.path.exists(results_orig_path):
+        os.mkdir(results_orig_path)
+    if not os.path.exists(results_2x2_path):
+        os.mkdir(results_2x2_path)
+    if not os.path.exists(results_image_path):
+        os.mkdir(results_image_path)
+    
+    # with open(prompt_csv, 'r') as file:
+    #     csvreader = csv.reader(file)
+    #     prompt_num = 0
+    #     for row in csvreader:
+    #         if row[0] != 'train':
+    #             val = row[1]
+    #             val_height = int(row[4])
+    #             val_width = int(row[5])
+    #             val_end_idx = int(row[7])
+                
+    #             video_prompt_orig = "DAVIS_{prompt_num}.mp4".format(prompt_num=prompt_num)
+
+    #             video_prompt_orig = os.path.join(davis_prompt_path, video_prompt_orig)
+                
+    #             video_im_paste_orig = image_video_generation(video_prompt_orig, model, 'spatiotemporal', mae_image=mae_image)
+
+    #             frames_orig = extract_prompt_seg(video_im_paste_orig[0], val_height, val_width, 'spatiotemporal')
+ 
+    #             seg_save_orig_path = os.path.join(results_orig_path, val)
+
+    #             if not os.path.exists(seg_save_orig_path):
+    #                 os.mkdir(seg_save_orig_path)
+
+    #             save_segmentations(frames_orig, val, seg_save_orig_path, val_end_idx, 'spatiotemporal')
+    #             prompt_num += 1
+    
+    video_metrics = []
+    image_metrics = []
+    
+    with open(single_prompt_csv, 'r') as file:
+        csvreader = csv.reader(file)
+        prompt_num = 0
+        for row in csvreader:
+            if row[0] != 'train':
+                val = row[1]
+                val_height = int(row[4])
+                val_width = int(row[5])
+                val_end_idx = int(row[7])
+                
+                video_prompt_2x2 = "colorization_DAVIS_2x2_{prompt_num}.mp4".format(prompt_num=prompt_num)
+                image_prompt_2x2 = "colorization_DAVIS_image_{prompt_num}.png".format(prompt_num=prompt_num)
+                
+                video_prompt_2x2 = os.path.join(davis_2x2_prompt_path, video_prompt_2x2)
+                image_prompt_2x2 = os.path.join(davis_image_prompt_path, image_prompt_2x2)
+                
+                video_im_paste_2x2, orig_vid = image_video_generation_colorization(video_prompt_2x2, model, '2x2 tube', mae_image=mae_image)
+                image_im_paste, orig_image = image_video_generation_colorization(image_prompt_2x2, model, 'test image', mae_image=mae_image)
+                
+                h, w = 224, 224
+                
+                ours_video = torch.from_numpy(video_im_paste_2x2[0, :, h//2:, w//2:, :])
+                gt_video = orig_vid[:, h//2:, w//2:, :]
+                
+                ours_image = torch.from_numpy(image_im_paste[0, :, h//2:, w//2:, :])
+                gt_image = orig_image[:, h//2:, w//2:, :]
+
+                video_metric = calculate_metric(ours_video, gt_video)
+                image_metric = calculate_metric(ours_image, gt_image)
+                
+                video_metrics.append(video_metric["mse"])
+                image_metrics.append(image_metric["mse"])
+                
+                # frames_2x2 = extract_prompt_seg(video_im_paste_2x2[0], val_height, val_width, '2x2 tube')
+                # frames_image = extract_prompt_seg(image_im_paste[0], val_height, val_width, 'test image')
+                
+                # seg_save_2x2_path = os.path.join(results_2x2_path, val)
+                # seg_save_image_path = os.path.join(results_image_path, val)
+                
+                # if not os.path.exists(seg_save_2x2_path):
+                #     os.mkdir(seg_save_2x2_path)
+                # if not os.path.exists(seg_save_image_path):
+                #     os.mkdir(seg_save_image_path)
+                    
+                # save_colorizations(frames_2x2, val, seg_save_2x2_path, val_end_idx, '2x2 tube')
+                # save_colorizations(frames_image, val, seg_save_image_path, val_end_idx, 'test image')
+                
+                prompt_num += 1
+    
+    image_metric_mean = sum(image_metrics) / len(image_metrics)
+    video_metric_mean = sum(video_metrics) / len(video_metrics)
+    
+    return image_metric_mean, video_metric_mean
                 
 def image_video_generation(prompt_path, model, mask_test_type, mae_image=False):
     test_model_input = get_test_model_input(file=prompt_path)
@@ -196,6 +326,36 @@ def image_video_generation(prompt_path, model, mask_test_type, mae_image=False):
         im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
         
     return im_paste
+
+def image_video_generation_colorization(prompt_path, model, mask_test_type, mae_image=False):
+    test_model_input = get_test_model_input(file=prompt_path)
+    test_model_input = spatial_sample_test_video(test_model_input)
+    
+    if mask_test_type == 'test image':
+        _, test_model_output, mask = model(test_model_input, test_image=True)
+    else: 
+        _, test_model_output, mask = model(test_model_input, video_test_type=mask_test_type)
+
+    if mae_image: 
+        num_patches = 14
+        y = test_model_output.argmax(dim=-1)
+        im_paste, _, orig = decode_raw_prediction(mask, model, num_patches, test_model_input, y, mae_image)
+        im_paste = im_paste.unsqueeze(0)
+        im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+    else:
+        num_patches = 14
+        N = test_model_input.shape[0]
+
+        test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
+        test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
+        test_model_output = test_model_output.flatten(1, 2)
+        test_model_output = test_model_output.flatten(1, 2)
+
+        y = test_model_output.argmax(dim=-1)
+        im_paste, _, orig = decode_raw_prediction(mask, model, num_patches, test_model_input, y, mae_image=mae_image)
+        im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+        
+    return im_paste, orig
                 
 def run_evaluation_method(store_path):
     curr_dir = os.path.dirname(os.path.abspath(__file__))

@@ -32,7 +32,8 @@ from engine_pretrain import train_one_epoch
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
 # from torch.utils.tensorboard import SummaryWriter
 import util.decoder.utils as utils
-from iou_eval import generate_segmentations, run_evaluation_method
+from iou_eval import generate_segmentations, run_evaluation_method, generate_colorizations
+import evaluate_colorization
 from pathlib import Path
 
 def get_args_parser():
@@ -637,10 +638,11 @@ def main(args):
                     log_stats = {}
                     
                 model.eval()
+                ## Segmentation specific code
                 store_path = os.path.join(args.output_dir, "davis_segs")
                 if not os.path.exists(store_path):
                     os.mkdir(store_path)
-            
+                
                 parent = Path(__file__).parent.absolute()
                 prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
                 single_prompt_csv = os.path.join(parent, "datasets/davis_single_prompt.csv")
@@ -650,7 +652,7 @@ def main(args):
                 davis_image_prompt_path = os.path.join(parent, "../test_images/single_davis_image_prompts")
                 
                 generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
-                print("Finished Saving Davis Eval Segmentations")                
+                print("Finished Saving Davis Eval Segmentations")
                 
                 # single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
                 single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
@@ -659,6 +661,26 @@ def main(args):
                 print('single_mean_image: ', single_mean_image)
                 log_stats["single_mean_2x2"] = single_mean_2x2
                 log_stats["single_mean_image"] = single_mean_image
+                
+                ## Colorization specific code
+                store_path = os.path.join(args.output_dir, "davis_cols")
+                if not os.path.exists(store_path):
+                    os.mkdir(store_path)
+                
+                colorization_davis_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_prompt") # TODO not supported yet
+                colorization_davis_2x2_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_2x2_single_prompt")
+                colorization_davis_image_prompt_path = os.path.join(parent, "../test_images/colorization_single_davis_image_prompts")
+                  
+                colorization_single_mean_image, colorization_single_mean_2x2 = generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, colorization_davis_prompt_path, colorization_davis_2x2_prompt_path, colorization_davis_image_prompt_path, mae_image=args.mae_image)
+                print("Finished Saving Colorization examples")       
+
+                print('colorization_single_mean_2x2:', colorization_single_mean_2x2)
+                print('colorization_single_mean_image:', colorization_single_mean_image)
+
+                log_stats = {}  # Assuming log_stats was previously defined
+                log_stats["colorization_single_mean_2x2"] = single_mean_2x2
+                log_stats["colorization_single_mean_image"] = single_mean_image
+                
                 model.train()
 
         if misc.is_main_process():
