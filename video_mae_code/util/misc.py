@@ -402,7 +402,7 @@ def get_last_checkpoint(args):
 def load_model(args, model_without_ddp, optimizer, loss_scaler):
     if not args.resume:
         args.resume = get_last_checkpoint(args)
-    if args.resume and '3400' in args.resume and 'output_dir' not in args.resume:
+    if args.resume and '3400' in args.resume and 'output_dir' not in args.resume and 'logs_dir' not in args.resume:
         print('in 3400 and checking new')
         last_checkpoint = get_last_checkpoint(args)
         if last_checkpoint:
