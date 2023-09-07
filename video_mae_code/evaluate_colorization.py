@@ -17,7 +17,5 @@ def calculate_metric(ours, target):
         target = target.float() # Convert to float
         target /= 255.         # Normalize
     
-    print('ours: ', ours)
-    print('target: ', target)
     mse = torch.mean((target - ours)**2).item()
     return {'mse': mse}
