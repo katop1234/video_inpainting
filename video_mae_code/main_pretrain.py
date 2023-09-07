@@ -644,10 +644,9 @@ def main(args):
                 davis_2x2_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_2x2_single_prompt")
                 davis_image_prompt_path = os.path.join(parent, "../test_images/colorization_single_davis_image_prompts")
                   
-                generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
+                single_mean_image, single_mean_2x2 = generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
                 print("Finished Saving Colorization examples")       
-                
-                single_mean_2x2, single_mean_image = evaluate_colorization.run_evaluation_method(store_path)
+
                 print('single_mean_2x2:', single_mean_2x2)
                 print('single_mean_image:', single_mean_image)
 

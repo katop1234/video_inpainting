@@ -13,6 +13,7 @@ import sys
 import torch
 from util.eval import *
 from pathlib import Path
+from evaluate_colorization import calculate_metric
 
 parent = Path(__file__).parent.absolute()
 davis_eval_path = os.path.join(parent, "../davis2017-evaluation")
@@ -239,6 +240,9 @@ def generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, dav
     #             save_segmentations(frames_orig, val, seg_save_orig_path, val_end_idx, 'spatiotemporal')
     #             prompt_num += 1
     
+    video_metrics = []
+    image_metrics = []
+    
     with open(single_prompt_csv, 'r') as file:
         csvreader = csv.reader(file)
         prompt_num = 0
@@ -255,24 +259,43 @@ def generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, dav
                 video_prompt_2x2 = os.path.join(davis_2x2_prompt_path, video_prompt_2x2)
                 image_prompt_2x2 = os.path.join(davis_image_prompt_path, image_prompt_2x2)
                 
-                video_im_paste_2x2 = image_video_generation(video_prompt_2x2, model, '2x2 tube', mae_image=mae_image)
-                image_im_paste = image_video_generation(image_prompt_2x2, model, 'test image', mae_image=mae_image)
+                video_im_paste_2x2, orig_vid = image_video_generation_colorization(video_prompt_2x2, model, '2x2 tube', mae_image=mae_image)
+                image_im_paste, orig_image = image_video_generation_colorization(image_prompt_2x2, model, 'test image', mae_image=mae_image)
                 
-                frames_2x2 = extract_prompt_seg(video_im_paste_2x2[0], val_height, val_width, '2x2 tube')
-                frames_image = extract_prompt_seg(image_im_paste[0], val_height, val_width, 'test image')
+                h, w = 224, 224
                 
-                seg_save_2x2_path = os.path.join(results_2x2_path, val)
-                seg_save_image_path = os.path.join(results_image_path, val)
+                ours_video = video_im_paste_2x2[0, :, h//2:, w//2:, :]
+                gt_video = orig_vid[:, h//2:, w//2:, :]
                 
-                if not os.path.exists(seg_save_2x2_path):
-                    os.mkdir(seg_save_2x2_path)
-                if not os.path.exists(seg_save_image_path):
-                    os.mkdir(seg_save_image_path)
+                ours_image = image_im_paste[0, :, h//2:, w//2:, :]
+                gt_image = orig_image[:, h//2:, w//2:, :]
+
+                video_metric = calculate_metric(ours_video, gt_video)
+                image_metric = calculate_metric(ours_image, gt_image)
+                
+                video_metrics.append(video_metric["mse"])
+                image_metrics.append(image_metric["mse"])
+                
+                # frames_2x2 = extract_prompt_seg(video_im_paste_2x2[0], val_height, val_width, '2x2 tube')
+                # frames_image = extract_prompt_seg(image_im_paste[0], val_height, val_width, 'test image')
+                
+                # seg_save_2x2_path = os.path.join(results_2x2_path, val)
+                # seg_save_image_path = os.path.join(results_image_path, val)
+                
+                # if not os.path.exists(seg_save_2x2_path):
+                #     os.mkdir(seg_save_2x2_path)
+                # if not os.path.exists(seg_save_image_path):
+                #     os.mkdir(seg_save_image_path)
                     
-                save_colorizations(frames_2x2, val, seg_save_2x2_path, val_end_idx, '2x2 tube')
-                save_colorizations(frames_image, val, seg_save_image_path, val_end_idx, 'test image')
+                # save_colorizations(frames_2x2, val, seg_save_2x2_path, val_end_idx, '2x2 tube')
+                # save_colorizations(frames_image, val, seg_save_image_path, val_end_idx, 'test image')
                 
                 prompt_num += 1
+    
+    image_metric_mean = sum(image_metrics) / len(image_metrics)
+    video_metric_mean = sum(video_metrics) / len(video_metrics)
+    
+    return image_metric_mean, video_metric_mean
                 
 def image_video_generation(prompt_path, model, mask_test_type, mae_image=False):
     test_model_input = get_test_model_input(file=prompt_path)
@@ -303,6 +326,36 @@ def image_video_generation(prompt_path, model, mask_test_type, mae_image=False):
         im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
         
     return im_paste
+
+def image_video_generation_colorization(prompt_path, model, mask_test_type, mae_image=False):
+    test_model_input = get_test_model_input(file=prompt_path)
+    test_model_input = spatial_sample_test_video(test_model_input)
+    
+    if mask_test_type == 'test image':
+        _, test_model_output, mask = model(test_model_input, test_image=True)
+    else: 
+        _, test_model_output, mask = model(test_model_input, video_test_type=mask_test_type)
+
+    if mae_image: 
+        num_patches = 14
+        y = test_model_output.argmax(dim=-1)
+        im_paste, _, orig = decode_raw_prediction(mask, model, num_patches, test_model_input, y, mae_image)
+        im_paste = im_paste.unsqueeze(0)
+        im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+    else:
+        num_patches = 14
+        N = test_model_input.shape[0]
+
+        test_model_output = test_model_output.view(N, -1, 196, 2, 1024)
+        test_model_output = test_model_output.permute(0, 1, 3, 2, 4)
+        test_model_output = test_model_output.flatten(1, 2)
+        test_model_output = test_model_output.flatten(1, 2)
+
+        y = test_model_output.argmax(dim=-1)
+        im_paste, _, orig = decode_raw_prediction(mask, model, num_patches, test_model_input, y, mae_image=mae_image)
+        im_paste = (im_paste.cpu().numpy()).astype(np.uint8)
+        
+    return im_paste, orig
                 
 def run_evaluation_method(store_path):
     curr_dir = os.path.dirname(os.path.abspath(__file__))

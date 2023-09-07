@@ -1,5 +1,5 @@
 import cv2
-import numpy as np
+import numpy as np, torch
 import os
 
 # Assuming these are the ImageNet mean and std
@@ -7,13 +7,19 @@ imagenet_mean = np.array([0.485, 0.456, 0.406])
 imagenet_std = np.array([0.229, 0.224, 0.225])
 
 def calculate_metric(ours, target):
-    ours = (np.transpose(ours/255., [2, 0, 1]) - imagenet_mean[:, None, None]) / imagenet_std[:, None, None]
-    target = (np.transpose(target/255., [2, 0, 1]) - imagenet_mean[:, None, None]) / imagenet_std[:, None, None]
-
-    target = target[:, 113:, 113:]
-    ours = ours[:, 113:, 113:]
+    # Convert tensors to numpy arrays if they are tensors
+    if isinstance(ours, torch.Tensor):
+        ours = ours.float() # Convert to float
+        ours /= 255.       # Normalize
+        ours = ours.detach().cpu().numpy()
+    if isinstance(target, torch.Tensor):
+        target = target.float() # Convert to float
+        target /= 255.         # Normalize
+        target = target.detach().cpu().numpy()
+    
     mse = np.mean((target - ours)**2)
     return {'mse': mse}
+
 
 def run_evaluation_method(store_path):
     mse_list = []
@@ -29,8 +35,8 @@ def run_evaluation_method(store_path):
             
             h, w, c = frame.shape
             # Assuming the ground truth is in the bottom right quadrant and prediction is in the bottom left quadrant
-            target = frame[h//2:, w//2:]
-            ours = frame[h//2:, :w//2]
+            
+            ours = frame[h//2:, w//2:]
 
             metric = calculate_metric(ours, target)
             mse_list.append(metric['mse'])
