@@ -264,10 +264,10 @@ def generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, dav
                 
                 h, w = 224, 224
                 
-                ours_video = video_im_paste_2x2[0, :, h//2:, w//2:, :]
+                ours_video = torch.from_numpy(video_im_paste_2x2[0, :, h//2:, w//2:, :])
                 gt_video = orig_vid[:, h//2:, w//2:, :]
                 
-                ours_image = image_im_paste[0, :, h//2:, w//2:, :]
+                ours_image = torch.from_numpy(image_im_paste[0, :, h//2:, w//2:, :])
                 gt_image = orig_image[:, h//2:, w//2:, :]
 
                 video_metric = calculate_metric(ours_video, gt_video)

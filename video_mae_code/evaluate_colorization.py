@@ -17,37 +17,7 @@ def calculate_metric(ours, target):
         target = target.float() # Convert to float
         target /= 255.         # Normalize
     
-    mse = torch.mean((target - ours)**2)
+    print('ours: ', ours)
+    print('target: ', target)
+    mse = torch.mean((target - ours)**2).item()
     return {'mse': mse}
-
-
-def run_evaluation_method(store_path):
-    mse_list = []
-    
-    for filename in os.listdir(store_path):
-        video_path = os.path.join(store_path, filename)
-        cap = cv2.VideoCapture(video_path)
-
-        while(cap.isOpened()):
-            ret, frame = cap.read()
-            if not ret:
-                break
-            
-            h, w, c = frame.shape
-            # Assuming the ground truth is in the bottom right quadrant and prediction is in the bottom left quadrant
-            
-            ours = frame[h//2:, w//2:]
-
-            metric = calculate_metric(ours, target)
-            mse_list.append(metric['mse'])
-        
-        cap.release()
-        cv2.destroyAllWindows()
-    
-    single_mean_2x2 = np.mean(mse_list)
-    
-    # Assuming you have a similar procedure for single_mean_image but didn't provide it here
-    # You can extend it similarly
-    single_mean_image = 0  # Placeholder. You'll replace this with the appropriate code.
-
-    return single_mean_2x2, single_mean_image
