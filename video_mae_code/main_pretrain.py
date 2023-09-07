@@ -639,20 +639,20 @@ def main(args):
                 if not os.path.exists(store_path):
                     os.mkdir(store_path)
                 
-                davis_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_prompt") # TODO not supported yet
+                colorization_davis_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_prompt") # TODO not supported yet
                 print("Colorization eval for /test_videos/colorization_davis_prompt not supported yet")
-                davis_2x2_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_2x2_single_prompt")
-                davis_image_prompt_path = os.path.join(parent, "../test_images/colorization_single_davis_image_prompts")
+                colorization_davis_2x2_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_2x2_single_prompt")
+                colorization_davis_image_prompt_path = os.path.join(parent, "../test_images/colorization_single_davis_image_prompts")
                   
-                single_mean_image, single_mean_2x2 = generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
+                colorization_single_mean_image, colorization_single_mean_2x2 = generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, colorization_davis_prompt_path, colorization_davis_2x2_prompt_path, colorization_davis_image_prompt_path, mae_image=args.mae_image)
                 print("Finished Saving Colorization examples")       
 
-                print('single_mean_2x2:', single_mean_2x2)
-                print('single_mean_image:', single_mean_image)
+                print('colorization_single_mean_2x2:', colorization_single_mean_2x2)
+                print('colorization_single_mean_image:', colorization_single_mean_image)
 
                 log_stats = {}  # Assuming log_stats was previously defined
-                log_stats["single_mean_2x2"] = single_mean_2x2
-                log_stats["single_mean_image"] = single_mean_image
+                log_stats["colorization_single_mean_2x2"] = single_mean_2x2
+                log_stats["colorization_single_mean_image"] = single_mean_image
                 
                 model.train()
 
