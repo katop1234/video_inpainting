@@ -677,15 +677,13 @@ def main(args):
                 print('colorization_single_mean_2x2:', colorization_single_mean_2x2)
                 print('colorization_single_mean_image:', colorization_single_mean_image)
 
-                log_stats = {}  # Assuming log_stats was previously defined
                 log_stats["colorization_single_mean_2x2"] = single_mean_2x2
                 log_stats["colorization_single_mean_image"] = single_mean_image
                 
                 model.train()
 
         if misc.is_main_process():
-            if not args.test_mode:
-                wandb.log(log_stats)
+            wandb.log(log_stats)
             model.eval()
             parent = Path(__file__).parent.absolute()
             video_prompts_dir = os.path.join(parent, "../test_cases")

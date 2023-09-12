@@ -100,11 +100,11 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             if X_CLIP:
                 self.blocks = nn.ModuleList([
-                    Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                    CrossFramelAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio) if i in self.s_transfer_encoder_indices else Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                     for i in range(depth)])
             elif AIM:
                 self.blocks = nn.ModuleList([
-                    Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                    ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5) if i in self.s_transfer_encoder_indices else Block(embed_dim, num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                     for i in range(depth)])
             else:
                 self.blocks = nn.ModuleList([
@@ -162,11 +162,11 @@ class MaskedAutoencoderViT(nn.Module):
         else:
             if X_CLIP:
                 self.decoder_blocks = nn.ModuleList([
-                    CrossFramelAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio) if i in self.s_transfer_encoder_indices else Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                    CrossFramelAttentionBlock(d_model=decoder_embed_dim, n_head=decoder_num_heads, mlp_ratio=mlp_ratio) if i in self.s_transfer_decoder_indices else Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                     for i in range(decoder_depth)])
             elif AIM:
                 self.decoder_blocks = nn.ModuleList([
-                    ResidualAttentionBlock(d_model=embed_dim, n_head=num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5) if i in self.s_transfer_encoder_indices else Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
+                    ResidualAttentionBlock(d_model=decoder_embed_dim, n_head=decoder_num_heads, mlp_ratio=mlp_ratio, num_frames=16, scale=0.5) if i in self.s_transfer_decoder_indices else Block(decoder_embed_dim, decoder_num_heads, mlp_ratio, qkv_bias=True, norm_layer=norm_layer)
                     for i in range(decoder_depth)])
             else:
                 self.decoder_blocks = nn.ModuleList([
@@ -198,20 +198,20 @@ class MaskedAutoencoderViT(nn.Module):
                     p.requires_grad_(False)
                     
         # Training, Also would want to test training all but slower for pretrained params
-        if self.X_CLIP:
-            grad_blocks = []
-            for i in range(self.s_transfer_encoder_indices):
-                grad_blocks.append('blocks.{i}.'.format(i=i))
-            for i in range(self.s_transfer_decoder_indices):
-                grad_blocks.append('decoder_blocks.{i}.'.format(i=i))
+        # if self.X_CLIP:
+        #     grad_blocks = []
+        #     for i in self.s_transfer_encoder_indices:
+        #         grad_blocks.append('blocks.{i}.'.format(i=i))
+        #     for i in self.s_transfer_decoder_indices:
+        #         grad_blocks.append('decoder_blocks.{i}.'.format(i=i))
             
-            for n, p in self.named_parameters():
-                requires_grad = False
-                for grad_block in grad_blocks:
-                    if grad_block in n:
-                        requires_grad = True
+        #     for n, p in self.named_parameters():
+        #         requires_grad = False
+        #         for grad_block in grad_blocks:
+        #             if grad_block in n:
+        #                 requires_grad = True
 
-                p.requires_grad_(requires_grad)
+        #         p.requires_grad_(requires_grad)
         # --------------------------------------------------------------------------
         self.initialize_weights()
 
@@ -418,7 +418,10 @@ class MaskedAutoencoderViT(nn.Module):
                 x = x.view([N * T, -1, self.embed_dim])
                 video_block_indice += 1
             else:
-                x = self.blocks[image_block_indice](x)
+                if self.X_CLIP:
+                    x = self.blocks[image_block_indice](x, T=T)
+                else:
+                    x = self.blocks[image_block_indice](x)
                 image_block_indice += 1
         x = self.norm(x)
 
@@ -491,7 +494,10 @@ class MaskedAutoencoderViT(nn.Module):
                 x = x.view([N * T, -1, self.decoder_embed_dim])
                 video_block_indice += 1
             else:
-                x = self.decoder_blocks[image_block_indice](x)
+                if self.X_CLIP:
+                    x = self.decoder_blocks[image_block_indice](x, T=T)
+                else:
+                    x = self.decoder_blocks[image_block_indice](x)
                 image_block_indice += 1
 
         x = self.decoder_norm(x)

@@ -422,16 +422,19 @@ def load_model(args, model_without_ddp, optimizer, loss_scaler):
         print("unexpected_keys: ", unexpected_keys)
         
         if (args.X_CLIP or args.AIM) and args.no_cont_pretrain:
-            for j in range(args.transfer_encoder_depth):
-                i = (args.depth - args.transfer_encoder_depth) + j
+            if type(args.s_transfer_encoder_indices) == str:
+                args.s_transfer_encoder_indices = [int(x) for x in args.s_transfer_encoder_indices.split(',')]
+            if type(args.s_transfer_decoder_indices) == str:
+                args.s_transfer_decoder_indices = [int(x) for x in args.s_transfer_decoder_indices.split(',')]    
+            
+            for i in args.s_transfer_encoder_indices:
                 model_without_ddp.blocks[i].attn.in_proj_weight = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.qkv.weight'.format(i=i)].to(device=args.device))
                 model_without_ddp.blocks[i].attn.in_proj_bias = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.qkv.bias'.format(i=i)].to(device=args.device))
                 model_without_ddp.blocks[i].attn.out_proj.weight = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.proj.weight'.format(i=i)].to(device=args.device))
                 model_without_ddp.blocks[i].attn.out_proj.bias = torch.nn.Parameter(checkpoint['model']['blocks.{i}.attn.proj.bias'.format(i=i)].to(device=args.device))
                 print('set weights in cct encoder for: ', i)
                 
-            for j in range(args.transfer_decoder_depth):
-                i = (args.decoder_depth - args.transfer_decoder_depth) + j
+            for i in args.s_transfer_decoder_indices:
                 model_without_ddp.decoder_blocks[i].attn.in_proj_weight = torch.nn.Parameter(checkpoint['model']['decoder_blocks.{i}.attn.qkv.weight'.format(i=i)].to(device=args.device))
                 model_without_ddp.decoder_blocks[i].attn.in_proj_bias = torch.nn.Parameter(checkpoint['model']['decoder_blocks.{i}.attn.qkv.bias'.format(i=i)].to(device=args.device))
                 model_without_ddp.decoder_blocks[i].attn.out_proj.weight = torch.nn.Parameter(checkpoint['model']['decoder_blocks.{i}.attn.proj.weight'.format(i=i)].to(device=args.device))
