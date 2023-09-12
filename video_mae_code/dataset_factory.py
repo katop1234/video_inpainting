@@ -151,7 +151,7 @@ def get_dataset(name, root_path, ds_type, fb=False):
         if name == 'cvf':
             if fb:
                 cvf_csv_path = os.path.join(datasets, 'cvf_images_fb.csv')
-                dataset_train = datasets.ImageFolder('/private/home/amirbar/datasets/CVF/arxiv_resized_train_val_split/train/', 
+                dataset_train = ImageFoldercsv('/private/home/amirbar/datasets/CVF/arxiv_resized_train_val_split/train/', 
                                                      transform=transforms_train, dataset_csv=cvf_csv_path)
             else:
                 cvf_csv_path = os.path.join(datasets, 'cvf_images.csv')
@@ -160,8 +160,8 @@ def get_dataset(name, root_path, ds_type, fb=False):
         elif name == 'imagenet':
             if fb:
                 imagenet_csv_path = os.path.join(datasets, 'imagenet_images_fb.csv')
-                dataset_train = datasets.ImageFolder('/datasets01/imagenet_full_size/061417/train', 
-                                                     transform=transforms_train, dataset_csv=imagenet_csv_path )
+                dataset_train = ImageFoldercsv('/datasets01/imagenet_full_size/061417/train', 
+                                                     transform=transforms_train, dataset_csv=imagenet_csv_path)
             else:
                 imagenet_csv_path = os.path.join(datasets, 'imagenet_images.csv')
                 dataset_train = ImageFoldercsv('/shared/group/ilsvrc/train', 
