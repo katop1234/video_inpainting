@@ -167,15 +167,9 @@ class Kinetics(torch.utils.data.Dataset):
         }
         
         repo_root = Path(__file__).resolve().parents[1] # chdir out of util/ into video_mae_code/
-        # if self.fb:
-        #     csv_file_path = repo_root / "datasets" / "kinetics_videos_fb.csv"
-        #     print('csv_file_path: ', csv_file_path)
-        # else:
-        #     csv_file_path = repo_root / "datasets" / "kinetics_videos.csv"
-        #     print('csv_file_path: ', csv_file_path)
+        csv_file_path = repo_root / "datasets" / "kinetics_videos_fb.csv"
 
-        # print('csv_file_path: ', csv_file_path)
-        # path_to_file = csv_file_path
+        path_to_file = csv_file_path
         
         # assert pathmgr.exists(path_to_file), "{} dir not found".format(path_to_file)
 
