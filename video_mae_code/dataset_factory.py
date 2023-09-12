@@ -149,7 +149,6 @@ def get_dataset(name, root_path, ds_type, fb=False):
     if ds_type == 'image':
         transforms_train = get_image_transforms()
         if name == 'cvf':
-<<<<<<< Updated upstream
             if fb:
                 cvf_csv_path = os.path.join(datasets, 'cvf_images_fb.csv')
                 dataset_train = datasets.ImageFolder('/private/home/amirbar/datasets/CVF/arxiv_resized_train_val_split/train/', 
@@ -167,15 +166,6 @@ def get_dataset(name, root_path, ds_type, fb=False):
                 imagenet_csv_path = os.path.join(datasets, 'imagenet_images.csv')
                 dataset_train = ImageFoldercsv('/shared/group/ilsvrc/train', 
                                                     transform=transforms_train, dataset_csv=imagenet_csv_path)
-=======
-            # dataset_train = datasets.ImageFolder(os.path.join(root_path, 'arxiv_resized_train_val_split/train/'),
-            #                                      transform=transforms_train)
-            dataset_train = datasets.ImageFolder('/private/home/amirbar/datasets/CVF/arxiv_resized_train_val_split/train/', 
-                                                 transform=transforms_train)
-        elif name == 'imagenet':
-            dataset_train = datasets.ImageFolder('/datasets01/imagenet_full_size/061417/train', 
-                                                 transform=transforms_train)
->>>>>>> Stashed changes
         else:
             raise ValueError("Wrong dataset name.")
 
@@ -193,7 +183,6 @@ def get_dataset(name, root_path, ds_type, fb=False):
                 fb=fb,
             )
         elif name == "CrossTask":
-<<<<<<< Updated upstream
             if fb:
                 crosstask_csv_path = os.path.join(datasets, 'crosstask_videos_fb.csv')
             else:
@@ -205,11 +194,6 @@ def get_dataset(name, root_path, ds_type, fb=False):
             else:
                 kinetics_csv_path = os.path.join(datasets, 'kinetics_videos.csv')
             dataset_train = VideoDataset(path_to_data_dir=kinetics_csv_path, fb=fb)
-=======
-            dataset_train = VideoDataset(path_to_data_dir="/datasets01/CrossTask/053122/raw_video/")
-        elif name == "kinetics":
-            dataset_train = VideoDataset(path_to_data_dir="/datasets01/kinetics/092121/400/train_288px/")
->>>>>>> Stashed changes
         elif name == "Objectron":
             if fb:
                 raise ValueError("Objectron not supported on fb")
@@ -217,7 +201,6 @@ def get_dataset(name, root_path, ds_type, fb=False):
                 objectron_csv_path = os.path.join(datasets, 'objectron_videos.csv')
                 dataset_train = VideoDataset(path_to_data_dir=objectron_csv_path, fb=fb)
         elif name == "SSV2":
-<<<<<<< Updated upstream
             if fb:
                 ssv2_csv_path = os.path.join(datasets, 'ssv2_videos_fb.csv')
             else:
@@ -229,11 +212,6 @@ def get_dataset(name, root_path, ds_type, fb=False):
             else:
                 ucf101_csv_path = os.path.join(datasets, 'ucf101_videos.csv')
             dataset_train = VideoDataset(path_to_data_dir=ucf101_csv_path, fb=fb) 
-=======
-            dataset_train = VideoDataset(path_to_data_dir="/datasets01/SSV2/videos/") 
-        elif name == "UCF101":
-            dataset_train = VideoDataset(path_to_data_dir="/datasets01/ucf101/112018/data") 
->>>>>>> Stashed changes
         elif name == "CSV":
             if fb:
                 csv_csv_path = os.path.join(datasets, 'csv_videos_fb.csv')
