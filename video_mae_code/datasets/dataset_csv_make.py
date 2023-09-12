@@ -3,7 +3,7 @@ import os
 import glob
 
 # File extensions
-video_extensions = ['.mp4', '.avi', '.mkv', '.mov']
+video_extensions = ['.mp4', '.avi', '.mkv', '.mov', '.webm']
 image_extensions = ['.png', '.jpg', '.JPEG']
 
 #Facebook Paths
