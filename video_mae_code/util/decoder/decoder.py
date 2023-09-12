@@ -10,6 +10,7 @@ import av
 import torch
 import torchvision.io as io
 import io as io_module
+import cv2
 
 import av
 import torch
@@ -86,6 +87,12 @@ def pyav_decode(container, target_fps):
 
 def decode_ffmpeg(video_path, start=0, num_sec=2, num_frames=16):
     try:
+        if '.webm' in video_path:
+            video = cv2.VideoCapture(video_path)
+            frame_count = video.get(cv2.CAP_PROP_FRAME_COUNT)
+            fps = video.get(cv2.CAP_PROP_FPS)
+            duration = math.floor(float(frame_count / fps))
+        
         # Get video metadata using ffprobe
         decode_all_video = False
         probe = ffmpeg.probe(video_path, v='error', select_streams='v:0', show_entries='stream=width,height,duration,r_frame_rate')
@@ -96,8 +103,13 @@ def decode_ffmpeg(video_path, start=0, num_sec=2, num_frames=16):
         
         width = int(video_info['width'])
         height = int(video_info['height'])
-        end = math.floor(float(video_info['duration']))
         r_frame_rate = video_info['r_frame_rate'].split('/')
+        
+        if '.webm' in video_path:
+            end = duration
+        else:
+            end = math.floor(float(video_info['duration']))
+            
         fps = int(r_frame_rate[0]) / int(r_frame_rate[1])
         
         start_seek = random.randint(start, int(max(start, end - num_sec)))
