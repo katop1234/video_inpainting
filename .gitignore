@@ -1,0 +1,13 @@
+.nfs00080000277139f4000006f1
+video_mae_code/AIM/__pycache__
+video_mae_code/X_CLIP/__pycache__
+video_mae_code/__pycache__
+video_mae_code/mae_image/__pycache__
+video_mae_code/util/__pycache__
+video_mae_code/util/decoder/__pycache__
+video_mae_code/model.yaml
+video_mae_code/mae_image/checkpoint-3400.pth
+wandb
+DAVIS_datasets
+video_mae_code/last.ckpt
+video_mae_code/mae_image/output_dir
