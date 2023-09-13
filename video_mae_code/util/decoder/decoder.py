@@ -16,6 +16,7 @@ import av
 import torch
 import numpy as np
 import ffmpeg
+import signal
 
 def temporal_sampling(frames, start_idx, end_idx, num_samples):
     """
@@ -85,8 +86,15 @@ def pyav_decode(container, target_fps):
     frames = torch.stack(frames)
     return frames
 
+def handler(signum, frame):
+    print("Decoder has taken too long")
+    raise Exception("Decoder has taken too long")
+
 def decode_ffmpeg(video_path, start=0, num_sec=2, num_frames=16):
     try:
+        signal.signal(signal.SIGALRM, handler)
+        signal.alarm(60)
+        
         if '.webm' in video_path:
             video = cv2.VideoCapture(video_path)
             frame_count = video.get(cv2.CAP_PROP_FRAME_COUNT)
@@ -131,6 +139,7 @@ def decode_ffmpeg(video_path, start=0, num_sec=2, num_frames=16):
             video = torch.cat((video, zeros), axis=1)
         frames = video
         
+        signal.alarm(0)
     except Exception as e:
         print("Failed to decode by ffmpeg with exception: {}".format(e))
         return None
