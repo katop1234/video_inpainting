@@ -585,6 +585,7 @@ def main(args):
                 data_loader_video_train.sampler.set_epoch(epoch)
 
         if not args.test_mode:
+            print('before train_one_epoch')
             train_stats = train_one_epoch(
                 model,
                 combined_dataloader,
@@ -596,6 +597,7 @@ def main(args):
                 args=args,
                 fp32=args.fp32,
             )
+            print('after train_one_epoch')
 
             checkpoint_path = misc.save_model(
                     args=args,
