@@ -15,6 +15,8 @@ import util.lr_sched as lr_sched
 import util.misc as misc
 import torch
 import numpy as np
+import logging
+import sys
 def train_one_epoch(
     model: torch.nn.Module,
     data_loader: Iterable,
@@ -55,18 +57,20 @@ def train_one_epoch(
         metric_logger.log_every(data_loader, print_freq, header)
     ):  
 
-        print("start of train_one_epoch")
+        logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+        logger = logging.getLogger()
+        logger.info("start of train_one_epoch")
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
-            print('in lr check')
+            logger.info('in lr check')
             lr_sched.adjust_learning_rate(
                 optimizer, data_iter_step / len(data_loader) + epoch, args
             )
-            print('after lr check')
+            logger.info('after lr check')
 
-        print('before moving samples')
+        logger.info('before moving samples')
         samples = samples.to(device, non_blocking=True)
-        print('after moving samples')
+        logger.info('after moving samples')
         if len(samples.shape) == 6:
             b, r, c, t, h, w = samples.shape # r is number of repeated variations
 
@@ -76,19 +80,19 @@ def train_one_epoch(
         if len(samples.shape) == 4: # NOTE this is only when using original video inpainting dataset_train has shape (N, C, H, W)
             samples = samples.unsqueeze(2) # add the num_frames dimension
         
-        print('before model forward')
+        logger.info('before model forward')
         with torch.cuda.amp.autocast(enabled=not fp32):
             loss, _, _ = model(
                 samples,
                 mask_ratio_image=args.mask_ratio_image, 
                 mask_ratio_video=args.mask_ratio_video
             )
-        print('after model forward')
+        logger.info('after model forward')
 
         loss_value = loss.item()
         assert not np.isnan(loss_value), 'loss is nan'
 
-        print('before loss scaler')
+        logger.info('before loss scaler')
         loss /= accum_iter
         loss_scaler(
             loss,
@@ -97,14 +101,14 @@ def train_one_epoch(
             update_grad=(data_iter_step + 1) % accum_iter == 0, # updates grad every accum_iter
             clip_grad=args.clip_grad,
         )
-        print('after loss scaler')
+        logger.info('after loss scaler')
 
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad() # zeroes out grad every accum iter
 
-        print('before synchronize')
+        logger.info('before synchronize')
         torch.cuda.synchronize()
-        print('after synchronize')
+        logger.info('after synchronize')
 
         metric_logger.update(loss=loss_value)
         metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
