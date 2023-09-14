@@ -361,14 +361,13 @@ def get_args_parser():
     return parser
 
 def main(args):
+    # Logging
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+    logger = logging.getLogger()
     try:
-        os.environ[
-            "TORCH_DISTRIBUTED_DEBUG"
-        ] = "DETAIL"  # set to DETAIL for runtime logging.
-        
-        # Logging
-        logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-        logger = logging.getLogger()
+        # os.environ[
+        #     "TORCH_DISTRIBUTED_DEBUG"
+        # ] = "DETAIL"  # set to DETAIL for runtime logging.
         
         start_time = time.time()
         misc.init_distributed_mode(args)
@@ -596,7 +595,7 @@ def main(args):
                     data_loader_video_train.sampler.set_epoch(epoch)
 
             if not args.test_mode:
-                logger.info('before train_one_epoch')
+                # logger.info('before train_one_epoch')
                 train_stats = train_one_epoch(
                     model,
                     combined_dataloader,
@@ -608,7 +607,7 @@ def main(args):
                     args=args,
                     fp32=args.fp32,
                 )
-                logger.info('after train_one_epoch')
+                # logger.info('after train_one_epoch')
 
                 checkpoint_path = misc.save_model(
                         args=args,
