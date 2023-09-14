@@ -119,7 +119,7 @@ def image_to_tensor(image_path, target_shape=(1, 3, 1, 224, 224)):
     convert_tensor = transforms.ToTensor()
     img = Image.open(image_path)
     # img = img.resize((target_shape[-1], target_shape[-2]), Image.ANTIALIAS)  # Resize to (width, height)
-    img = img.resize((target_shape[-1], target_shape[-2]), Image.LANCZOS)  # Resize to (width, height)
+    img = img.resize((target_shape[-1], target_shape[-2]), Image.BICUBIC)  # Resize to (width, height)
 
     img = convert_tensor(img)
     img = img.unsqueeze(1)  # Add the num_frames dimension

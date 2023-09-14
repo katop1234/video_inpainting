@@ -359,6 +359,9 @@ def get_args_parser():
     return parser
 
 def main(args):
+    os.environ[
+        "TORCH_DISTRIBUTED_DEBUG"
+    ] = "DETAIL"  # set to DETAIL for runtime logging.
     start_time = time.time()
     misc.init_distributed_mode(args)
 
@@ -635,6 +638,7 @@ def main(args):
                     f.write(json.dumps(log_stats) + "\n")
 
         if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
+            print('running evaluation')
             with torch.no_grad():
                 if args.test_mode:
                     log_stats = {}
