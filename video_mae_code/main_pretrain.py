@@ -361,357 +361,347 @@ def get_args_parser():
     return parser
 
 def main(args):
-    # Logging
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-    logger = logging.getLogger()
+    start_time = time.time()
+    misc.init_distributed_mode(args)
+
+    print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
+    print("{}".format(args).replace(", ", ",\n"))
+
+    device = torch.device(args.device)
+
+    # fix the seed for reproducibility
+    seed = args.seed + misc.get_rank()
+    torch.manual_seed(seed)
+    np.random.seed(seed)
+
+    cudnn.benchmark = True
+
+    # Dataset combining image and video data
+    if type(args.image_itr) == str:
+        args.image_itr = int(args.image_itr)
+    if type(args.video_itr) == str:
+        args.video_itr = int(args.video_itr)
+    if type(args.davis_eval_freq) == str:
+        args.davis_eval_freq = int(args.davis_eval_freq)
+    
+    print('time before image MergedDataset: ', time.time() - start_time)
+    if args.image_itr > 0:
+        dataset_image_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, 'image', args.fb)
+    else:
+        dataset_image_train = None
+    print('time after image MergedDataset: ', time.time() - start_time)
+    
+    print('time before video MergedDataset: ', time.time() - start_time)
+    if args.video_itr > 0:
+        print("creating video merged dataset")
+        print("args.video_dataset_list: ", args.video_dataset_list)
+        dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video', args.fb)
+    else:
+        dataset_video_train = None
+    print('time after video MergedDataset: ', time.time() - start_time)
+
+    num_tasks = misc.get_world_size()  # 8 gpus
+    global_rank = misc.get_rank()
+    
+    print('time before image distributedsampler: ', time.time() - start_time)
+    if args.image_itr > 0:
+        sampler_image_train = torch.utils.data.DistributedSampler(
+            dataset_image_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+        )
+    else:
+        sampler_image_train = None
+    print('time after image distributedsampler: ', time.time() - start_time)
+
+    print('time before video distributedsampler: ', time.time() - start_time)
+    if args.video_itr > 0:
+        sampler_video_train = torch.utils.data.DistributedSampler(
+            dataset_video_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
+        )
+    else: 
+        sampler_video_train = None
+    print('time after video distributedsampler: ', time.time() - start_time)
+
+    print("Sampler_train = %s" % str(sampler_image_train))
+
     try:
-        # os.environ[
-        #     "TORCH_DISTRIBUTED_DEBUG"
-        # ] = "DETAIL"  # set to DETAIL for runtime logging.
-        
-        start_time = time.time()
-        misc.init_distributed_mode(args)
+        pathmgr.mkdirs(args.log_dir)
+    except Exception as _:
+        pass
+    
+    log_writer = None
 
-        print("job dir: {}".format(os.path.dirname(os.path.realpath(__file__))))
-        print("{}".format(args).replace(", ", ",\n"))
+    print("Batch size image is", args.batch_size_image)
+    print("Batch size video is", args.batch_size_video)
+    print("Num GPUs is", misc.get_world_size())
 
-        device = torch.device(args.device)
-
-        # fix the seed for reproducibility
-        seed = args.seed + misc.get_rank()
-        torch.manual_seed(seed)
-        np.random.seed(seed)
-
-        cudnn.benchmark = True
-
-        # Dataset combining image and video data
-        if type(args.image_itr) == str:
-            args.image_itr = int(args.image_itr)
-        if type(args.video_itr) == str:
-            args.video_itr = int(args.video_itr)
-        if type(args.davis_eval_freq) == str:
-            args.davis_eval_freq = int(args.davis_eval_freq)
-        
-        print('time before image MergedDataset: ', time.time() - start_time)
-        if args.image_itr > 0:
-            dataset_image_train = MergedDataset(args.dataset_root, args.image_dataset_list, args.image_dataset_conf, 'image', args.fb)
-        else:
-            dataset_image_train = None
-        print('time after image MergedDataset: ', time.time() - start_time)
-        
-        print('time before video MergedDataset: ', time.time() - start_time)
-        if args.video_itr > 0:
-            print("creating video merged dataset")
-            print("args.video_dataset_list: ", args.video_dataset_list)
-            dataset_video_train = MergedDataset(args.dataset_root, args.video_dataset_list, args.video_dataset_conf, 'video', args.fb)
-        else:
-            dataset_video_train = None
-        print('time after video MergedDataset: ', time.time() - start_time)
-
-        num_tasks = misc.get_world_size()  # 8 gpus
-        global_rank = misc.get_rank()
-        
-        print('time before image distributedsampler: ', time.time() - start_time)
-        if args.image_itr > 0:
-            sampler_image_train = torch.utils.data.DistributedSampler(
-                dataset_image_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-            )
-        else:
-            sampler_image_train = None
-        print('time after image distributedsampler: ', time.time() - start_time)
-
-        print('time before video distributedsampler: ', time.time() - start_time)
-        if args.video_itr > 0:
-            sampler_video_train = torch.utils.data.DistributedSampler(
-                dataset_video_train, num_replicas=num_tasks, rank=global_rank, shuffle=True
-            )
-        else: 
-            sampler_video_train = None
-        print('time after video distributedsampler: ', time.time() - start_time)
-
-        print("Sampler_train = %s" % str(sampler_image_train))
-
-        try:
-            pathmgr.mkdirs(args.log_dir)
-        except Exception as _:
-            pass
-        
-        log_writer = None
-
-        print("Batch size image is", args.batch_size_image)
-        print("Batch size video is", args.batch_size_video)
-        print("Num GPUs is", misc.get_world_size())
-
-        print('time before image dataloader: ', time.time() - start_time)
-        if args.image_itr > 0:
-            data_loader_image_train = torch.utils.data.DataLoader(
-                dataset_image_train,
-                sampler=sampler_image_train,
-                batch_size=args.batch_size_image,
-                num_workers=args.num_workers,
-                pin_memory=args.pin_mem,
-                drop_last=True,
-            )
-        else:
-            data_loader_image_train = None
-        print('time after image dataloader: ', time.time() - start_time)
-
-        print('time before video dataloader: ', time.time() - start_time)
-        # args.batch_size_video = 4
-        print('args.batch_size_video: ', 4)
-        if args.video_itr > 0: 
-            data_loader_video_train = torch.utils.data.DataLoader(
-                dataset_video_train,
-                sampler=sampler_video_train,
-                batch_size=args.batch_size_video,
-                num_workers=args.num_workers,
-                pin_memory=args.pin_mem,
-                drop_last=True,
-            )
-        else:
-            data_loader_video_train = None
-        print('time after video dataloader: ', time.time() - start_time)
-
-        # define the model
-        if args.mae_image:
-            model = models_mae_image.__dict__[args.model](
-                **vars(args),
-            )
-        else:
-            print('not in mae_image')
-            model = models_mae.__dict__[args.model](
-                **vars(args),
-            )
-
-        try:
-            model.to(device)
-        except Exception as e:
-            print(f"Exception occurred: {e}")
-            traceback.print_exc()
-
-            print(f"Current CUDA device: {torch.cuda.current_device()}")
-            print(f"Device name: {torch.cuda.get_device_name(torch.cuda.current_device())}")
-
-            exit()
-
-
-        model_without_ddp = model
-        print("Model = %s" % str(model_without_ddp))
-
-        # We compute effective batch size based on images
-        eff_batch_size = args.batch_size_image * args.accum_iter_image * misc.get_world_size()
-
-        if args.lr is None:
-            args.lr = args.blr * eff_batch_size / 256
-
-        print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
-        print("actual lr: %.2e" % args.lr)
-
-        print("accumulate grad iterations images: %d" % args.accum_iter_image)
-        print("accumulate grad iterations videos: %d" % args.accum_iter_video)
-        print("effective batch size: %d" % eff_batch_size)
-
-        if args.distributed:
-            model = torch.nn.parallel.DistributedDataParallel(
-                model,
-                device_ids=[torch.cuda.current_device()],
-                # find_unused_parameters=True,
-                find_unused_parameters=False,
-                static_graph=True,
-            )
-            model_without_ddp = model.module
-
-        # following timm: set wd as 0 for bias and norm layers
-        if args.X_CLIP:
-            param_groups = misc.add_weight_decay_and_lr(
-                model_without_ddp,
-                args.lr,
-                args.weight_decay,
-                bias_wd=args.bias_wd,
-            )
-        else:
-            param_groups = misc.add_weight_decay(
-                model_without_ddp,
-                args.weight_decay,
-                bias_wd=args.bias_wd,
-            )
-
-        if args.beta is None:
-            beta = (0.9, 0.95)
-        else: 
-            beta = tuple(float(x) for x in args.beta[0].split(','))
-            
-        optimizer = torch.optim._multi_tensor.AdamW(
-            param_groups,
-            lr=args.lr,
-            betas=beta,
+    print('time before image dataloader: ', time.time() - start_time)
+    if args.image_itr > 0:
+        data_loader_image_train = torch.utils.data.DataLoader(
+            dataset_image_train,
+            sampler=sampler_image_train,
+            batch_size=args.batch_size_image,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            drop_last=True,
         )
-        loss_scaler = NativeScaler(fp32=args.fp32)
+    else:
+        data_loader_image_train = None
+    print('time after image dataloader: ', time.time() - start_time)
 
-        print('time before model loaded: ', time.time() - start_time)
-        print("loading model")
-        _ = misc.load_model(
-            args=args,
-            model_without_ddp=model_without_ddp,
-            optimizer=optimizer,
-            loss_scaler=loss_scaler,
+    print('time before video dataloader: ', time.time() - start_time)
+    # args.batch_size_video = 4
+    print('args.batch_size_video: ', 4)
+    if args.video_itr > 0: 
+        data_loader_video_train = torch.utils.data.DataLoader(
+            dataset_video_train,
+            sampler=sampler_video_train,
+            batch_size=args.batch_size_video,
+            num_workers=args.num_workers,
+            pin_memory=args.pin_mem,
+            drop_last=True,
         )
-        print("Total number of trainable parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
-        print("Total number of parameters: ", sum(p.numel() for p in model.parameters()))
-        print('time after model loaded: ', time.time() - start_time)
+    else:
+        data_loader_video_train = None
+    print('time after video dataloader: ', time.time() - start_time)
 
-        os.environ["WANDB__SERVICE_WAIT"] = "300"
-        if misc.is_main_process():
-            wandb_config = vars(args)
-            base_lr = (args.lr * 256 / eff_batch_size)
-            wandb_config['base_lr'] = base_lr
-            if args.wandb_resume:
-                print("in wandb_resume")
-                wandb.init(
+    # define the model
+    if args.mae_image:
+        model = models_mae_image.__dict__[args.model](
+            **vars(args),
+        )
+    else:
+        print('not in mae_image')
+        model = models_mae.__dict__[args.model](
+            **vars(args),
+        )
+
+    try:
+        model.to(device)
+    except Exception as e:
+        print(f"Exception occurred: {e}")
+        traceback.print_exc()
+
+        print(f"Current CUDA device: {torch.cuda.current_device()}")
+        print(f"Device name: {torch.cuda.get_device_name(torch.cuda.current_device())}")
+
+        exit()
+
+
+    model_without_ddp = model
+    print("Model = %s" % str(model_without_ddp))
+
+    # We compute effective batch size based on images
+    eff_batch_size = args.batch_size_image * args.accum_iter_image * misc.get_world_size()
+
+    if args.lr is None:
+        args.lr = args.blr * eff_batch_size / 256
+
+    print("base lr: %.2e" % (args.lr * 256 / eff_batch_size))
+    print("actual lr: %.2e" % args.lr)
+
+    print("accumulate grad iterations images: %d" % args.accum_iter_image)
+    print("accumulate grad iterations videos: %d" % args.accum_iter_video)
+    print("effective batch size: %d" % eff_batch_size)
+
+    if args.distributed:
+        model = torch.nn.parallel.DistributedDataParallel(
+            model,
+            device_ids=[torch.cuda.current_device()],
+            # find_unused_parameters=True,
+            find_unused_parameters=False,
+            static_graph=True,
+        )
+        model_without_ddp = model.module
+
+    # following timm: set wd as 0 for bias and norm layers
+    if args.X_CLIP:
+        param_groups = misc.add_weight_decay_and_lr(
+            model_without_ddp,
+            args.lr,
+            args.weight_decay,
+            bias_wd=args.bias_wd,
+        )
+    else:
+        param_groups = misc.add_weight_decay(
+            model_without_ddp,
+            args.weight_decay,
+            bias_wd=args.bias_wd,
+        )
+
+    if args.beta is None:
+        beta = (0.9, 0.95)
+    else: 
+        beta = tuple(float(x) for x in args.beta[0].split(','))
+        
+    optimizer = torch.optim._multi_tensor.AdamW(
+        param_groups,
+        lr=args.lr,
+        betas=beta,
+    )
+    loss_scaler = NativeScaler(fp32=args.fp32)
+
+    print('time before model loaded: ', time.time() - start_time)
+    print("loading model")
+    _ = misc.load_model(
+        args=args,
+        model_without_ddp=model_without_ddp,
+        optimizer=optimizer,
+        loss_scaler=loss_scaler,
+    )
+    print("Total number of trainable parameters: ", sum(p.numel() for p in model.parameters() if p.requires_grad))
+    print("Total number of parameters: ", sum(p.numel() for p in model.parameters()))
+    print('time after model loaded: ', time.time() - start_time)
+
+    os.environ["WANDB__SERVICE_WAIT"] = "300"
+    if misc.is_main_process():
+        wandb_config = vars(args)
+        base_lr = (args.lr * 256 / eff_batch_size)
+        wandb_config['base_lr'] = base_lr
+        if args.wandb_resume:
+            print("in wandb_resume")
+            wandb.init(
+            project="video_inpainting2",
+            config=wandb_config,
+            resume=True,
+            id=args.wandb_id,
+            )
+        else:
+            wandb.init(
                 project="video_inpainting2",
                 config=wandb_config,
-                resume=True,
-                id=args.wandb_id,
                 )
-            else:
-                wandb.init(
-                    project="video_inpainting2",
-                    config=wandb_config,
-                    )
-        print('time after wandb: ', time.time() - start_time)
+    print('time after wandb: ', time.time() - start_time)
 
-        checkpoint_path = ""
-        print(f"Start training for {args.epochs} epochs")
-        # start_time = time.time()
-        print('time before combinedgen: ', time.time() - start_time)
-        combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
-        print('time after combinedgen: ', time.time() - start_time)
-        for epoch in range(args.start_epoch, args.epochs):
+    checkpoint_path = ""
+    print(f"Start training for {args.epochs} epochs")
+    # start_time = time.time()
+    print('time before combinedgen: ', time.time() - start_time)
+    combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
+    print('time after combinedgen: ', time.time() - start_time)
+    for epoch in range(args.start_epoch, args.epochs):
 
-            if args.distributed:
-                if data_loader_image_train:
-                    data_loader_image_train.sampler.set_epoch(epoch)
-                if data_loader_video_train:
-                    data_loader_video_train.sampler.set_epoch(epoch)
+        if args.distributed:
+            if data_loader_image_train:
+                data_loader_image_train.sampler.set_epoch(epoch)
+            if data_loader_video_train:
+                data_loader_video_train.sampler.set_epoch(epoch)
 
-            if not args.test_mode:
-                # logger.info('before train_one_epoch')
-                train_stats = train_one_epoch(
-                    model,
-                    combined_dataloader,
-                    optimizer,
-                    device,
-                    epoch,
-                    loss_scaler,
-                    log_writer=log_writer,
+        if not args.test_mode:
+            # logger.info('before train_one_epoch')
+            train_stats = train_one_epoch(
+                model,
+                combined_dataloader,
+                optimizer,
+                device,
+                epoch,
+                loss_scaler,
+                log_writer=log_writer,
+                args=args,
+                fp32=args.fp32,
+            )
+            # logger.info('after train_one_epoch')
+
+            checkpoint_path = misc.save_model(
                     args=args,
-                    fp32=args.fp32,
+                    model=model,
+                    model_without_ddp=model_without_ddp,
+                    optimizer=optimizer,
+                    loss_scaler=loss_scaler,
+                    epoch=epoch,
+                    save_numbered=False,
                 )
-                # logger.info('after train_one_epoch')
-
+            
+            if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
                 checkpoint_path = misc.save_model(
-                        args=args,
-                        model=model,
-                        model_without_ddp=model_without_ddp,
-                        optimizer=optimizer,
-                        loss_scaler=loss_scaler,
-                        epoch=epoch,
-                        save_numbered=False,
-                    )
-                
-                if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
-                    checkpoint_path = misc.save_model(
-                        args=args,
-                        model=model,
-                        model_without_ddp=model_without_ddp,
-                        optimizer=optimizer,
-                        loss_scaler=loss_scaler,
-                        epoch=epoch,
-                        save_numbered=True,
-                    )
+                    args=args,
+                    model=model,
+                    model_without_ddp=model_without_ddp,
+                    optimizer=optimizer,
+                    loss_scaler=loss_scaler,
+                    epoch=epoch,
+                    save_numbered=True,
+                )
 
-                log_stats = {
-                    **{f"train_{k}": v for k, v in train_stats.items()},
-                    "epoch": epoch,
-                }
-                
-                if args.output_dir and misc.is_main_process():
-                    if log_writer is not None:
-                        log_writer.flush()
-                    with pathmgr.open(
-                            f"{args.output_dir}/log.txt",
-                            "a",
-                    ) as f:
-                        f.write(json.dumps(log_stats) + "\n")
+            log_stats = {
+                **{f"train_{k}": v for k, v in train_stats.items()},
+                "epoch": epoch,
+            }
+            
+            if args.output_dir and misc.is_main_process():
+                if log_writer is not None:
+                    log_writer.flush()
+                with pathmgr.open(
+                        f"{args.output_dir}/log.txt",
+                        "a",
+                ) as f:
+                    f.write(json.dumps(log_stats) + "\n")
 
-            if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
-                print('running evaluation')
-                with torch.no_grad():
-                    if args.test_mode:
-                        log_stats = {}
-                        
-                    model.eval()
-                    ## Segmentation specific code
-                    store_path = os.path.join(args.output_dir, "davis_segs")
-                    if not os.path.exists(store_path):
-                        os.mkdir(store_path)
+        if epoch % args.davis_eval_freq == 0 and misc.is_main_process():
+            print('running evaluation')
+            with torch.no_grad():
+                if args.test_mode:
+                    log_stats = {}
                     
-                    parent = Path(__file__).parent.absolute()
-                    prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
-                    single_prompt_csv = os.path.join(parent, "datasets/davis_single_prompt.csv")
-                    
-                    davis_prompt_path = os.path.join(parent, "../test_videos/davis_prompt")
-                    davis_2x2_prompt_path = os.path.join(parent, "../test_videos/davis_2x2_single_prompt")
-                    davis_image_prompt_path = os.path.join(parent, "../test_images/single_davis_image_prompts")
-                    
-                    generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
-                    print("Finished Saving Davis Eval Segmentations")
-                    
-                    # single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
-                    single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
-                    # log_stats["Davis_single_mean_orig"] = single_mean_orig
-                    print('single_mean_2x2: ', single_mean_2x2)
-                    print('single_mean_image: ', single_mean_image)
-                    log_stats["single_mean_2x2"] = single_mean_2x2
-                    log_stats["single_mean_image"] = single_mean_image
-                    
-                    ## Colorization specific code
-                    store_path = os.path.join(args.output_dir, "davis_cols")
-                    if not os.path.exists(store_path):
-                        os.mkdir(store_path)
-                    
-                    colorization_davis_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_prompt") # TODO not supported yet
-                    colorization_davis_2x2_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_2x2_single_prompt")
-                    colorization_davis_image_prompt_path = os.path.join(parent, "../test_images/colorization_single_davis_image_prompts")
-                    
-                    colorization_single_mean_image, colorization_single_mean_2x2 = generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, colorization_davis_prompt_path, colorization_davis_2x2_prompt_path, colorization_davis_image_prompt_path, mae_image=args.mae_image)
-                    print("Finished Saving Colorization examples")       
-
-                    print('colorization_single_mean_2x2:', colorization_single_mean_2x2)
-                    print('colorization_single_mean_image:', colorization_single_mean_image)
-
-                    log_stats["colorization_single_mean_2x2"] = single_mean_2x2
-                    log_stats["colorization_single_mean_image"] = single_mean_image
-                    
-                    model.train()
-
-            if misc.is_main_process():
-                wandb.log(log_stats)
                 model.eval()
+                ## Segmentation specific code
+                store_path = os.path.join(args.output_dir, "davis_segs")
+                if not os.path.exists(store_path):
+                    os.mkdir(store_path)
+                
                 parent = Path(__file__).parent.absolute()
-                video_prompts_dir = os.path.join(parent, "../test_cases")
-                visualize_prompting(model, video_prompts_dir, mae_image=args.mae_image, mask_ratio_image=args.mask_ratio_image, mask_ratio_video=args.mask_ratio_video)
+                prompt_csv = os.path.join(parent, "datasets/davis_prompt.csv")
+                single_prompt_csv = os.path.join(parent, "datasets/davis_single_prompt.csv")
+                
+                davis_prompt_path = os.path.join(parent, "../test_videos/davis_prompt")
+                davis_2x2_prompt_path = os.path.join(parent, "../test_videos/davis_2x2_single_prompt")
+                davis_image_prompt_path = os.path.join(parent, "../test_images/single_davis_image_prompts")
+                
+                generate_segmentations(model, store_path, single_prompt_csv, prompt_csv, davis_prompt_path, davis_2x2_prompt_path, davis_image_prompt_path, mae_image=args.mae_image)
+                print("Finished Saving Davis Eval Segmentations")
+                
+                # single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
+                single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
+                # log_stats["Davis_single_mean_orig"] = single_mean_orig
+                print('single_mean_2x2: ', single_mean_2x2)
+                print('single_mean_image: ', single_mean_image)
+                log_stats["single_mean_2x2"] = single_mean_2x2
+                log_stats["single_mean_image"] = single_mean_image
+                
+                ## Colorization specific code
+                store_path = os.path.join(args.output_dir, "davis_cols")
+                if not os.path.exists(store_path):
+                    os.mkdir(store_path)
+                
+                colorization_davis_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_prompt") # TODO not supported yet
+                colorization_davis_2x2_prompt_path = os.path.join(parent, "../test_videos/colorization_davis_2x2_single_prompt")
+                colorization_davis_image_prompt_path = os.path.join(parent, "../test_images/colorization_single_davis_image_prompts")
+                
+                colorization_single_mean_image, colorization_single_mean_2x2 = generate_colorizations(model, store_path, single_prompt_csv, prompt_csv, colorization_davis_prompt_path, colorization_davis_2x2_prompt_path, colorization_davis_image_prompt_path, mae_image=args.mae_image)
+                print("Finished Saving Colorization examples")       
+
+                print('colorization_single_mean_2x2:', colorization_single_mean_2x2)
+                print('colorization_single_mean_image:', colorization_single_mean_image)
+
+                log_stats["colorization_single_mean_2x2"] = single_mean_2x2
+                log_stats["colorization_single_mean_image"] = single_mean_image
+                
                 model.train()
-            print("Done loop on epoch {}".format(epoch))
 
-            if args.test_mode:
-                exit()
-            ### End evaluation
+        if misc.is_main_process():
+            wandb.log(log_stats)
+            model.eval()
+            parent = Path(__file__).parent.absolute()
+            video_prompts_dir = os.path.join(parent, "../test_cases")
+            visualize_prompting(model, video_prompts_dir, mae_image=args.mae_image, mask_ratio_image=args.mask_ratio_image, mask_ratio_video=args.mask_ratio_video)
+            model.train()
+        print("Done loop on epoch {}".format(epoch))
 
-        total_time = time.time() - start_time
-        total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-        print("Training time {}".format(total_time_str))
-        print(torch.cuda.memory_allocated())
-        return [checkpoint_path]
-    except Exception:
-        logger.exception("Fatal error in main loop")
+        if args.test_mode:
+            exit()
+        ### End evaluation
+
+    total_time = time.time() - start_time
+    total_time_str = str(datetime.timedelta(seconds=int(total_time)))
+    print("Training time {}".format(total_time_str))
+    print(torch.cuda.memory_allocated())
+    return [checkpoint_path]
