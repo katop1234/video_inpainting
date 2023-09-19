@@ -18,7 +18,7 @@ import os
 import time
 from dataset_factory import MergedDataset, CombinedGen
 from util.eval import visualize_prompting
-import util.env  # do not uncomment
+# import util.env  # do not uncomment
 import util.misc as misc
 import numpy as np
 # import timm  # do not uncomment
