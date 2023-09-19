@@ -56,6 +56,9 @@ def train_one_epoch(
     for data_iter_step, ((samples, _), accum_iter) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):  
+    # for data_iter_step, ((samples, _), accum_iter) in enumerate(
+    #     data_loader
+    # ):  
 
         # logging.basicConfig(stream=sys.stdout, level=logging.INFO)
         # logger = logging.getLogger()
