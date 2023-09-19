@@ -94,12 +94,12 @@ def handler(signum, frame):
     raise Exception("Decoder has taken too long")
 
 def decode_ffmpeg(video_path, start=0, num_sec=2, num_frames=16):
-    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-    logger = logging.getLogger()
+    # logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+    # logger = logging.getLogger()
     try:
         signal.signal(signal.SIGALRM, handler)
         signal.alarm(60)
-        logger.info(video_path)
+        # logger.info(video_path)
         
         if '.webm' in video_path:
             video = cv2.VideoCapture(video_path)
@@ -109,9 +109,9 @@ def decode_ffmpeg(video_path, start=0, num_sec=2, num_frames=16):
         
         # Get video metadata using ffprobe
         decode_all_video = False
-        logger.info('decoder.py before probe')
+        # logger.info('decoder.py before probe')
         probe = ffmpeg.probe(video_path, v='error', select_streams='v:0', show_entries='stream=width,height,duration,r_frame_rate')
-        logger.info('decoder.py after probe')
+        # logger.info('decoder.py after probe')
         video_info = next((s for s in probe['streams'] if 'width' in s and 'height' in s), None)
         
         if video_info is None:
@@ -129,7 +129,7 @@ def decode_ffmpeg(video_path, start=0, num_sec=2, num_frames=16):
         fps = int(r_frame_rate[0]) / int(r_frame_rate[1])
         
         start_seek = random.randint(start, int(max(start, end - num_sec)))
-        logger.info('decoder.py before output')
+        # logger.info('decoder.py before output')
         cmd = (
             ffmpeg
             .input(video_path, ss=start_seek, t=num_sec + 0.1)
@@ -139,7 +139,7 @@ def decode_ffmpeg(video_path, start=0, num_sec=2, num_frames=16):
             cmd.output('pipe:', format='rawvideo', pix_fmt='rgb24')
             .run(capture_stdout=True, quiet=True)
         )
-        logger.info('decoder.py got output')
+        # logger.info('decoder.py got output')
         
         video = np.frombuffer(out, np.uint8).reshape([-1, height, width, 3])
         video_copy = video.copy()
