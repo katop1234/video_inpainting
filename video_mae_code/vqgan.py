@@ -1,5 +1,5 @@
 import torch.nn.functional as F
-import pytorch_lightning as pl
+# import pytorch_lightning as pl
 from torch import einsum
 from einops import rearrange
 import math
@@ -1120,7 +1120,8 @@ class VectorQuantizer2(nn.Module):
         return z_q
 
 
-class VQModel(pl.LightningModule):
+# class VQModel(pl.LightningModule):
+class VQModel(nn.Module):
     def __init__(self,
                  ddconfig,
                  lossconfig,
