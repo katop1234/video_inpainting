@@ -63,7 +63,7 @@ class MaskedAutoencoderViT(nn.Module):
         self.use_fit = use_fit
         
         # WARNING manually set
-        depth = 2
+        depth = 1
         decoder_depth = 32
         embed_dim = 1280
         decoder_embed_dim = 1280
