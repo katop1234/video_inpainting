@@ -274,50 +274,50 @@ class Kinetics(torch.utils.data.Dataset):
         # Try to decode and sample a clip from a video. If the video can not be
         # decoded, repeatly find a random video replacement that can be decoded.
         for i_try in range(self._num_retries):
-            video_container = None
+            # video_container = None
             
-            try:
-                video_container = container.get_video_container(
-                    self._path_to_videos[index],
-                    self._enable_multi_thread_decode,
-                )
-            except Exception as e:
-                print(
-                    "Failed to load video from {} with error {}".format(
-                        self._path_to_videos[index], e
-                    )
-                )
-            # Select a random video if the current video was not able to access.
-            if video_container is None:
-                print(
-                    "Failed to meta load video idx {} from {}; trial {}".format(
-                        index, self._path_to_videos[index], i_try
-                    )
-                )
-                if self.mode not in ["test"] and i_try > self._num_retries // 2:
-                    # let's try another one
-                    print("trying again because failed to load video")
-                    index = random.randint(0, len(self._path_to_videos) - 1)
-                continue
+            # try:
+            #     video_container = container.get_video_container(
+            #         self._path_to_videos[index],
+            #         self._enable_multi_thread_decode,
+            #     )
+            # except Exception as e:
+            #     print(
+            #         "Failed to load video from {} with error {}".format(
+            #             self._path_to_videos[index], e
+            #         )
+            #     )
+            # # Select a random video if the current video was not able to access.
+            # if video_container is None:
+            #     print(
+            #         "Failed to meta load video idx {} from {}; trial {}".format(
+            #             index, self._path_to_videos[index], i_try
+            #         )
+            #     )
+            #     if self.mode not in ["test"] and i_try > self._num_retries // 2:
+            #         # let's try another one
+            #         print("trying again because failed to load video")
+            #         index = random.randint(0, len(self._path_to_videos) - 1)
+            #     continue
             
-            # video_path = self._path_to_videos[index]
+            video_path = self._path_to_videos[index]
             # print('on try: ', i_try)
 
             # Decode video. Meta info is used to perform selective decoding.            
             try:
-                # frames, fps, decode_all_video = decoder.decode_ffmpeg(video_path)
-                frames, fps, decode_all_video = decoder.decode(
-                    video_container,
-                    sampling_rate,
-                    self._num_frames,
-                    temporal_sample_index,
-                    self._test_num_ensemble_views,
-                    video_meta=self._video_meta[index],
-                    target_fps=self._target_fps,
-                    max_spatial_scale=min_scale,
-                    use_offset=self._use_offset_sampling,
-                    rigid_decode_all_video=self.mode in ["pretrain"],
-                )
+                frames, fps, decode_all_video = decoder.decode_ffmpeg(video_path)
+                # frames, fps, decode_all_video = decoder.decode(
+                #     video_container,
+                #     sampling_rate,
+                #     self._num_frames,
+                #     temporal_sample_index,
+                #     self._test_num_ensemble_views,
+                #     video_meta=self._video_meta[index],
+                #     target_fps=self._target_fps,
+                #     max_spatial_scale=min_scale,
+                #     use_offset=self._use_offset_sampling,
+                #     rigid_decode_all_video=self.mode in ["pretrain"],
+                # )
                 
             except Exception as e:
                 print(
