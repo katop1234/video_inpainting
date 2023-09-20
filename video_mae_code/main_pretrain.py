@@ -30,7 +30,7 @@ import models_mae
 from mae_image import models_mae_image
 from engine_pretrain import train_one_epoch
 from util.misc import NativeScalerWithGradNormCount as NativeScaler
-import util.decoder.utils as utils
+# import util.decoder.utils as utils
 from iou_eval import generate_segmentations, run_evaluation_method, generate_colorizations
 # import evaluate_colorization
 from pathlib import Path
