@@ -21,6 +21,7 @@ from timm.models.vision_transformer import Block
 from vqgan import get_vq_model
 
 from util.video_vit import CheckpointBlock # RINBlockVIP, FITBlockVIP,
+from custom_vision_transformer import Block
 #from util import rin
 import numpy as np
 
@@ -67,6 +68,7 @@ class MaskedAutoencoderViT(nn.Module):
         decoder_depth = 32
         embed_dim = 1280
         decoder_embed_dim = 1280
+        video_vit.CheckpointBlock = Block
 
         # t_patch_size is how many consecutive video frames are grouped together to form a single temporal patch
         # pred_t_dim is how many consecutive temporal patches are predicted
