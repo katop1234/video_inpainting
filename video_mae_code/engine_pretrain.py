@@ -82,12 +82,15 @@ def train_one_epoch(
                 mask_ratio_image=args.mask_ratio_image, 
                 mask_ratio_video=args.mask_ratio_video
             )
-        logger.info('engine_pretrain after sample and forward: {time}'.format(time=time.time()-start_epoch_time))
+        
+        sample_forward_time = time.time()-start_epoch_time
+        if sample_forward_time > 5:
+            logger.info('engine_pretrain after sample and forward: {time}'.format(time=sample_forward_time))
 
         loss_value = loss.item()
         assert not np.isnan(loss_value), 'loss is nan'
 
-        logger.info('engine_pretrain before loss_scaler: {time}'.format(time=time.time()-start_epoch_time))
+        time_before_loss_scaler = time.time()
         loss /= accum_iter
         loss_scaler(
             loss,
@@ -96,14 +99,19 @@ def train_one_epoch(
             update_grad=(data_iter_step + 1) % accum_iter == 0, # updates grad every accum_iter
             clip_grad=args.clip_grad,
         )
-        logger.info('engine_pretrain after loss_scaler: {time}'.format(time=time.time()-start_epoch_time))
+        
+        loss_scaler_time = time.time()-time_before_loss_scaler
+        if loss_scaler_time > 5:
+            logger.info('engine_pretrain after loss_scaler: {time}'.format(time=loss_scaler_time))
 
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad() # zeroes out grad every accum iter
 
-        logger.info('engine_pretrain before cuda.synchronize: {time}'.format(time=time.time()-start_epoch_time))
+        time_before_cuda_synchronize = time.time()
         torch.cuda.synchronize()
-        logger.info('engine_pretrain after cuda.synchronize: {time}'.format(time=time.time()-start_epoch_time))
+        cuda_synchronize_time = time.time()-time_before_cuda_synchronize
+        if cuda_synchronize_time > 5:
+            logger.info('engine_pretrain after cuda.synchronize: {time}'.format(time=cuda_synchronize_time))
 
         metric_logger.update(loss=loss_value)
         metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
