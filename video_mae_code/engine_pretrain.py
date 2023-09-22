@@ -54,12 +54,16 @@ def train_one_epoch(
     if log_writer is not None:
         print("log_dir: {}".format(log_writer.log_dir))
     
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+    logger = logging.getLogger()
+    end_of_for_loop = time.time()
     for data_iter_step, ((samples, _), accum_iter) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
-    ):  
+    ):
+        time_since_last_for = time.time() - end_of_for_loop
+        if time_since_last_for > 5:
+            logger.info('engine_pretrain time since last for {time}'.format(time=time_since_last_for))
         start_epoch_time = time.time()
-        logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-        logger = logging.getLogger()
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
             lr_sched.adjust_learning_rate(
@@ -85,7 +89,7 @@ def train_one_epoch(
         
         sample_forward_time = time.time()-start_epoch_time
         if sample_forward_time > 5:
-            logger.info('engine_pretrain after sample and forward: {time}'.format(time=sample_forward_time))
+            logger.info('engine_pretrain time after sample and forward: {time}'.format(time=sample_forward_time))
 
         loss_value = loss.item()
         assert not np.isnan(loss_value), 'loss is nan'
@@ -102,7 +106,7 @@ def train_one_epoch(
         
         loss_scaler_time = time.time()-time_before_loss_scaler
         if loss_scaler_time > 5:
-            logger.info('engine_pretrain after loss_scaler: {time}'.format(time=loss_scaler_time))
+            logger.info('engine_pretrain time after loss_scaler: {time}'.format(time=loss_scaler_time))
 
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad() # zeroes out grad every accum iter
@@ -111,7 +115,7 @@ def train_one_epoch(
         torch.cuda.synchronize()
         cuda_synchronize_time = time.time()-time_before_cuda_synchronize
         if cuda_synchronize_time > 5:
-            logger.info('engine_pretrain after cuda.synchronize: {time}'.format(time=cuda_synchronize_time))
+            logger.info('engine_pretrain time after cuda.synchronize: {time}'.format(time=cuda_synchronize_time))
 
         metric_logger.update(loss=loss_value)
         metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])
@@ -136,6 +140,7 @@ def train_one_epoch(
         
         if data_iter_step % 1000 == 0:
             print("Epoch: {}, Iter: {}, Loss: {}".format(epoch, data_iter_step, loss_value_reduce))
+        end_of_for_loop = time.time()
 
 
     # gather the stats from all processes

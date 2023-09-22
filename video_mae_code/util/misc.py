@@ -16,6 +16,9 @@ import os
 import time
 from collections import defaultdict, deque, OrderedDict
 
+import logging as logging_info
+import sys
+
 import util.logging as logging
 import psutil
 import torch
@@ -24,6 +27,7 @@ import torch.distributed as dist
 from iopath.common.file_io import g_pathmgr as pathmgr
 from util.logging import master_print as print
 from torch import inf
+import time
 
 
 logger = logging.get_logger(__name__)
@@ -316,8 +320,16 @@ class NativeScalerWithGradNormCount:
         update_grad=True,
     ):  
         
+        logging_info.basicConfig(stream=sys.stdout, level=logging_info.INFO)
+        logger = logging_info.getLogger()
+        
+        before_backward = time.time()
         self._scaler.scale(loss).backward(create_graph=create_graph)
-
+        time_for_backward = time.time() - before_backward
+        if time_for_backward > 5:
+            logger.info('misc time for backward: {time}'.format(time=time_for_backward))
+        
+        before_update_grad = time.time()
         if update_grad:
             if clip_grad is not None:
                 assert parameters is not None
@@ -332,6 +344,11 @@ class NativeScalerWithGradNormCount:
             self._scaler.update()
         else:
             norm = None
+            
+        time_for_update_grad = time.time() - before_update_grad
+        if time_for_update_grad > 5:
+            logger.info('misc time for update_grad: {time}'.format(time=time_for_update_grad))
+        
         return norm
 
     def state_dict(self):
