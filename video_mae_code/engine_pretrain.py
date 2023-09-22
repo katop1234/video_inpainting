@@ -17,6 +17,7 @@ import torch
 import numpy as np
 import logging
 import sys
+import time
 def train_one_epoch(
     model: torch.nn.Module,
     data_loader: Iterable,
@@ -56,24 +57,16 @@ def train_one_epoch(
     for data_iter_step, ((samples, _), accum_iter) in enumerate(
         metric_logger.log_every(data_loader, print_freq, header)
     ):  
-    # for data_iter_step, ((samples, _), accum_iter) in enumerate(
-    #     data_loader
-    # ):  
-
-        # logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-        # logger = logging.getLogger()
-        # logger.info("engine_pretrain.py start of train_one_epoch")
+        start_epoch_time = time.time()
+        logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+        logger = logging.getLogger()
         # we use a per iteration (instead of per epoch) lr scheduler
         if data_iter_step % accum_iter == 0:
-            # logger.info('engine_pretrain.py in lr check')
             lr_sched.adjust_learning_rate(
                 optimizer, data_iter_step / len(data_loader) + epoch, args
             )
-            # logger.info('engine_pretrain.py after lr check')
 
-        # logger.info('engine_pretrain.py before moving samples')
         samples = samples.to(device, non_blocking=True)
-        # logger.info('engine_pretrain.py after moving samples')
         if len(samples.shape) == 6:
             b, r, c, t, h, w = samples.shape # r is number of repeated variations
 
@@ -83,19 +76,18 @@ def train_one_epoch(
         if len(samples.shape) == 4: # NOTE this is only when using original video inpainting dataset_train has shape (N, C, H, W)
             samples = samples.unsqueeze(2) # add the num_frames dimension
         
-        # logger.info('engine_pretrain.py before model forward')
         with torch.cuda.amp.autocast(enabled=not fp32):
             loss, _, _ = model(
                 samples,
                 mask_ratio_image=args.mask_ratio_image, 
                 mask_ratio_video=args.mask_ratio_video
             )
-        # logger.info('engine_pretrain.py after model forward')
+        logger.info('engine_pretrain after sample and forward: {time}'.format(time=time.time()-start_epoch_time))
 
         loss_value = loss.item()
         assert not np.isnan(loss_value), 'loss is nan'
 
-        # logger.info('engine_pretrain.py before loss scaler')
+        logger.info('engine_pretrain before loss_scaler: {time}'.format(time=time.time()-start_epoch_time))
         loss /= accum_iter
         loss_scaler(
             loss,
@@ -104,14 +96,14 @@ def train_one_epoch(
             update_grad=(data_iter_step + 1) % accum_iter == 0, # updates grad every accum_iter
             clip_grad=args.clip_grad,
         )
-        # logger.info('engine_pretrain.py after loss scaler')
+        logger.info('engine_pretrain after loss_scaler: {time}'.format(time=time.time()-start_epoch_time))
 
         if (data_iter_step + 1) % accum_iter == 0:
             optimizer.zero_grad() # zeroes out grad every accum iter
 
-        # logger.info('engine_pretrain.py before synchronize')
+        logger.info('engine_pretrain before cuda.synchronize: {time}'.format(time=time.time()-start_epoch_time))
         torch.cuda.synchronize()
-        # logger.info('engine_pretrain.py after synchronize')
+        logger.info('engine_pretrain after cuda.synchronize: {time}'.format(time=time.time()-start_epoch_time))
 
         metric_logger.update(loss=loss_value)
         metric_logger.update(cpu_mem=misc.cpu_mem_usage()[0])

@@ -360,10 +360,9 @@ def get_args_parser():
     return parser
 
 def main(args):
-    # try:
-        # Logging
-        # logging.basicConfig(stream=sys.stdout, level=logging.INFO)
-        # logger = logging.getLogger()
+    # Logging
+    logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+    logger = logging.getLogger()
         
     start_time = time.time()
     misc.init_distributed_mode(args)
@@ -583,15 +582,15 @@ def main(args):
     combined_dataloader = CombinedGen(data_loader_image_train, data_loader_video_train, args.accum_iter_image, args.accum_iter_video, args.image_itr, args.video_itr)
     print('time after combinedgen: ', time.time() - start_time)
     for epoch in range(args.start_epoch, args.epochs):
-
+        start_epoch_time = time.time()
         if args.distributed:
             if data_loader_image_train:
                 data_loader_image_train.sampler.set_epoch(epoch)
             if data_loader_video_train:
                 data_loader_video_train.sampler.set_epoch(epoch)
-
+                
+        logger.info('main_pretrain.py time after set_epoch: {time}'.format(time=time.time()-start_epoch_time))
         if not args.test_mode:
-            # logger.info('main_pretrain.py before train_one_epoch')
             train_stats = train_one_epoch(
                 model,
                 combined_dataloader,
@@ -603,8 +602,8 @@ def main(args):
                 args=args,
                 fp32=args.fp32,
             )
-            # logger.info('main_pretrain.py after train_one_epoch')
 
+            logger.info('main_pretrain.py time after train_one_epoch: {time}'.format(time=time.time()-start_epoch_time))
             checkpoint_path = misc.save_model(
                     args=args,
                     model=model,
@@ -614,6 +613,7 @@ def main(args):
                     epoch=epoch,
                     save_numbered=False,
                 )
+            logger.info('main_pretrain.py time after save_model: {time}'.format(time=time.time()-start_epoch_time))
             
             if args.output_dir and (epoch % args.checkpoint_period == 0 or epoch + 1 == args.epochs):
                 checkpoint_path = misc.save_model(
@@ -665,7 +665,6 @@ def main(args):
                 
                 # single_mean_orig, single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
                 single_mean_2x2, single_mean_image = run_evaluation_method(store_path)
-                # log_stats["Davis_single_mean_orig"] = single_mean_orig
                 print('single_mean_2x2: ', single_mean_2x2)
                 print('single_mean_image: ', single_mean_image)
                 log_stats["single_mean_2x2"] = single_mean_2x2
@@ -686,8 +685,8 @@ def main(args):
                 print('colorization_single_mean_2x2:', colorization_single_mean_2x2)
                 print('colorization_single_mean_image:', colorization_single_mean_image)
 
-                log_stats["colorization_single_mean_2x2"] = single_mean_2x2
-                log_stats["colorization_single_mean_image"] = single_mean_image
+                log_stats["colorization_single_mean_2x2"] = colorization_single_mean_2x2
+                log_stats["colorization_single_mean_image"] = colorization_single_mean_image
                 
                 model.train()
 
@@ -709,5 +708,3 @@ def main(args):
     print("Training time {}".format(total_time_str))
     print(torch.cuda.memory_allocated())
     return [checkpoint_path]
-    # except Exception:
-    #     logger.exception("Fatal error in main loop")
