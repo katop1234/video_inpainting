@@ -686,8 +686,8 @@ def main(args):
                 print('colorization_single_mean_2x2:', colorization_single_mean_2x2)
                 print('colorization_single_mean_image:', colorization_single_mean_image)
 
-                log_stats["colorization_single_mean_2x2"] = single_mean_2x2
-                log_stats["colorization_single_mean_image"] = single_mean_image
+                log_stats["colorization_single_mean_2x2"] = colorization_single_mean_2x2
+                log_stats["colorization_single_mean_image"] = colorization_single_mean_image
                 
                 model.train()
 
